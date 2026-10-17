@@ -28,6 +28,7 @@ from app.db.models import (
     Observation,
     Profile,
 )
+from app.ml.bp import DIA_MAX, DIA_MIN, PULSE_MAX, PULSE_MIN, SYS_MAX, SYS_MIN  # single source of the BP ranges
 from app.schemas.metrics import METRIC_TYPES, BpIn, DailyLogIn, MetricIn
 
 DEFAULT_TZ = "America/Toronto"
@@ -148,18 +149,16 @@ def upsert_metrics(db: Session, user_id: str, samples: list[MetricIn],
 
 # ================================================================ blood pressure
 
-SYS_MIN, SYS_MAX = 70, 260
-PULSE_MIN, PULSE_MAX = 30, 200
-
-
 def bp_validity(r: BpIn) -> tuple[bool, str | None]:
-    """Spec §2 'Validity' (reason strings match app/ml/bp.reading_validity)."""
+    """Spec §2 'Validity' (ranges and reason strings match app/ml/bp.reading_validity)."""
     if r.user_marked_error:
         return False, "user_marked_error"
     if r.systolic <= r.diastolic:
         return False, "systolic_not_above_diastolic"
     if r.systolic < SYS_MIN or r.systolic > SYS_MAX:
         return False, "systolic_out_of_range"
+    if r.diastolic < DIA_MIN or r.diastolic > DIA_MAX:
+        return False, "diastolic_out_of_range"
     if r.pulse is not None and (r.pulse < PULSE_MIN or r.pulse > PULSE_MAX):
         return False, "pulse_out_of_range"
     return True, None

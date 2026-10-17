@@ -218,8 +218,11 @@ def parse_apple_health_export(src: bytes | str | Path | IO[bytes], user_id: str 
     # BP pairs
     for ts, pair in sorted(bp.items()):
         if "sys" in pair and "dia" in pair:
-            out.bp_readings.append(BpIn(systolic=round(pair["sys"]), diastolic=round(pair["dia"]), measured_at=ts,
-                                        session=session_for_hour(ts.hour), source=SOURCE))
+            try:
+                out.bp_readings.append(BpIn(systolic=round(pair["sys"]), diastolic=round(pair["dia"]), measured_at=ts,
+                                            session=session_for_hour(ts.hour), source=SOURCE))
+            except ValueError:  # impossible values (≤0 / >300) fail BpIn's bounds; plausibility is judged later
+                counts["bp_rejected"] += 1
         else:
             counts["bp_unpaired"] += 1
     # ECG CSVs

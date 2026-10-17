@@ -37,6 +37,21 @@ Dyslipidemia for the Prevention of Cardiovascular Disease in Adults." *Can J Car
 This is *context only* (FRS-01 is informational): it never changes the pathway level. The BP
 input is the 7-day *home* systolic mean, used as-is (the paper used office SBP). Unknown inputs
 are never imputed as normal.
+
+Input plausibility
+------------------
+The equation takes logs, so ``hdl=0`` would crash and a value typed in mmol/L (e.g. total
+cholesterol 5.5) would silently give a plausible-looking percentage. Inputs are therefore gated to
+the ranges the FHS calculator accepts (``gencardio_lipids.xls`` input limits, which bound the
+D'Agostino 2008 derivation sample): total cholesterol 100–405 mg/dL, HDL 20–100 mg/dL,
+SBP 90–200 mmHg. Out of range → ``not_applicable`` with a reason that names the field, and when
+the value is so small it can only be mmol/L (TC/LDL < 15, HDL < 5) says so and gives the
+×38.67 conversion hint. Nothing is auto-converted.
+
+Eligibility note (``known_cvd``): the FRS applies to people *without* prior CVD — the outcome
+covers stroke, TIA, PAD and heart failure as well as CHD. The profile only records ``known_chd``;
+there is no stroke/TIA/PAD/heart-failure flag or conditions list yet, so only ``known_chd`` is
+excluded. Add those flags to ``ProfileIn`` (and this gate) when the profile grows them.
 """
 from __future__ import annotations
 
@@ -56,6 +71,57 @@ CHOL_MG_DL_PER_MMOL_L = 38.67
 CCS_INTERMEDIATE_PCT = 10.0
 CCS_HIGH_PCT = 20.0
 FRS_ELEVATED_PCT = CCS_INTERMEDIATE_PCT   # FRS-01 notes "intermediate or high" (CCS)
+
+# --- Plausibility gates (see module docstring) --------------------------------------------------
+#: FHS calculator input limits (gencardio_lipids.xls), mg/dL.
+TC_MIN, TC_MAX = 100.0, 405.0
+HDL_MIN, HDL_MAX = 20.0, 100.0
+#: LDL has no FHS limit (not an FRS input); 30–300 mg/dL covers the Suita bands (<100 … ≥180) with
+#: margin and stays below the TC ceiling. Used by the Suita LDL sheet and the profile schema.
+LDL_MIN, LDL_MAX = 30.0, 300.0
+#: FHS calculator SBP limits, mmHg (applied to the 7-day home mean).
+SBP_MIN, SBP_MAX = 90.0, 200.0
+#: eGFR (mL/min/1.73 m²): 0 is not a measurement; >200 is not physiological.
+EGFR_MIN_EXCLUSIVE, EGFR_MAX = 0.0, 200.0
+#: Below these a "mg/dL" lipid value can only have been typed in mmol/L (TC/LDL 15 mg/dL = 0.39
+#: mmol/L; HDL 5 mg/dL = 0.13 mmol/L — both far below any living person).
+MMOL_SUSPECT_BELOW = {"total_chol_mg_dl": 15.0, "ldl_mg_dl": 15.0, "hdl_mg_dl": 5.0}
+IMPLAUSIBLE_INPUT = "not_applicable_implausible_input"
+
+
+def _num(v: float) -> str:
+    return f"{v:g}"
+
+
+def implausible_input(name: str, value: float | None, lo: float, hi: float, unit: str = "mg/dL",
+                      lo_exclusive: bool = False) -> str | None:
+    """Return a reason string when ``value`` is outside ``[lo, hi]`` (``(lo, hi]`` when
+    ``lo_exclusive``), else ``None``. ``None`` values are *unknown*, not implausible, and pass.
+
+    The message names the field and the expected range; for a lipid small enough to be mmol/L it
+    says so and gives the ×38.67 conversion (as a hint only — nothing is converted)."""
+    if value is None:
+        return None
+    too_low = value <= lo if lo_exclusive else value < lo
+    if not too_low and value <= hi:
+        return None
+    expected = f"expected {'>' if lo_exclusive else ''}{_num(lo)}–{_num(hi)} {unit}"
+    suspect = MMOL_SUSPECT_BELOW.get(name)
+    if suspect is not None and 0 < value < suspect:
+        return (f"{name}={_num(value)} looks like mmol/L ({_num(value)} × {CHOL_MG_DL_PER_MMOL_L} = "
+                f"{mmol_l_to_mg_dl(value):.0f} mg/dL?); {expected}")
+    return f"{name}={_num(value)} is out of range; {expected}"
+
+
+def implausible_inputs(**checks: tuple[float | None, float, float] | tuple[float | None, float, float, str]
+                       | tuple[float | None, float, float, str, bool]) -> list[str]:
+    """``implausible_input`` over ``name=(value, lo, hi[, unit[, lo_exclusive]])``; returns the reasons."""
+    out: list[str] = []
+    for name, spec in checks.items():
+        r = implausible_input(name, *spec)
+        if r:
+            out.append(r)
+    return out
 
 
 @dataclass(frozen=True)
@@ -121,7 +187,9 @@ def format_pct(pct: float) -> str:
 @dataclass(frozen=True)
 class FraminghamResult:
     applicable: bool
-    reason: str  # ok | not_applicable_age | not_applicable_known_chd | insufficient_data
+    #: ok | not_applicable_age | not_applicable_known_chd | insufficient_data |
+    #: "not_applicable_implausible_input: <field>=<value> ...; expected <range>" (one clause per field)
+    reason: str
     percent_10y: float | None = None          # CCS-modified (family history) percent, rounded to 0.1
     base_percent_10y: float | None = None     # unmodified D'Agostino 2008 percent
     category: str | None = None               # CCS low | intermediate | high
@@ -151,10 +219,12 @@ def _pct(profile: ProfileIn, sbp: float) -> tuple[float, float, bool]:
 
 
 def framingham_score(profile: ProfileIn, systolic: float | None) -> FraminghamResult:
-    """Compute the (CCS-modified) FRS. Eligibility: age 30-74, no known CHD/CVD.
+    """Compute the (CCS-modified) FRS. Eligibility: age 30-74, no known CHD (see ``known_cvd`` note).
 
     Required: age, sex, smoker, diabetes, 7-day home SBP mean, total cholesterol, HDL, and whether
-    BP is treated. Missing → ``insufficient_data`` with ``missing_inputs``.
+    BP is treated. Missing → ``insufficient_data`` with ``missing_inputs``. Present but implausible
+    (TC 100–405, HDL 20–100 mg/dL, SBP 90–200 mmHg) → ``not_applicable`` with the offending
+    fields in ``reason`` / ``notes``; nothing is converted or clamped.
     """
     if profile.known_chd:
         return FraminghamResult(False, "not_applicable_known_chd")
@@ -178,6 +248,11 @@ def framingham_score(profile: ProfileIn, systolic: float | None) -> FraminghamRe
     if missing:
         return FraminghamResult(False, "insufficient_data", missing_inputs=missing)
     assert systolic is not None and profile.total_chol is not None and profile.hdl is not None
+    bad = implausible_inputs(total_chol_mg_dl=(profile.total_chol, TC_MIN, TC_MAX),
+                             hdl_mg_dl=(profile.hdl, HDL_MIN, HDL_MAX),
+                             systolic_bp_mmhg=(systolic, SBP_MIN, SBP_MAX, "mmHg"))
+    if bad:
+        return FraminghamResult(False, f"{IMPLAUSIBLE_INPUT}: {'; '.join(bad)}", notes=list(bad))
 
     pct, base, doubled = _pct(profile, systolic)
     notes = ["BP input is the 7-day home systolic mean, used as-is (the equation was derived on office SBP)."]

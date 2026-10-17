@@ -7,7 +7,7 @@ from app.core.auth import get_current_user
 from app.core.security import audit
 from app.db.models import ScreenerResponse, User
 from app.db.session import get_db
-from app.ml.screener import PD_SCREENER_ITEMS, score_pd_screener
+from app.ml.screener import PD_SCREENER_ITEMS, SCREENER_NOTE, score_pd_screener
 from app.schemas.risk import ScreenerAnswersIn, ScreenerOut, ScreenerResultOut
 from app.services.context_builder import normalize_screener_answers
 from app.services.dashboard_service import normalize_language
@@ -41,4 +41,4 @@ def post_pd(body: ScreenerAnswersIn, user: User = Depends(get_current_user), db:
     db.commit()
     return ScreenerResultOut(id=row.id, screener="pd", score=row.score, motor_count=motor, nonmotor_count=nonmotor,
                              pd01_would_fire=fired, next_tasks=PD_NEXT_TASKS if fired else [],
-                             created_at=row.created_at)
+                             validation_note=SCREENER_NOTE, created_at=row.created_at)

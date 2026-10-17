@@ -66,4 +66,5 @@ class ScreenerResultOut(BaseModel):
     nonmotor_count: int
     pd01_would_fire: bool
     next_tasks: list[str] = Field(default_factory=list)
+    validation_note: str = Field("", description="unvalidated custom questionnaire caveat (app.ml.screener.SCREENER_NOTE)")
     created_at: datetime

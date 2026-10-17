@@ -16,6 +16,11 @@ Gap decisions (the spec tables have holes; documented here):
 * If eGFR is unknown but ``ckd_stage`` is recorded, the stage is used
   (≤2 → 0 points, 3 → stage-3 points, ≥4 → stage-4/5 points).
 * BP input is the 7-day *home* mean fed as-is (spec §3 note).
+
+Input plausibility: lipids are gated to the same mg/dL ranges as the Framingham module (TC 100–405,
+HDL 20–100, LDL 30–300) and eGFR to (0, 200]. A value typed in mmol/L (e.g. LDL 3.9) would
+otherwise silently land in the lowest band; out of range → ``not_applicable`` with the field
+named in ``reason``/``notes``. Nothing is auto-converted.
 """
 from __future__ import annotations
 
@@ -23,6 +28,10 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from app.ml.context import ProfileIn
+from app.ml.framingham import (
+    EGFR_MAX, EGFR_MIN_EXCLUSIVE, HDL_MAX, HDL_MIN, IMPLAUSIBLE_INPUT, LDL_MAX, LDL_MIN, TC_MAX, TC_MIN,
+    implausible_inputs,
+)
 
 SOURCE_ID = "src_suita2014"
 AGE_MIN, AGE_MAX = 35, 79
@@ -116,7 +125,9 @@ def format_probability(pct: float, bound: str | None) -> str:
 @dataclass(frozen=True)
 class SuitaResult:
     applicable: bool
-    reason: str  # ok | not_applicable_age | not_applicable_known_chd | insufficient_data
+    #: ok | not_applicable_age | not_applicable_known_chd | insufficient_data |
+    #: "not_applicable_implausible_input: <field>=<value> ...; expected <range>" (one clause per field)
+    reason: str
     sheet: Literal["ldl", "tc"] | None = None
     points: int | None = None
     probability_pct: float | None = None
@@ -125,6 +136,7 @@ class SuitaResult:
     inputs_used: list[str] = field(default_factory=list)
     missing_inputs: list[str] = field(default_factory=list)
     what_if: list[dict[str, Any]] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
@@ -149,7 +161,8 @@ def suita_score(profile: ProfileIn, systolic: float | None, diastolic: float | N
 
     Eligibility: age 35–79 and no known CHD. Sheet: LDL when LDL+HDL known,
     else TC when TC+HDL known. Missing required inputs → ``insufficient_data``
-    with ``missing_inputs``. What-if scenarios are recomputed independently.
+    with ``missing_inputs``; implausible lipids/eGFR → ``not_applicable`` (see
+    module docstring). What-if scenarios are recomputed independently.
     """
     if profile.known_chd:
         return SuitaResult(False, "not_applicable_known_chd")
@@ -183,6 +196,14 @@ def suita_score(profile: ProfileIn, systolic: float | None, diastolic: float | N
     if missing:
         return SuitaResult(False, "insufficient_data", sheet=sheet, missing_inputs=missing)
     assert sheet is not None and systolic is not None and diastolic is not None
+    bad = implausible_inputs(
+        ldl_mg_dl=(profile.ldl if sheet == "ldl" else None, LDL_MIN, LDL_MAX),
+        total_chol_mg_dl=(profile.total_chol if sheet == "tc" else None, TC_MIN, TC_MAX),
+        hdl_mg_dl=(profile.hdl, HDL_MIN, HDL_MAX),
+        egfr=(profile.egfr, EGFR_MIN_EXCLUSIVE, EGFR_MAX, "mL/min/1.73m²", True),
+    )
+    if bad:
+        return SuitaResult(False, f"{IMPLAUSIBLE_INPUT}: {'; '.join(bad)}", sheet=sheet, notes=list(bad))
 
     pts = _score(profile, sheet, systolic, diastolic)
     pct, bound = points_to_probability(sheet, pts)
@@ -229,5 +250,6 @@ def suita_probability_entry(res: SuitaResult) -> dict[str, Any]:
         "what_if": [{"change": w["change"], "value_pct": w["probability_pct"],
                      "value_display": w["probability_display"]} for w in res.what_if],
         "source_id": SOURCE_ID,
-        "note": "BP input is the 7-day home mean, used as-is; Japanese urban cohort (baseline 1989–1994).",
+        "note": " ".join(res.notes)
+                or "BP input is the 7-day home mean, used as-is; Japanese urban cohort (baseline 1989–1994).",
     }

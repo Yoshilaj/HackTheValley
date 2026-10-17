@@ -15,7 +15,11 @@ from typing import Iterable
 from app.ml.context import BpReadingIn
 
 # --- Validity (spec §2 'Validity') -------------------------------------------
+#: Readings outside these are *stored* (JSH 2019: every reading is recorded) but
+#: flagged invalid and excluded from the window means. Mirrored by
+#: ``app.services.ingest_service.bp_validity`` for the stored ``valid`` flag.
 SYS_MIN, SYS_MAX = 70, 260
+DIA_MIN, DIA_MAX = 40, 150
 PULSE_MIN, PULSE_MAX = 30, 200
 #: JSH 2019: 2 readings per occasion (3 allowed, ≥4 discouraged) → use first 3.
 MAX_READINGS_PER_OCCASION = 3
@@ -43,12 +47,16 @@ def reading_validity(r: BpReadingIn) -> tuple[bool, str | None]:
         return False, "systolic_not_above_diastolic"
     if r.systolic < SYS_MIN or r.systolic > SYS_MAX:
         return False, "systolic_out_of_range"
+    if r.diastolic < DIA_MIN or r.diastolic > DIA_MAX:
+        return False, "diastolic_out_of_range"
     if r.pulse is not None and (r.pulse < PULSE_MIN or r.pulse > PULSE_MAX):
         return False, "pulse_out_of_range"
     return True, None
 
 
 def is_valid_reading(r: BpReadingIn) -> bool:
+    """Spec §2 validity: not user-marked, systolic > diastolic, systolic 70–260,
+    diastolic 40–150, pulse 30–200 when present. 120/20 is invalid."""
     return reading_validity(r)[0]
 
 

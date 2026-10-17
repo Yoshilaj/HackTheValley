@@ -122,11 +122,16 @@ class MetricOut(ORMModel):
 
 class BpIn(BaseModel):
     """One cuff reading (spec §2). `session` is derived from the local hour when omitted
-    (04–11 morning, 17–23 evening, else other); `reading_no` is auto-assigned."""
+    (04–11 morning, 17–23 evening, else other); `reading_no` is auto-assigned.
 
-    systolic: int = Field(examples=[142])
-    diastolic: int = Field(examples=[91])
-    pulse: int | None = Field(default=None, examples=[72])
+    Bounds here reject only impossible values (≤0 or >300 mmHg / bpm) with a 422. Implausible but
+    typable readings (e.g. 120/20, 300/90, pulse 20) are deliberately *accepted and stored as
+    invalid* (JSH 2019: every reading is recorded) by `ingest_service.bp_validity`, which applies
+    the spec §2 ranges (systolic 70–260 > diastolic 40–150, pulse 30–200)."""
+
+    systolic: int = Field(gt=0, le=300, examples=[142])
+    diastolic: int = Field(gt=0, le=300, examples=[91])
+    pulse: int | None = Field(default=None, gt=0, le=300, examples=[72])
     measured_at: datetime = Field(examples=["2026-10-17T07:05:00+09:00"])
     session: Literal["morning", "evening", "other"] | None = None
     reading_no: int | None = Field(default=None, ge=1, le=10)

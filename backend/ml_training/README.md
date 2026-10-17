@@ -16,7 +16,13 @@ Without `HF_TOKEN`, `--push-to-hub` only prints what it would upload.
 
 Input: `data/raw/uci_parkinsons/parkinsons.data` (loaded with `datasets.load_dataset("csv")`,
 pandas fallback). Subject = `name` minus the trailing `_N` (gives 32 IDs; the
-dataset documentation says 31 subjects).
+dataset documentation says 31 people). Grouping is by the 32 IDs, so if one
+person carries two IDs that person may land on both sides of a fold; the
+grouped-CV AUC can be very slightly optimistic (see the model card's
+"Subject-ID caveat"). The model card's "Library versions" table is not filled by
+the renderer; update it by hand when retraining. App-served scores are
+experimental/display-only: serving features (Praat + reimplemented
+RPDE/DFA/PPE/spread/D2) are unvalidated against the MDVP training features.
 
 Protocol: outer `GroupKFold(5)` by subject; inside each outer training fold a
 subject-grouped `GridSearchCV` (LogReg: `SelectKBest` k and C; XGBoost: trees ≤ 300,

@@ -2,7 +2,7 @@
 import pytest
 
 from app.ml.context import ProfileIn
-from app.ml.suita import bp_category, suita_score
+from app.ml.suita import bp_category, suita_probability_entry, suita_score
 
 
 def P(**kw):
@@ -107,6 +107,37 @@ def test_what_if_each_change_independent():
 def test_what_if_omits_changes_already_met():
     res = suita_score(P(age=40, sex="female", ldl=90, hdl=65, egfr=90), 115, 75)
     assert res.what_if == []
+
+
+# ---------------------------------------------------------------- input plausibility
+
+@pytest.mark.parametrize("kw,fragment", [
+    (dict(ldl=3.9), "ldl_mg_dl=3.9 looks like mmol/L (3.9 × 38.67 = 151 mg/dL?); expected 30–300 mg/dL"),
+    (dict(hdl=1.15), "hdl_mg_dl=1.15 looks like mmol/L"),
+    (dict(hdl=0.0), "hdl_mg_dl=0 is out of range; expected 20–100 mg/dL"),
+    (dict(ldl=None, total_chol=5.8), "total_chol_mg_dl=5.8 looks like mmol/L"),
+    (dict(egfr=0.0), "egfr=0 is out of range; expected >0–200"),
+    (dict(egfr=250.0), "egfr=250 is out of range"),
+    (dict(ldl=301.0), "ldl_mg_dl=301 is out of range"),
+])
+def test_implausible_inputs_not_applicable_not_converted(kw, fragment):
+    res = suita_score(P(**kw), 130, 85)
+    assert res.status == "not_applicable" and res.points is None and res.probability_pct is None
+    assert res.reason.startswith("not_applicable_implausible_input") and fragment in res.reason
+    assert fragment in suita_probability_entry(res)["note"]
+
+
+def test_unused_sheet_inputs_are_not_gated():
+    # LDL sheet in use → a stray mmol/L total cholesterol is irrelevant; TC sheet ignores LDL.
+    assert suita_score(P(total_chol=5.8), 130, 85).status == "ok"
+    assert suita_score(P(ldl=None, total_chol=200.0, egfr=None, ckd_stage=2), 130, 85).status == "ok"
+
+
+def test_range_bounds_inclusive():
+    assert suita_score(P(ldl=30.0, hdl=20.0, egfr=0.1), 130, 85).status == "ok"
+    assert suita_score(P(ldl=300.0, hdl=100.0, egfr=200.0), 130, 85).status == "ok"
+    assert suita_score(P(ldl=None, total_chol=100.0), 130, 85).status == "ok"
+    assert suita_score(P(ldl=None, total_chol=405.0), 130, 85).status == "ok"
 
 
 def test_what_if_tc_sheet_uses_tc_target():

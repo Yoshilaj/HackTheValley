@@ -149,7 +149,7 @@ Implementation notes:
 ## 5. Parkinson's pathway
 
 ### 5.1 Screener (StrivePD-style + prodromal items)
-Items (yes/no, last 3 months): new shaking of a hand at rest; stiffness or slowness; clumsiness / smaller handwriting; softer voice; reduced sense of smell; acting out dreams / shouting in sleep; constipation; a fall or near-fall. Motor items = first four. `PD-01`: ≥2 motor items, or 1 motor + ≥1 non-motor → `watch` and schedule vowel + tapping tasks.
+Items (yes/no, last 3 months): new shaking of a hand at rest; stiffness or slowness; clumsiness / smaller handwriting; softer voice; reduced sense of smell; acting out dreams / shouting in sleep; constipation; a fall or near-fall. Motor items = first four. `PD-01`: ≥2 motor items, or 1 motor + ≥1 non-motor → `watch` and schedule vowel + tapping tasks. This item list is a custom, unvalidated questionnaire (not Tanner 1990, Goetz/MDS-UPDRS or PD-NMS), the PD-01 cut-offs are unvalidated conventions, and "a fall or near-fall" is a late PD sign rather than an MDS prodromal marker; `app/ml/screener.py::SCREENER_NOTE` carries this caveat for the API and reports.
 
 ### 5.2 Passive mobility (Apple Health)
 Metrics: walking speed, step length, double-support %, walking asymmetry, walking steadiness. Baseline = 30-day median/MAD, requires ≥14 days. `PD-02`: walking speed or step length ≥1.5 MAD below baseline on ≥5 of last 7 days, or double-support/asymmetry ≥1.5 MAD above → `watch`.
@@ -162,7 +162,7 @@ Metrics: walking speed, step length, double-support %, walking asymmetry, walkin
 - Dataset: UCI Parkinson's (Little et al. 2008): 195 recordings, 31 subjects (23 PD), 22 features. **Not combined** with Telemonitoring (42 PD-only; optional separate UPDRS regression).
 - Features (serving, `app/ml/features/vowel.py` via `parselmouth`): F0 mean/max/min, jitter (local, abs, RAP, PPQ5, DDP), shimmer (local, dB, APQ3, APQ5, APQ11, DDA), NHR, HNR; RPDE, DFA, PPE, spread1/2, D2 reimplemented from the papers' definitions with a written note of differences from the original extraction.
 - Training (`ml_training/train_pd_vowel.py`): `datasets.load_dataset("csv")` → `GroupKFold` by subject (5 folds); within-fold feature selection + `CalibratedClassifierCV`; `xgboost` or `LogisticRegression` (report both); metrics: grouped-CV AUC with bootstrap CI, sensitivity at 80% specificity. `push_to_hub("hackthevalley/pd-vowel-experimental-v1")` with model card: 31 subjects, English speakers, sustained vowel only, no external validation, experimental.
-- Serving: median probability over the 3 repetitions; `recording_quality` gate (duration ≥3 s voiced, SNR ≥15 dB, no clipping) else `invalid_measurement`.
+- Serving: median probability over the 3 repetitions; `recording_quality` gate (duration ≥3 s voiced, SNR ≥15 dB, no clipping) else `invalid_measurement`. Serving-feature caveat: the Praat/reimplemented features are unvalidated against the MDVP training features (spread2, D2 and NHR are on a different scale; no real-audio validation exists), and the dataset's 31 people map to 32 name-derived IDs used for grouping, so app probabilities are experimental, display-only values (`CALIBRATION_NOTE`, model-card "Serving caveat").
 - Rule `PD-03`: probability ≥ calibrated threshold on ≥2 sessions ≥7 days apart **and** at least one of PD-01/02/04 fired → `watch`. Voice alone never raises above `no_finding` with a note.
 
 ---

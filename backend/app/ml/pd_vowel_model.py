@@ -32,9 +32,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[2] / "models" / "pd_vowel_experimental_v1"
 MODEL_NAME = "pd_vowel_classifier"
 CALIBRATION_NOTE = (
-    "Sigmoid-calibrated on UCI Parkinson's (31 subjects, subject-grouped CV); threshold set for 80% "
-    "specificity out-of-fold. Experimental; serving features (Praat) differ from training features (MDVP). "
-    "Not diagnostic."
+    "Sigmoid-calibrated on UCI Parkinson's (31 people / 32 name-derived IDs, ID-grouped CV); threshold set "
+    "for 80% specificity out-of-fold. Experimental: serving features (Praat/parselmouth + reimplemented "
+    "RPDE/DFA/PPE/spread/D2) are unvalidated against the MDVP training features (spread2, D2, NHR on a "
+    "different scale), so scores are display-only. Not diagnostic."
 )
 
 

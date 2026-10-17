@@ -54,6 +54,25 @@ def test_predict_from_audio_bad_quality_returns_none(model):
     assert pred is None and not q.ok
 
 
+def test_calibration_note_text(model):
+    from app.ml.pd_vowel_model import CALIBRATION_NOTE
+
+    note = model.predict_from_features({"HNR": 20.0}).to_model_score()["calibration_note"]
+    assert note == CALIBRATION_NOTE
+    assert "31 people / 32 name-derived IDs" in note and "31 subjects" not in note
+    assert "unvalidated" in note and "display-only" in note and "Not diagnostic" in note
+
+
+def test_model_card_states_subject_id_and_serving_caveats():
+    card = (DEFAULT_MODEL_DIR / "README.md").read_text()
+    assert "32 name-derived IDs" in card and "at most one person" in card and "very slightly optimistic" in card
+    assert "at least as strict" not in card
+    assert "## Library versions" in card and "scikit-learn | 1.9.1" in card and "joblib | 1.6.0" in card
+    assert "## Serving caveat" in card and "no validation on real audio exists" in card and "display-only" in card
+    # metrics text kept intact
+    assert "| logreg | 0.736 |" in card and "**0.8387**" in card
+
+
 def test_aggregate_median():
     assert aggregate_sessions([0.2, 0.9, 0.4]) == 0.4
     assert aggregate_sessions([None, 0.3, float("nan")]) == 0.3

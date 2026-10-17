@@ -2,9 +2,21 @@ import re
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
+from app.ml.framingham import (
+    EGFR_MAX, EGFR_MIN_EXCLUSIVE, HDL_MAX, HDL_MIN, LDL_MAX, LDL_MIN, TC_MAX, TC_MIN, implausible_input,
+)
 from app.schemas.common import ORMModel
+
+#: Lab plausibility (mg/dL; eGFR mL/min/1.73m²) — the same gates app.ml.framingham / app.ml.suita
+#: apply before scoring, so the API refuses a value typed in mmol/L with a hint instead of storing it.
+LAB_RANGES: dict[str, tuple[float, float, str, bool]] = {
+    "total_chol_mg_dl": (TC_MIN, TC_MAX, "mg/dL", False),
+    "hdl_mg_dl": (HDL_MIN, HDL_MAX, "mg/dL", False),
+    "ldl_mg_dl": (LDL_MIN, LDL_MAX, "mg/dL", False),
+    "egfr": (EGFR_MIN_EXCLUSIVE, EGFR_MAX, "mL/min/1.73m²", True),
+}
 
 #: Canadian province / territory codes.
 PROVINCES = {"AB": "Alberta", "BC": "British Columbia", "MB": "Manitoba", "NB": "New Brunswick",
@@ -71,10 +83,12 @@ class ProfileBase(BaseModel):
     smoking_status: Literal["never", "former", "current"] | None = None
     diabetes: bool | None = None
     ckd: bool | None = None
-    egfr: float | None = None
-    ldl_mg_dl: float | None = None
-    hdl_mg_dl: float | None = None
-    total_chol_mg_dl: float | None = None
+    # Lab ranges are enforced on ProfileUpdate (input) only — see LAB_RANGES — so that ProfileOut
+    # never fails on an older stored value.
+    egfr: float | None = Field(default=None, description="mL/min/1.73m², >0 and ≤200")
+    ldl_mg_dl: float | None = Field(default=None, description="mg/dL, 30–300 (not mmol/L)")
+    hdl_mg_dl: float | None = Field(default=None, description="mg/dL, 20–100 (not mmol/L)")
+    total_chol_mg_dl: float | None = Field(default=None, description="mg/dL, 100–405 (not mmol/L)")
     known_hypertension: bool | None = None
     known_af: bool | None = None
     known_chd: bool | None = None
@@ -101,7 +115,17 @@ class ProfileBase(BaseModel):
 class ProfileUpdate(ProfileBase):
     """PUT /api/profile — only fields present in the body are changed. Validation (input only, so
     older stored values never break GET): DOB in the past, postal code A1A 1A1 (normalised),
-    province code, E.164-ish phone numbers, e-mail format."""
+    province code, E.164-ish phone numbers, e-mail format, labs within plausible mg/dL ranges
+    (a value that can only be mmol/L is refused with a conversion hint — never auto-converted)."""
+
+    @field_validator("egfr", "ldl_mg_dl", "hdl_mg_dl", "total_chol_mg_dl")
+    @classmethod
+    def _lab_plausible(cls, v: float | None, info: ValidationInfo) -> float | None:
+        lo, hi, unit, lo_exclusive = LAB_RANGES[info.field_name]
+        problem = implausible_input(info.field_name, v, lo, hi, unit, lo_exclusive)
+        if problem:
+            raise ValueError(problem)
+        return v
 
     @field_validator("date_of_birth")
     @classmethod

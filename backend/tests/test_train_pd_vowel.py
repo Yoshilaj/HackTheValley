@@ -37,7 +37,8 @@ def test_run_training_fast(tmp_path):
     saved = json.loads((tmp_path / "metrics.json").read_text())
     assert 0 < saved["threshold"] < 1 and saved["dataset"]["n_subjects"] == 32
     card = (tmp_path / "README.md").read_text()
-    assert "{{" not in card and "31 subjects" in card and "32 subject IDs" in card and "no external validation" in card
+    assert "{{" not in card and "31 subjects" in card and "32 name-derived IDs" in card and "no external validation" in card
+    assert "at least as strict" not in card and "## Serving caveat" in card and "## Library versions" in card
 
 
 def test_threshold_at_specificity():

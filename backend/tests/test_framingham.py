@@ -15,8 +15,8 @@ import pytest
 
 from app.ml.context import ProfileIn
 from app.ml.framingham import (
-    COEFFICIENTS, ccs_category, framingham_probability_entry, framingham_score, frs_risk, mg_dl_to_mmol_l,
-    mmol_l_to_mg_dl,
+    COEFFICIENTS, IMPLAUSIBLE_INPUT, ccs_category, framingham_probability_entry, framingham_score, frs_risk,
+    implausible_input, mg_dl_to_mmol_l, mmol_l_to_mg_dl,
 )
 
 
@@ -84,6 +84,53 @@ def test_insufficient_and_not_applicable():
     assert framingham_score(ProfileIn(**WOMAN), None).missing_inputs == ["bp_7day_mean"]
     assert framingham_score(ProfileIn(**(WOMAN | dict(age=75))), 124.0).reason == "not_applicable_age"
     assert framingham_score(ProfileIn(**(WOMAN | dict(known_chd=True))), 124.0).status == "not_applicable"
+
+
+# ---------------------------------------------------------------- input plausibility
+
+def test_hdl_zero_does_not_crash():
+    r = framingham_score(ProfileIn(**(WOMAN | dict(hdl=0.0))), 124.0)   # log(0) would raise
+    assert r.status == "not_applicable" and r.percent_10y is None
+    assert r.reason.startswith(IMPLAUSIBLE_INPUT) and "hdl_mg_dl=0 is out of range; expected 20–100 mg/dL" in r.reason
+    assert "mmol/L" not in r.reason   # 0 is not a unit mix-up
+
+
+def test_total_chol_in_mmol_is_refused_with_hint_not_converted():
+    r = framingham_score(ProfileIn(**(WOMAN | dict(total_chol=5.5))), 124.0)
+    assert r.status == "not_applicable" and r.percent_10y is None and r.inputs == {}
+    assert "total_chol_mg_dl=5.5 looks like mmol/L" in r.reason
+    assert "5.5 × 38.67 = 213 mg/dL?" in r.reason and "expected 100–405 mg/dL" in r.reason
+    e = framingham_probability_entry(r)
+    assert e["status"] == "not_applicable" and e["value_pct"] is None and "looks like mmol/L" in e["note"]
+
+
+def test_hdl_in_mmol_and_several_bad_inputs_listed():
+    r = framingham_score(ProfileIn(**(WOMAN | dict(total_chol=5.5, hdl=1.2))), 85.0)
+    assert r.status == "not_applicable"
+    assert "hdl_mg_dl=1.2 looks like mmol/L" in r.reason
+    assert "systolic_bp_mmhg=85 is out of range; expected 90–200 mmHg" in r.reason
+    assert len(r.notes) == 3
+
+
+@pytest.mark.parametrize("field,value", [
+    ("total_chol", 99.9), ("total_chol", 405.1), ("hdl", 19.9), ("hdl", 100.1),
+])
+def test_lipid_range_edges_refused(field, value):
+    assert framingham_score(ProfileIn(**(WOMAN | {field: value})), 124.0).status == "not_applicable"
+
+
+@pytest.mark.parametrize("tc,hdl,sbp", [(100.0, 20.0, 90.0), (405.0, 100.0, 200.0)])
+def test_range_bounds_inclusive(tc, hdl, sbp):
+    assert framingham_score(ProfileIn(**(WOMAN | dict(total_chol=tc, hdl=hdl))), sbp).status == "ok"
+
+
+def test_implausible_input_helper():
+    assert implausible_input("hdl_mg_dl", None, 20, 100) is None     # unknown is not implausible
+    assert implausible_input("hdl_mg_dl", 55, 20, 100) is None
+    assert implausible_input("egfr", 0.0, 0.0, 200.0, "mL/min/1.73m²", True) == \
+        "egfr=0 is out of range; expected >0–200 mL/min/1.73m²"
+    assert implausible_input("ldl_mg_dl", 3.9, 30, 300) == \
+        "ldl_mg_dl=3.9 looks like mmol/L (3.9 × 38.67 = 151 mg/dL?); expected 30–300 mg/dL"
 
 
 def test_probability_entry_shape():

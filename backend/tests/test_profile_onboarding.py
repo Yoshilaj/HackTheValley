@@ -63,6 +63,24 @@ def test_onboarding_validation(client):
         assert client.put("/api/profile", json=ok, headers=h).status_code == 200, ok
 
 
+def test_lab_values_validated_in_mg_dl(client):
+    h = _new_user(client)
+    for bad in ({"total_chol_mg_dl": 5.5}, {"total_chol_mg_dl": 99}, {"total_chol_mg_dl": 406},
+                {"hdl_mg_dl": 0}, {"hdl_mg_dl": 1.2}, {"hdl_mg_dl": 101}, {"ldl_mg_dl": 3.9}, {"ldl_mg_dl": 301},
+                {"egfr": 0}, {"egfr": -5}, {"egfr": 201}):
+        res = client.put("/api/profile", json=bad, headers=h)
+        assert res.status_code == 422, bad
+    # a value that can only be mmol/L gets the conversion hint, and is never auto-converted
+    res = client.put("/api/profile", json={"total_chol_mg_dl": 5.5}, headers=h)
+    msg = res.json()["detail"][0]["msg"]
+    assert "looks like mmol/L" in msg and "5.5 × 38.67 = 213 mg/dL?" in msg and "expected 100–405 mg/dL" in msg
+    assert client.get("/api/profile", headers=h).json()["total_chol_mg_dl"] is None
+    for ok in ({"total_chol_mg_dl": 100}, {"total_chol_mg_dl": 405}, {"hdl_mg_dl": 20}, {"hdl_mg_dl": 100},
+               {"ldl_mg_dl": 30}, {"ldl_mg_dl": 300}, {"egfr": 0.5}, {"egfr": 200},
+               {"total_chol_mg_dl": None, "hdl_mg_dl": None, "ldl_mg_dl": None, "egfr": None}):
+        assert client.put("/api/profile", json=ok, headers=h).status_code == 200, ok
+
+
 def test_demo_profile_is_booking_ready(demo_user):
     from app.services.booking.common import booking_readiness
 

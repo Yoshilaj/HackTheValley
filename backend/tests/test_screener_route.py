@@ -36,6 +36,28 @@ def test_requires_auth(client):
     assert client.get("/api/screener/pd").status_code == 401
 
 
+def test_post_string_false_not_counted(client, auth_headers, db):
+    """String "false"/"no"/"0" answers are stored as False and never fire PD-01."""
+    r = client.post("/api/screener/pd", headers=auth_headers,
+                    json={"answers": {"tremor_rest": "false", "soft_voice": "no", "smell_loss": "0", "falls": "true"}})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["motor_count"] == 0 and body["nonmotor_count"] == 1 and body["pd01_would_fire"] is False
+    row = db.scalar(select(ScreenerResponse).where(ScreenerResponse.id == body["id"]))
+    assert row.answers == {"tremor_rest": False, "soft_voice": False, "smell_loss": False, "falls": True}
+
+
+def test_screener_validation_note_available_for_stored_rows(client, auth_headers, db):
+    """The engine result for a stored response carries the unvalidated-instrument note (SCREENER_NOTE)."""
+    from app.ml.screener import SCREENER_NOTE, score_pd_screener
+
+    r = client.post("/api/screener/pd", headers=auth_headers, json={"answers": {"tremor_rest": True, "smell_loss": True}})
+    row = db.scalar(select(ScreenerResponse).where(ScreenerResponse.id == r.json()["id"]))
+    res = score_pd_screener(row.answers).to_dict()
+    assert res["pd01_would_fire"] is True and res["validation_note"] == SCREENER_NOTE
+    assert "not a validated instrument" in res["validation_note"]
+
+
 def test_post_accepts_legacy_ids(client, auth_headers, db):
     r = client.post("/api/screener/pd", headers=auth_headers, json={"answers": {"pd_rest_tremor": True, "pd_soft_voice": True}})
     assert r.status_code == 201 and r.json()["pd01_would_fire"] is True

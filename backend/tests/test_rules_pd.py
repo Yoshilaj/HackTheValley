@@ -111,6 +111,35 @@ def test_legacy_engine_ids_still_scored():
     assert score_pd_screener({"pd_rest_tremor": True, "pd_soft_voice": True}) == (2, 0, True)
 
 
+def test_string_false_not_counted_as_yes():
+    """'false'/'no'/'0' strings (e.g. from loosely-typed stored answers) must not count as symptoms."""
+    assert score_pd_screener({"tremor_rest": "false", "soft_voice": "no", "smell_loss": "0"}) == (0, 0, False)
+    assert score_pd_screener({"tremor_rest": "true", "soft_voice": "yes", "smell_loss": "1"}) == (2, 1, True)
+    assert score_pd_screener({"tremor_rest": 1, "soft_voice": 0, "smell_loss": None}) == (1, 0, False)
+    assert score_pd_screener({"tremor_rest": "FALSE", "soft_voice": " Yes "}) == (1, 0, False)
+    assert score_pd_screener({"tremor_rest": "maybe", "soft_voice": 2}) == (0, 0, False)
+
+
+def test_yes_helper():
+    from app.ml.screener import _yes
+
+    assert all(_yes(v) for v in (True, 1, 1.0, "yes", "Yes", "true", "1", "on", "y"))
+    assert not any(_yes(v) for v in (False, 0, 0.0, "no", "false", "0", "off", "", None, "garbage", 2, [], {}))
+
+
+def test_screener_note_exposed():
+    from app.ml.screener import SCREENER_NOTE, ScreenerScore
+
+    assert "not a validated instrument" in SCREENER_NOTE and "unvalidated" in SCREENER_NOTE
+    assert "Tanner" in SCREENER_NOTE and "§5.1" in SCREENER_NOTE and "late PD sign" in SCREENER_NOTE
+    res = score_pd_screener({"tremor_rest": True, "constipation": True})
+    assert isinstance(res, ScreenerScore) and res.validation_note == SCREENER_NOTE
+    d = res.to_dict()
+    assert d == {"motor_count": 1, "nonmotor_count": 1, "pd01_would_fire": True, "validation_note": SCREENER_NOTE}
+    motor, nonmotor, fired = res  # tuple unpacking still works
+    assert (motor, nonmotor, fired) == (1, 1, True)
+
+
 def test_engine_ids_match_content_bank():
     from app.content.loader import get_screener
     from app.ml.screener import PD_SCREENER_ITEMS
