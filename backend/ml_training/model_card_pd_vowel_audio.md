@@ -43,13 +43,19 @@ kind of number the model saw in training.
 - Features (subset `{{feature_subset}}`, {{n_features}} of the 22 UCI-named dysphonia measures): {{features}}.
 
 ### Recording sessions (channel confound check)
-| session | label | recordings / subjects | sample rate (Hz) | gate failures | median SNR dB | median level dB | median energy share < 300 Hz (dB) | mean OOF prob |
-|---|---|---|---|---|---|---|---|---|
+| session | label | recordings / subjects | native sample rate (Hz) | gate failures (raw → after preprocessing) | median SNR dB | median level dB (raw → seen by extractor) | median energy share < 300 Hz, dB (raw → seen) | median spectral tilt dB/oct 100–4000 Hz (raw → seen) | mean OOF prob |
+|---|---|---|---|---|---|---|---|---|---|
 {{session_rows}}
 
 The healthy controls were recorded on a different channel from the PD groups (quieter,
 with less low-frequency energy), so part of what the model learns may be the recording
-channel rather than the voice. See the sensitivity table below.
+channel rather than the voice. See the preprocessing section and the sensitivity table below.
+
+## Audio preprocessing (channel removal, applied identically to every recording)
+{{preprocessing_text}}
+
+## Training-time augmentation
+{{augmentation_text}}
 
 ## Model
 - Candidates: median imputation + StandardScaler + SelectKBest + LogisticRegression, and
