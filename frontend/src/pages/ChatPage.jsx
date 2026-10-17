@@ -4,7 +4,8 @@ import { useChatHistory } from "../context/ChatHistoryContext.jsx";
 import Composer, { ASSISTANT_HINTS, FileIcon, formatSize } from "../components/Composer.jsx";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
-import { medicationList, patient } from "../data/placeholder.js";
+import { medicationList } from "../data/placeholder.js";
+import { useProfile } from "../context/ProfileContext.jsx";
 import useVitals from "../hooks/useVitals.js";
 import { slotLabel } from "../utils/slots.js";
 import { conditionLevel } from "../utils/risk.js";
@@ -40,6 +41,7 @@ export default function ChatPage() {
   const { chats, pending, errors, sendMessage, retry } = useChatHistory();
   const { alert, openPrompt, risk } = useCareAlert();
   const { signedIn } = useSession();
+  const { profile: patient } = useProfile();
   const { vitals } = useVitals();
   const suggestions = signedIn ? personalSuggestions(risk?.conditions, vitals) : GENERAL_SUGGESTIONS;
   const [dragging, setDragging] = useState(false);

@@ -283,6 +283,17 @@ h2 sup { color: var(--muted); }
 .dev-risk-presets button[aria-pressed="true"] { background: var(--primary); color: #fff; }
 .dev-risk-foot button { color: var(--primary); }
 .dev-risk-panel p { color: var(--muted); }
+/* User view / Dev view switch at the top of the panel */
+.dev-view-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: var(--radius-sm); background: rgba(120, 120, 128, 0.12); }
+.dev-view-toggle button { min-height: 32px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.dev-view-toggle button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
+.dev-info { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-top: 10px; border-top: 1px solid var(--separator); }
+.dev-info div { display: flex; justify-content: space-between; gap: 8px; }
+.dev-info dt { color: var(--muted); }
+.dev-info dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* User view: the button fades back so the app reads as a user sees it */
+.dev-risk.user-view .dev-risk-pill { opacity: 0.45; transition: opacity 0.15s ease-out; }
+.dev-risk.user-view .dev-risk-pill:hover, .dev-risk.user-view .dev-risk-pill:focus-visible, .dev-risk.user-view .dev-risk-pill[aria-expanded="true"] { opacity: 1; }
 
 .row-mid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .head-actions { display: flex; gap: 8px; align-items: center; }

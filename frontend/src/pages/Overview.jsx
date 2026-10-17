@@ -8,7 +8,8 @@ import CareTeamSheet from "../components/CareTeamSheet.jsx";
 import GuestGate from "../components/GuestGate.jsx";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
-import { patient, riskAssessment } from "../data/placeholder.js";
+import { riskAssessment } from "../data/placeholder.js";
+import { useProfile } from "../context/ProfileContext.jsx";
 import { basisText, changeSince } from "../utils/risk.js";
 import { ageFrom, capitalize, relativeDay } from "../utils/dates.js";
 
@@ -17,6 +18,7 @@ export default function Overview() {
   const [careTeamOpen, setCareTeamOpen] = useState(false);
   const { score, level, previous, updatedAt, basis, conditions } = useCareAlert().risk;
   const { isGuest } = useSession();
+  const { profile: patient } = useProfile();
   const change = changeSince(score, previous?.score);
 
   // What "how is this worked out" shows for the overall index.

@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
-import { medicationList, patient } from "../data/placeholder.js";
+import { medicationList } from "../data/placeholder.js";
+import { useProfile } from "../context/ProfileContext.jsx";
 import useVitals from "../hooks/useVitals.js";
 import { ageFrom } from "../utils/dates.js";
 
@@ -8,6 +9,7 @@ import { ageFrom } from "../utils/dates.js";
 // Rendered into <body> only while printing; print CSS hides the app around it.
 export default function VisitSummary({ appointment: a }) {
   const { vitals } = useVitals();
+  const { profile: patient } = useProfile();
   const born = new Date(`${patient.dateOfBirth}T00:00`).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",

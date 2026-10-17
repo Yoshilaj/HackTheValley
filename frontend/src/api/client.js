@@ -20,6 +20,12 @@ export function signInWithEmail(email, newAccount = false) {
   return request("/api/auth/email", { method: "POST", body: JSON.stringify({ email, newAccount }) });
 }
 
+// Planned endpoint: save the user's edited health profile (see ProfileContext
+// for the shape). Returns the saved profile.
+export function saveProfile(profile) {
+  return request("/api/profile", { method: "PUT", body: JSON.stringify(profile) });
+}
+
 export function getHealth() {
   return request("/api/health");
 }

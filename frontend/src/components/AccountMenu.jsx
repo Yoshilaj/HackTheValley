@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { patient } from "../data/placeholder.js";
+import { useProfile } from "../context/ProfileContext.jsx";
 import { ageFrom } from "../utils/dates.js";
 import ProfileSheet from "./ProfileSheet.jsx";
 import CareTeamSheet from "./CareTeamSheet.jsx";
@@ -36,6 +36,7 @@ export default function AccountMenu() {
   const btnRef = useRef(null);
   const { pathname } = useLocation();
   const { session, signedIn, signOut, requestSignIn } = useSession();
+  const { profile: patient } = useProfile();
 
   useEffect(() => setOpen(false), [pathname]);
 

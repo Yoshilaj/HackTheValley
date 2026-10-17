@@ -264,6 +264,26 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .profile-section { display: flex; flex-direction: column; gap: 8px; }
 .profile-section .sheet-sub { margin: 0; }
 .profile-sheet .sheet-rows dd { display: flex; flex-direction: column; align-items: flex-end; max-width: 65%; }
+/* Editing the profile */
+.profile-head-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.profile-saved { font-size: 14px; font-weight: 500; color: var(--ok-ink); }
+.profile-form { display: flex; flex-direction: column; gap: 24px; }
+.profile-form .profile-section { gap: 14px; }
+.profile-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.profile-list { margin: 0; padding: 0; border: 0; }
+.profile-list legend { padding: 0; margin-bottom: 6px; font-size: 15px; font-weight: 600; }
+.profile-none { font-size: 14px; color: var(--muted); }
+.tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag { display: inline-flex; align-items: center; gap: 2px; padding: 0 2px 0 12px; border-radius: var(--radius-sm); background: var(--primary-soft); color: var(--primary); font-size: 14px; font-weight: 500; }
+.tag button { width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius-sm); color: var(--primary); }
+.tag button:hover { background: #d6e4fa; }
+.tag button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.tag-add { display: flex; gap: 8px; margin-top: 8px; }
+.tag-add .text-input { flex: 1; min-width: 0; }
+.profile-remove, .profile-add-contact { align-self: flex-start; }
+@media (max-width: 480px) {
+  .profile-row { grid-template-columns: 1fr; }
+}
 .inline-link { color: var(--primary); font-weight: 500; }
 .inline-link:hover { text-decoration: underline; }
 
