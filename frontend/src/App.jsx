@@ -1,5 +1,5 @@
-import Home from "./pages/Home.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 
 export default function App() {
-  return <Home />;
+  return <Dashboard />;
 }
