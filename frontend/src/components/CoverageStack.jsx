@@ -8,7 +8,7 @@ export default function CoverageStack() {
     <>
       <div className="card-head">
         <h2>
-          My coverage <sup>{coverage.count}</sup>
+          My coverage
         </h2>
         <button className="add-btn">
           Add <i aria-hidden="true">+</i>

@@ -6,7 +6,7 @@ export default function Medications() {
     <div className="meds">
       <div className="card-head">
         <h2>
-          Medications <sup>{medications.count}</sup>
+          Medications
         </h2>
         <Link to="/medications" className="see-all">
           Manage ›

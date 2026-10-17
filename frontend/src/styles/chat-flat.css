@@ -1,0 +1,25 @@
+/* ---- Flat (2D) care assistant page ----
+   Overrides chat.css / pages.css for the chat page only: no raised white card,
+   no shadows or glass, hairline borders instead. To revert, delete this file
+   and its import in pages/ChatPage.jsx. */
+
+/* The conversation sits straight on the page instead of in a raised card */
+.chat-page .chat-card { background: transparent; box-shadow: none; border-radius: 0; padding: 0; }
+.chat-page .chat-card.dragging { box-shadow: none; outline: 2px dashed var(--primary); outline-offset: 4px; border-radius: var(--radius); }
+.chat-page .composer { border-top: 0; padding-top: 8px; }
+
+/* Message bar: flat white field with a hairline edge; focus only recolours it */
+.chat-page .composer-pill { background: var(--surface); border-color: var(--border); }
+.chat-page .composer-pill:focus-within { border-color: var(--primary); box-shadow: none; }
+.chat-page .cmp-send:disabled { background: #e5e5ea; color: #aeaeb2; }
+
+/* Suggestions: outlined, not filled blocks */
+.chat-page .chat-suggest .chip { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.chat-page .chat-suggest .chip:hover { background: rgba(120, 120, 128, 0.08); }
+
+/* Held-visit banner: flat panel with a hairline edge and the red side stripe */
+.chat-page .care-banner {
+  background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
+  border: 1px solid var(--border); box-shadow: inset 3px 0 0 var(--danger);
+}
+.chat-page .care-banner.done { box-shadow: none; }

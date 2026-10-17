@@ -1,28 +1,43 @@
 :root {
-  /* surfaces */
-  --bg: #e6f2f2;
+  /* surfaces: Apple neutral greys, white cards */
+  --bg: #f5f5f7;
   --surface: #ffffff;
-  --surface-soft: #f1f8f8;
-  --border: #d5e5e7;
+  --surface-soft: #f5f5f7;
+  --border: #e3e3e8;
+  --separator: rgba(60, 60, 67, 0.12);
 
-  /* text (all pass 4.5:1 on --surface) */
-  --text: #0f2a30;
-  --muted: #4b6670;
+  /* text (all pass 4.5:1 on --surface and --bg) */
+  --text: #1d1d1f;
+  --muted: #6e6e73;
 
-  /* brand */
-  --primary: #0f766e;
-  --primary-strong: #115e59;
-  --primary-soft: #ccfbf1;
-  --accent: #0e7490;
+  /* brand: single blue accent */
+  --primary: #155bd0;
+  --primary-strong: #0f4aad;
+  --primary-soft: #e8f0fc;
+  --accent: #155bd0;
 
   /* semantic status */
-  --ok-bg: #dcfce7;
-  --ok-ink: #166534;
-  --warn-bg: #fef3c7;
-  --warn-ink: #92400e;
+  --ok-bg: #e3f5e8;
+  --ok-ink: #1a7f37;
+  --warn-bg: #fdf1dc;
+  --warn-ink: #8a4b00;
+  --danger: #d70015;
 
-  --radius: 20px;
-  --focus: 0 0 0 3px #fff, 0 0 0 5px #0e7490;
+  --radius: 21px;
+  --focus-ring: 2px solid var(--primary);
+
+  /* Liquid glass: navigation and controls only, never content */
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-blur: blur(24px) saturate(190%);
+  --glass-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.25),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06),
+    0 8px 32px rgba(0, 0, 0, 0.08);
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
 *,
@@ -33,18 +48,36 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
-  font-family: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100dvh;
+  font-family: var(--font);
+  font-optical-sizing: auto;
   font-size: 16px;
   line-height: 1.5;
-  background: var(--surface-soft);
+  background: var(--bg);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   width: 100%;
   display: flex;
   justify-content: center;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+/* The hidden attribute wins over any class that sets display */
+[hidden] {
+  display: none !important;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 button {
@@ -55,10 +88,17 @@ button {
   background: none;
 }
 
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 button:focus-visible,
-a:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
 }
 
 a {
@@ -76,6 +116,46 @@ h1,
 h2,
 p {
   margin: 0;
+}
+
+/* Scrollbars: no arrow buttons, no track (the page shows through), a slim
+   rounded thumb in the brand blue that deepens on hover and while dragging.
+   The transparent border insets the thumb from the window edge. */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  min-height: 40px; border: 3px solid transparent; border-radius: 999px;
+  background: rgba(21, 91, 208, 0.32) padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(21, 91, 208, 0.55); }
+::-webkit-scrollbar-thumb:active { background-color: var(--primary); }
+/* Firefox has no ::-webkit-scrollbar; give it the same colours */
+@supports not selector(::-webkit-scrollbar) {
+  html { scrollbar-width: thin; scrollbar-color: rgba(21, 91, 208, 0.4) transparent; }
+}
+
+/* Reusable glass material */
+.glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-bg: rgba(255, 255, 255, 0.96);
+    --glass-bg-strong: rgba(255, 255, 255, 0.98);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-bg: rgba(255, 255, 255, 0.97);
+    --glass-bg-strong: #fff;
+    --glass-blur: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

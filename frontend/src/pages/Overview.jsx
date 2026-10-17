@@ -1,30 +1,82 @@
-import WellnessScore from "../components/WellnessScore.jsx";
-import VitalCard from "../components/VitalCard.jsx";
-import ActivityChart from "../components/ActivityChart.jsx";
-import HealthFocus from "../components/HealthFocus.jsx";
-import { stats, patient } from "../data/placeholder.js";
+import { useState } from "react";
+import RiskAssessment from "../components/RiskAssessment.jsx";
+import QuickChat from "../components/QuickChat.jsx";
+import ConditionRisks from "../components/ConditionRisks.jsx";
+import RiskCharts from "../components/RiskCharts.jsx";
+import DetailSheet from "../components/DetailSheet.jsx";
+import CareTeamSheet from "../components/CareTeamSheet.jsx";
+import GuestGate from "../components/GuestGate.jsx";
+import { useCareAlert } from "../context/CareAlertContext.jsx";
+import { useSession } from "../context/SessionContext.jsx";
+import { patient, riskAssessment } from "../data/placeholder.js";
+import { basisText, changeSince } from "../utils/risk.js";
+import { ageFrom, capitalize, relativeDay } from "../utils/dates.js";
 
 export default function Overview() {
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [careTeamOpen, setCareTeamOpen] = useState(false);
+  const { score, level, previous, updatedAt, basis, conditions } = useCareAlert().risk;
+  const { isGuest } = useSession();
+  const change = changeSince(score, previous?.score);
+
+  // What "how is this worked out" shows for the overall index.
+  const riskItem = {
+    label: "Overall risk",
+    value: String(score),
+    unit: "/100",
+    badge: `${level} risk`,
+    trend: level === "Low" ? "normal" : "watch",
+    details: {
+      about: riskAssessment.details.about,
+      rows: [
+        change && ["Change", change],
+        conditions?.length > 0 && ["Combines", conditions.map((c) => c.name).join(", ")],
+        ["Based on", capitalize(basisText(basis))],
+        ["Checked against", "Clinical guidelines (NICE, WHO)"],
+        updatedAt && ["Updated", capitalize(relativeDay(updatedAt))],
+      ].filter(Boolean),
+      tips: riskAssessment.details.tips,
+    },
+  };
+
   return (
     <main className="page">
       <div>
-        <h1 tabIndex={-1}>Good morning, {patient.name}</h1>
-        <p className="subtitle">Here's how your health looks today.</p>
+        <h1 tabIndex={-1}>{isGuest ? "Welcome to CareSync" : `Good morning, ${patient.name}`}</h1>
+        <p className="subtitle">
+          {isGuest ? "You're browsing as a guest." : "Here's how your health looks today."}
+        </p>
       </div>
 
-      <div className="row-top">
-        <WellnessScore />
-        <div className="stack">
-          {stats.map((s) => (
-            <VitalCard key={s.id} {...s} />
-          ))}
-        </div>
+      <div className="stack">
+        {isGuest ? (
+          <GuestGate title="See your health at a glance">
+            Sign in for your personal risk assessment, worked out from your chats and your doctors' diagnoses.
+          </GuestGate>
+        ) : (
+          <div className="risk-row">
+            {/* Compact score card with the two charts below it, together as tall as the condition bars */}
+            <div className="risk-main">
+              <RiskAssessment
+                score={score}
+                level={level}
+                previous={previous}
+                updatedAt={updatedAt}
+                basis={basis}
+                conditionCount={conditions?.length ?? 0}
+                onOpen={() => setDetailOpen(true)}
+                onContact={() => setCareTeamOpen(true)}
+              />
+              <RiskCharts score={score} />
+            </div>
+            <ConditionRisks items={conditions} age={ageFrom(patient.dateOfBirth)} updatedAt={updatedAt} basis={basis} />
+          </div>
+        )}
+        <QuickChat />
       </div>
 
-      <div className="row-mid">
-        <ActivityChart />
-        <HealthFocus />
-      </div>
+      <DetailSheet item={detailOpen ? riskItem : null} onClose={() => setDetailOpen(false)} />
+      <CareTeamSheet open={careTeamOpen} onClose={() => setCareTeamOpen(false)} />
     </main>
   );
 }

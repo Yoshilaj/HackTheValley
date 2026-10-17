@@ -6,7 +6,7 @@ export default function Appointments() {
     <div className="card appointments">
       <div className="card-head">
         <h2>
-          Upcoming appointments <sup>{appointments.count}</sup>
+          Upcoming appointments
         </h2>
         <Link to="/appointments" className="see-all">
           See all ›

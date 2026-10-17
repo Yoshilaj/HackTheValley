@@ -1,75 +1,265 @@
 /* Chat history sidebar + chat page */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-.workspace { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 18px; align-items: start; }
-.workspace.history-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+/* Page shell: full-height sidebar on the left, app on the right */
+/* #root centres its child, so the shell must fill the width to pin the sidebar to the left edge.
+   Expanding the sidebar widens its column and the page squeezes to make room. */
+/* --history-open / --history-rail: sidebar column widths, expanded and collapsed.
+   Open is just wide enough for its widest row (brand + toggle, "Chat history"
+   with count and chevron); HistorySidebar's edge drag reads these too. */
+.shell { width: 100%; --history-open: 248px; --history-rail: 80px; }
+.shell.with-history { display: grid; grid-template-columns: var(--history-w, var(--history-open)) minmax(0, 1fr); transition: grid-template-columns 0.2s ease-out; }
+.shell.with-history.rail { grid-template-columns: var(--history-w, var(--history-rail)) minmax(0, 1fr); }
+/* Dragging the sidebar edge: follow the pointer with no easing */
+.shell[data-resizing] { transition: none; cursor: ew-resize; user-select: none; -webkit-user-select: none; }
 .content { min-width: 0; }
 
-/* sidebar */
-.history { position: sticky; top: 16px; display: flex; flex-direction: column; height: min(720px, calc(100vh - 48px)); min-height: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; box-shadow: 0 1px 2px rgba(15, 42, 48, 0.04); }
-.history-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.history-title { font-size: 16px; font-weight: 600; flex: 1; }
-.history-body { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
-.new-chat { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.history-search { min-height: 44px; font: inherit; font-size: 14px; color: var(--text); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 999px; padding: 0 16px; }
-.history-search::placeholder { color: var(--muted); }
-.history-search:focus-visible { outline: none; box-shadow: var(--focus); }
-.history-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
-.history-group { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 8px 4px; }
-.history-list li { display: flex; align-items: center; border-radius: 12px; }
-.history-list li:hover { background: var(--surface-soft); }
-.history-list li a { flex: 1; min-width: 0; min-height: 44px; display: flex; align-items: center; padding: 0 10px; border-radius: 12px; font-size: 14px; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.history-list li a.active { background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
-.history-delete { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px; opacity: 0; }
-.history-list li:hover .history-delete, .history-delete:focus-visible { opacity: 1; }
-.history-delete svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.history-delete:hover svg { stroke: #b91c1c; }
-.history-empty { font-size: 14px; color: var(--muted); padding: 8px; }
-@media (hover: none) { .history-delete { opacity: 1; } }
+/* sidebar: a flat, full-height panel flush with the window's left edge,
+   set apart from the grey page by its white fill and a hairline right edge */
+.history {
+  position: sticky; top: 0; height: 100dvh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border-right: 1px solid var(--separator);
+}
+/* Outer scroller for the whole sidebar, scrollbar hidden. It only scrolls when
+   the window is too short; the chat list keeps its own inner scroll.
+   24px top keeps the logo level with the page title. */
+.history-scroll {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 24px 12px 12px;
+  overflow-y: auto; overflow-x: hidden; scrollbar-width: none; -ms-overflow-style: none;
+}
+.history-scroll::-webkit-scrollbar { display: none; }
+/* Grab strip on the right edge; a small grabber pill shows on hover */
+.history-edge { position: absolute; top: 0; right: 0; bottom: 0; z-index: 2; width: 10px; cursor: ew-resize; touch-action: none; }
+.history-edge::after {
+  content: ""; position: absolute; top: 50%; right: 3px; width: 4px; height: 40px; border-radius: 2px;
+  background: rgba(60, 60, 67, 0.3); transform: translateY(-50%); opacity: 0; transition: opacity 0.2s ease-out;
+}
+.history-edge:hover::after, .shell[data-resizing] .history-edge::after { opacity: 1; }
+.history-top { display: flex; align-items: center; gap: 4px; min-height: 48px; margin-bottom: 8px; }
+.history-brand { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 4px; border-radius: 12px; font-size: 20px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.history-brand b { font-weight: 700; color: var(--primary); }
+.history-icon { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
+.history-icon:hover { background: rgba(0, 0, 0, 0.05); color: var(--text); }
+.history svg { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.history .logo-mark svg { width: 40px; height: 40px; stroke: var(--text); }
 
-.history .rail-new { display: none; }
-.history.collapsed { height: auto; min-height: 0; align-items: center; padding: 10px 8px; }
-.history.collapsed .history-head { flex-direction: column; margin-bottom: 0; }
-.history.collapsed .history-title, .history.collapsed .history-body { display: none; }
-.history.collapsed .rail-new { display: grid; background: var(--primary); border-color: var(--primary); }
-.history.collapsed .rail-new svg { stroke: #fff; }
+/* main navigation (SideNav): reorderable rows, selected row is a flat tinted pill */
+.side-nav { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.side-nav-item {
+  user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none;
+  transition: background-color 0.2s ease-out, box-shadow 0.2s ease-out, transform 0.2s ease-out;
+}
+.history-row.side-nav-item svg { color: inherit; }
+.side-nav-item.active { color: var(--primary); font-weight: 600; background: var(--primary-soft); }
+.side-nav-item.active:hover { background: #dce8fb; }
+.side-nav.reordering .side-nav-item { cursor: grabbing; }
+.side-nav.reordering .side-nav-item:not(.dragging):hover { background: none; }
+/* Row being dragged: outlined so it reads as picked up, still flat */
+.side-nav-item.dragging {
+  position: relative; z-index: 1; transition: none;
+  background: var(--surface); box-shadow: 0 0 0 1px var(--border);
+}
+.side-nav.settling .side-nav-item { transition: none; }
+.history-divider { flex: none; width: calc(100% - 24px); height: 1px; margin: 8px auto; background: var(--separator); }
+
+.history-actions { display: flex; flex-direction: column; gap: 4px; }
+.history-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 999px; font-size: 15px; font-weight: 500; color: var(--text); text-align: left; white-space: nowrap; transition: background-color 0.2s ease-out; }
+.history-row:hover { background: rgba(0, 0, 0, 0.05); }
+.history-row svg { color: var(--primary); }
+.history-search-wrap { position: relative; display: flex; align-items: center; margin-top: 4px; }
+.history-search-wrap > svg { position: absolute; left: 12px; width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
+.history-search { width: 100%; min-height: 40px; font: inherit; font-size: 15px; color: var(--text); background: rgba(120, 120, 128, 0.12); border: 0; border-radius: 12px; padding: 0 12px 0 36px; }
+.history-search::placeholder { color: var(--muted); }
+
+/* chat history dropdown */
+.history-toggle { width: 100%; }
+/* Truncate rather than push the count and chevron out if space ever runs short */
+.history-toggle .history-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.history-count { min-width: 22px; padding: 0 6px; border-radius: 999px; background: rgba(120, 120, 128, 0.12); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.history-row .history-chevron { width: 16px; height: 16px; color: var(--muted); stroke-width: 2; transition: transform 0.2s ease-out; }
+.history-toggle[aria-expanded="true"] .history-chevron { transform: rotate(90deg); }
+/* Keeps a usable height for the list; below that the outer sidebar scrolls instead. */
+.history-panel { flex: 1 1 0; min-height: 280px; display: flex; flex-direction: column; animation: history-in 0.2s ease-out; }
+@keyframes history-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* overscroll-behavior: scrolling inside the list never spills over to the outer sidebar */
+.history-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 4px -4px 0; padding: 0 4px; }
+/* Firefox only: in Chromium, scrollbar-width would switch off the themed scrollbar (global.css) */
+@supports not selector(::-webkit-scrollbar) {
+  .history-list { scrollbar-width: thin; }
+}
+.history-group { font-size: 12px; font-weight: 600; color: var(--muted); margin: 12px 12px 4px; }
+.history-list li { position: relative; display: flex; align-items: center; border-radius: 12px; transition: background-color 0.2s ease-out; }
+.history-list li:hover { background: rgba(0, 0, 0, 0.05); }
+.history-list li a { flex: 1; min-width: 0; min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 12px; font-size: 15px; color: var(--text); white-space: nowrap; }
+.history-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Discreet date on the right; the delete button takes its place on hover */
+.history-time { flex: none; font-size: 12px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; transition: opacity 0.15s ease-out; }
+.history-list li:hover .history-time, .history-list li:focus-within .history-time { opacity: 0; }
+/* Selected chat: the same flat tint as the selected tab */
+.history-list li:has(a.active) { background: var(--primary-soft); }
+.history-list li a.active { color: var(--primary); font-weight: 600; }
+.history-delete { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; opacity: 0; color: var(--muted); }
+.history-delete svg { width: 18px; height: 18px; }
+.history-list li:hover .history-delete, .history-list li:focus-within .history-delete { opacity: 1; }
+.history-delete:hover { color: var(--danger); }
+.history-empty { font-size: 14px; color: var(--muted); padding: 8px 12px; }
+/* Touch: no hover, so keep delete visible and the date beside it */
+@media (hover: none) {
+  .history-delete { opacity: 1; }
+  .history-list li a { padding-right: 44px; }
+  .history-list li:hover .history-time, .history-list li:focus-within .history-time { opacity: 1; }
+}
+
+/* collapsed: icon rail */
+.history.collapsed .history-scroll { align-items: center; padding: 24px 8px 12px; }
+.history.collapsed .history-top { flex-direction: column; gap: 8px; }
+.history.collapsed .history-brand { flex: none; padding: 0; }
+.history.collapsed .history-label { display: none; }
+.history.collapsed .history-actions, .history.collapsed .side-nav { align-items: center; gap: 8px; }
+.history.collapsed .history-divider { width: 32px; }
+.history.collapsed .history-row { width: 44px; padding: 0; justify-content: center; border-radius: 50%; }
+
+@media (max-width: 640px) {
+  .shell { --history-open: 244px; --history-rail: 72px; }
+}
 
 /* chat page */
-.chat-card { display: flex; flex-direction: column; height: min(620px, calc(100vh - 220px)); min-height: 420px; padding: 16px; }
-.chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 12px; }
-.chat-empty { margin: auto 0; display: flex; flex-direction: column; gap: 8px; }
-.chat-hello { font-size: 20px; font-weight: 600; }
+.chat-card { display: flex; flex-direction: column; height: min(640px, calc(100dvh - 220px)); min-height: 420px; padding: 16px 20px 20px; }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 12px; }
+.chat-hello { font-size: 24px; font-weight: 700; }
 .chat-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.chat-suggest .chip { min-height: 44px; padding: 8px 16px; font-size: 14px; border-radius: 16px; text-align: left; }
-.chat-suggest .chip:hover { background: #99f6e4; }
+.chat-suggest .chip { min-height: 44px; padding: 8px 16px; font-size: 15px; border-radius: 16px; text-align: left; }
+.chat-suggest .chip:hover { background: #d6e4fa; }
 
-.msg { max-width: min(640px, 88%); padding: 10px 14px; border-radius: 16px; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+/* New chat (no title yet): greeting, a large message bar and the suggestions,
+   centred in the page. After the first message the normal layout returns. */
+.chat-card.start { height: calc(100dvh - 56px); min-height: 420px; justify-content: center; align-items: center; gap: 16px; }
+.chat-card.start .chat-log { flex: none; overflow: visible; padding: 0; }
+.chat-card.start .chat-hello { font-size: 32px; line-height: 1.2; text-align: center; }
+.chat-card.start .composer, .chat-card.start .chat-suggest, .chat-card.start .chat-note { width: min(760px, 100%); }
+.chat-card.start .composer { border-top: 0; padding-top: 0; }
+.chat-card.start .composer-pill { padding: 8px; border-radius: 32px; }
+.chat-card.start .composer-pill textarea { padding: 14px 8px; font-size: 18px; }
+.chat-card.start .typewriter { top: 14px; font-size: 18px; }
+.chat-card.start .chat-suggest { justify-content: center; margin-top: 0; }
+.chat-card.start .chat-note { margin-top: 0; text-align: center; }
+@media (max-width: 640px) {
+  .chat-card.start .chat-hello { font-size: 26px; }
+}
+
+/* iMessage-style bubbles */
+.msg { max-width: min(640px, 88%); padding: 8px 16px; border-radius: 20px; font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
 .msg p { white-space: pre-wrap; }
 .msg.user { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 6px; }
-.msg.assistant { align-self: flex-start; background: var(--surface-soft); border: 1px solid var(--border); border-bottom-left-radius: 6px; }
-.msg.error { background: #fffbeb; border-color: #fde68a; color: var(--warn-ink); }
-.msg-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.msg-sources li { font-size: 12px; padding: 2px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-strong); }
-.msg-retry { margin-top: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--warn-ink); color: var(--warn-ink); font-size: 14px; font-weight: 600; }
+.msg.assistant { align-self: flex-start; background: #e9e9eb; color: var(--text); border-bottom-left-radius: 6px; }
+.msg.error { background: var(--warn-bg); color: var(--warn-ink); }
+.msg-sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.msg-sources li { font-size: 12px; font-weight: 500; padding: 2px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.7); color: var(--primary); }
+.msg-retry { margin-top: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--warn-ink); color: var(--warn-ink); font-size: 15px; font-weight: 600; }
 
-.typing { display: flex; gap: 5px; padding: 14px 16px; }
+.typing { display: flex; gap: 4px; padding: 16px; }
 .typing span { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); animation: chat-dot 1.2s infinite ease-in-out; }
 .typing span:nth-child(2) { animation-delay: 0.15s; }
 .typing span:nth-child(3) { animation-delay: 0.3s; }
 @keyframes chat-dot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
 
-.chat-form { display: flex; gap: 8px; align-items: flex-end; padding-top: 12px; border-top: 1px solid var(--border); }
-.chat-form textarea { flex: 1; min-width: 0; resize: none; font: inherit; font-size: 15px; color: var(--text); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; }
-.chat-form textarea::placeholder { color: var(--muted); }
-.chat-form textarea:focus-visible { outline: none; box-shadow: var(--focus); }
-.chat-form .btn-primary:disabled { background: #94a3b8; cursor: default; }
 .chat-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
+/* ---- Composer (pill chat bar) ---- */
+.composer { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--separator); }
+.composer-pill {
+  display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px;
+  background: var(--surface-soft); border: 1px solid var(--border);
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+.composer-pill.tall { border-radius: 24px; align-items: flex-end; }
+.composer-pill:focus-within { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(21, 91, 208, 0.15); }
+.composer-pill textarea {
+  flex: 1; min-width: 0; resize: none; border: 0; background: transparent; color: var(--text);
+  font: inherit; font-size: 16px; line-height: 24px; padding: 10px 8px; max-height: 164px; overflow-y: auto;
+}
+.composer-pill textarea::placeholder { color: var(--muted); }
+/* Text box wrapper so the typewriter hint can sit exactly where the placeholder would */
+.composer-input { position: relative; flex: 1; min-width: 0; display: flex; }
+.typewriter {
+  position: absolute; top: 10px; left: 8px; right: 8px; pointer-events: none;
+  font-size: 16px; line-height: 24px; color: var(--muted); white-space: nowrap; overflow: hidden;
+}
+.typewriter-caret { display: inline-block; width: 2px; height: 18px; margin-left: 1px; vertical-align: -3px; border-radius: 1px; background: var(--primary); }
+.typewriter-caret.blink { animation: caret-blink 1.06s steps(1) infinite; }
+@keyframes caret-blink { 50% { opacity: 0; } }
+.composer-pill textarea:focus-visible { outline: none; }
+.cmp-btn { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; color: var(--muted); transition: background-color 0.15s ease-out; }
+.cmp-btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.05); color: var(--text); }
+.cmp-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* Accent send button, the one filled control in the bar */
+.cmp-send { margin-left: 4px; background: var(--primary); color: #fff; }
+.cmp-send:hover:not(:disabled) { background: var(--primary-strong); color: #fff; }
+.cmp-send:disabled { opacity: 1; background: #d1d1d6; color: #fff; }
+.mic-btn.listening { background: var(--danger); color: #fff; animation: mic-pulse 1.4s ease-out infinite; }
+.mic-btn.listening:hover { background: #b00012; }
+@keyframes mic-pulse { 0% { box-shadow: 0 0 0 0 rgba(215, 0, 21, 0.4); } 100% { box-shadow: 0 0 0 12px rgba(215, 0, 21, 0); } }
+
+.mode-btn { min-height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 12px 0 16px; border-radius: 999px; font-size: 15px; white-space: nowrap; }
+.mode-btn:hover { background: rgba(0, 0, 0, 0.05); }
+.mode-brand { font-weight: 600; }
+.mode-name { color: var(--muted); }
+.mode-btn svg { width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.composer-menu-wrap { position: relative; display: flex; }
+.composer-menu {
+  position: absolute; bottom: calc(100% + 12px); left: 0; z-index: 5; min-width: 248px; padding: 8px;
+  display: flex; flex-direction: column; border-radius: 20px; border: 1px solid var(--glass-edge);
+  background: var(--glass-bg-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 16px 40px rgba(0, 0, 0, 0.14);
+}
+.composer-menu.right { left: auto; right: 0; }
+.composer-menu button { min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 12px; text-align: left; font-size: 15px; font-weight: 500; }
+.composer-menu button:hover { background: rgba(21, 91, 208, 0.08); }
+.composer-menu button > span { display: flex; flex-direction: column; flex: 1; }
+.composer-menu small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.composer-menu svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: var(--primary); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.composer-menu .check { stroke-width: 2.4; }
+
+.composer-live { display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; color: var(--muted); font-style: italic; }
+.live-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--danger); animation: chat-dot 1.2s infinite ease-in-out; }
+.composer-error { padding: 0 12px; font-size: 13px; color: var(--warn-ink); }
+
+/* ---- Attachments ---- */
+.chat-card { position: relative; }
+.chat-card.dragging { box-shadow: 0 0 0 2px var(--primary); }
+.chat-drop {
+  position: absolute; inset: 8px; z-index: 2; display: grid; place-items: center; pointer-events: none;
+  border: 2px dashed var(--primary); border-radius: calc(var(--radius) - 6px);
+  background: rgba(232, 240, 252, 0.88); color: var(--primary); font-size: 18px; font-weight: 600;
+}
+.composer-files ul { display: flex; flex-wrap: wrap; gap: 8px; }
+.file-chip { display: flex; align-items: center; gap: 8px; max-width: 260px; padding: 4px 4px 4px 12px; border-radius: 12px; background: var(--surface-soft); border: 1px solid var(--border); font-size: 13px; }
+.file-chip button { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; }
+.file-chip button:hover { background: rgba(0, 0, 0, 0.06); }
+.file-chip button svg { width: 14px; height: 14px; fill: none; stroke: var(--text); stroke-width: 2; stroke-linecap: round; }
+.file-chip > svg, .msg-files svg { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.file-size { flex-shrink: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.file-error { margin-top: 8px; font-size: 13px; color: var(--warn-ink); }
+.msg-files { display: flex; flex-direction: column; gap: 4px; }
+.msg-files + p { margin-top: 8px; }
+.msg-files li { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.16); font-size: 13px; }
+.msg.user .file-size { color: rgba(255, 255, 255, 0.85); }
+
+.quick-chat { display: flex; flex-direction: column; gap: 4px; }
+.quick-chat-title { font-size: 20px; font-weight: 600; }
+.quick-chat-sub { color: var(--muted); }
+.quick-chat .composer { border-top: 0; padding-top: 8px; }
+@media (max-width: 480px) {
+  .mode-brand { display: none; }
+}
+.quick-chat-prompts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.quick-chat-prompts .chip { min-height: 44px; }
+.quick-chat-prompts .chip:hover { background: #d6e4fa; }
+
 @media (max-width: 1000px) {
-  .workspace, .workspace.history-collapsed { grid-template-columns: 1fr; }
-  .history { position: static; height: 50vh; min-height: 340px; }
-  .history.collapsed { height: auto; min-height: 0; flex-direction: row; justify-content: flex-start; padding: 10px 14px; }
-  .history.collapsed .history-head { flex-direction: row; width: 100%; }
-  .history.collapsed .history-title { display: block; }
-  .chat-card { height: 70vh; }
+  .chat-card { height: 70dvh; }
 }

@@ -1,0 +1,187 @@
+/* ---- Landing page (before sign-in) ---- */
+.landing { width: 100%; min-height: 100dvh; background: var(--surface); }
+
+.landing-banner { padding: 12px 16px; background: var(--primary-soft); color: var(--text); font-size: 15px; text-align: center; }
+.landing-banner a { color: var(--primary); font-weight: 600; }
+.landing-banner a:hover { text-decoration: underline; }
+
+/* Scroll reveal (Landing.jsx): fade and rise in once, staggered by --i.
+   Transform and opacity only. Hidden only after the script has run. */
+.reveal-ready [data-reveal] {
+  opacity: 0; transform: translateY(28px);
+  transition: opacity 0.6s ease-out, transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--i, 0) * 90ms);
+}
+.reveal-ready [data-reveal].revealed { opacity: 1; transform: none; }
+
+/* top bar: brand, section links, then Log in / Sign up on the right */
+.landing-nav {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 40px;
+  max-width: 1200px; margin: 0 auto; padding: 20px 32px;
+}
+.landing-brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; }
+.landing-brand .logo-mark, .landing-brand .logo-mark svg { width: 44px; height: 44px; }
+.landing-links { display: flex; gap: 8px; }
+.landing-links a { display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 999px; font-size: 17px; transition: background-color 0.15s ease-out; }
+.landing-links a:hover { background: rgba(120, 120, 128, 0.12); }
+.landing-auth { display: flex; align-items: center; gap: 8px; }
+.landing-login { min-height: 48px; padding: 0 20px; border-radius: 999px; font-size: 17px; font-weight: 500; transition: background-color 0.15s ease-out; }
+.landing-login:hover { background: rgba(120, 120, 128, 0.12); }
+.landing-signup {
+  min-height: 48px; padding: 0 24px; border-radius: 999px; background: var(--primary); color: #fff;
+  font-size: 17px; font-weight: 600; transition: background-color 0.15s ease-out;
+}
+.landing-signup:hover { background: var(--primary-strong); }
+
+/* hero */
+.landing-hero { display: flex; flex-direction: column; align-items: center; padding: 88px 24px 56px; text-align: center; }
+.landing-pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px 10px 16px; border-radius: 999px;
+  background: var(--text); color: #fff; font-size: 17px; font-weight: 600;
+}
+.landing-pill svg { width: 20px; height: 20px; fill: #a8c4f0; overflow: visible; }
+/* Twinkle: the star turns and pulses, a small glint blinks just after it.
+   Transform and opacity only; reduced motion turns it off (global.css). */
+.pill-star, .pill-glint { transform-box: fill-box; transform-origin: center; }
+.pill-star { animation: star-twinkle 2.8s ease-in-out infinite; }
+.pill-glint { opacity: 0; animation: star-glint 2.8s ease-in-out infinite; }
+@keyframes star-twinkle {
+  0%, 60%, 100% { transform: rotate(0) scale(1); fill: #a8c4f0; }
+  30% { transform: rotate(90deg) scale(1.25); fill: #fff; }
+}
+@keyframes star-glint {
+  0%, 25%, 70%, 100% { opacity: 0; transform: scale(0.4); }
+  45% { opacity: 1; transform: scale(1.1); }
+}
+.landing-title { margin: 32px 0 24px; font-size: clamp(52px, 9vw, 112px); font-weight: 700; line-height: 1; }
+.landing-accent { color: var(--primary); }
+.landing-lede { max-width: 640px; font-size: clamp(18px, 2.2vw, 22px); color: var(--muted); }
+.landing-ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 36px; }
+.landing-cta { min-height: 52px; padding: 0 28px; font-size: 17px; }
+
+/* dashboard illustration */
+.landing-peek { max-width: 1088px; margin: 0 auto; padding: 0 24px; }
+.peek-frame {
+  display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 16px; padding: 20px;
+  border-radius: 28px; background: var(--bg); border: 1px solid var(--border);
+}
+.peek-frame small { display: block; font-size: 13px; color: var(--muted); }
+.peek-frame strong { display: block; font-size: 17px; font-weight: 600; }
+.peek-frame span { display: block; font-size: 14px; color: var(--muted); }
+.peek-risk {
+  display: flex; flex-direction: column; justify-content: flex-end; min-height: 200px; padding: 20px;
+  border-radius: var(--radius); background: linear-gradient(135deg, hsl(145 63% 22%), hsl(145 63% 26%)); color: #fff;
+}
+.peek-risk small, .peek-risk span { color: rgba(255, 255, 255, 0.85); }
+.peek-risk strong { font-size: 64px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.peek-stack { display: flex; flex-direction: column; gap: 16px; }
+.peek-card { flex: 1; padding: 16px 20px; border-radius: var(--radius); background: var(--surface); }
+.peek-card strong { margin: 2px 0; }
+.peek-frame .peek-bar { height: 6px; margin-top: 10px; border-radius: 3px; background: rgba(120, 120, 128, 0.16); overflow: hidden; }
+.peek-bar i { display: block; width: 66%; height: 100%; border-radius: 3px; background: var(--primary); }
+.peek-chat { display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 16px; border-radius: var(--radius); background: var(--surface); }
+.peek-msg { max-width: 90%; padding: 10px 14px; border-radius: 18px; background: rgba(120, 120, 128, 0.12); font-size: 14px; }
+.peek-msg.user { align-self: flex-end; background: var(--primary); color: #fff; }
+
+/* sections */
+.landing-section { max-width: 1136px; margin: 0 auto; padding: 112px 24px 0; scroll-margin-top: 24px; }
+.landing-h2 { margin-bottom: 40px; font-size: clamp(32px, 4.5vw, 48px); font-weight: 700; line-height: 1.1; text-align: center; }
+.landing-features, .landing-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.landing-feature, .landing-steps li { padding: 28px; border-radius: var(--radius); background: var(--bg); }
+.landing-features h3, .landing-steps h3 { margin: 16px 0 6px; font-size: 19px; font-weight: 600; }
+.landing-features p, .landing-steps p { font-size: 15px; color: var(--muted); }
+.landing-icon { width: 48px; height: 48px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); }
+.landing-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.landing-step-num { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--text); color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.landing-section.landing-privacy {
+  display: flex; align-items: center; gap: 24px; width: min(1088px, calc(100% - 48px)); margin-top: 112px; padding: 36px;
+  border-radius: 28px; background: var(--bg);
+}
+.landing-privacy .landing-h2 { margin-bottom: 8px; font-size: 28px; text-align: left; }
+.landing-privacy p { max-width: 640px; color: var(--muted); }
+
+.landing-final { display: flex; flex-direction: column; align-items: center; padding: 128px 24px 112px; text-align: center; }
+.landing-final .landing-h2 { margin-bottom: 28px; }
+
+/* Branded footer: deep CareSync blue, soft lighter-blue hills along the bottom */
+.landing-footer {
+  position: relative; overflow: hidden; color: #fff;
+  background: linear-gradient(180deg, #0c3477 0%, #124aa8 100%);
+}
+.landing-footer::before {
+  content: ""; position: absolute; left: -10%; right: -10%; bottom: 0; height: 55%; pointer-events: none;
+  background:
+    radial-gradient(45% 70% at 18% 100%, rgba(168, 196, 240, 0.35), transparent 70%),
+    radial-gradient(40% 60% at 55% 105%, rgba(214, 228, 250, 0.25), transparent 70%),
+    radial-gradient(45% 75% at 92% 100%, rgba(168, 196, 240, 0.3), transparent 70%);
+}
+.footer-inner { position: relative; max-width: 1136px; margin: 0 auto; padding: 72px 24px 28px; }
+.footer-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 32px; }
+.footer-cols h2 { margin-bottom: 12px; font-size: 17px; font-weight: 600; }
+.footer-cols ul { display: flex; flex-direction: column; gap: 4px; }
+.footer-cols a, .footer-cols button {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0; color: rgba(255, 255, 255, 0.85);
+  font-size: 16px; text-align: left;
+}
+.footer-cols a:hover, .footer-cols button:hover { color: #fff; text-decoration: underline; }
+.footer-note li { padding: 6px 0; font-size: 15px; color: rgba(255, 255, 255, 0.85); }
+.landing-footer :focus-visible { outline-color: #fff; }
+
+/* Large logo and wordmark */
+.footer-brand { display: flex; align-items: center; justify-content: center; gap: clamp(12px, 2vw, 28px); margin: 72px 0 56px; }
+.footer-brand .logo-mark, .footer-brand .logo-mark svg { width: clamp(64px, 13vw, 180px); height: clamp(64px, 13vw, 180px); }
+.footer-brand .logo-mark svg { stroke: #fff; stroke-width: 1.4; }
+.footer-brand .lm-hand { fill: rgba(255, 255, 255, 0.14); }
+.footer-brand .lm-cuff { fill: rgba(255, 255, 255, 0.24); }
+/* Heart-drop logo (HeartDropLogo.jsx), top left and in the footer. While
+   playing (top left from load, footer once scrolled into view) the heart keeps
+   dropping softly into the still hand: it fades in above, eases down, settles
+   with a tiny bounce as a puff of little hearts bursts out, rests, then lifts
+   away and the loop starts again. SVG units; reduced motion keeps it still. */
+.heart-drop .logo-mark svg { overflow: visible; }
+.heart-drop.playing :is(.lm-heart, .lm-cross), .revealed .heart-drop :is(.lm-heart, .lm-cross) { animation: heart-fall 3.6s infinite; }
+/* Little hearts: start at the big heart's centre (29, 21 of the 48-unit logo)
+   and fly out by --x / --y of their own size, timed to the landing at 32% */
+.heart-drop { position: relative; display: inline-grid; }
+.burst { position: absolute; left: 60.4%; top: 43.75%; width: 12%; aspect-ratio: 1; margin: -6% 0 0 -6%; opacity: 0; pointer-events: none; }
+.burst svg { display: block; width: 100%; height: 100%; fill: #ff375f; }
+.burst:nth-child(odd) svg { fill: #ff8fa8; }
+.heart-drop.playing .burst, .revealed .heart-drop .burst { animation: heart-burst 3.6s infinite; }
+@keyframes heart-burst {
+  0%, 31% { opacity: 0; transform: translate(0, 0) scale(0.3); animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1); }
+  35% { opacity: 1; }
+  54%, 100% { opacity: 0; transform: translate(calc(var(--x) * 100%), calc(var(--y) * 100%)) scale(1) rotate(var(--r)); }
+}
+@keyframes heart-fall {
+  0% { opacity: 0; transform: translateY(-16px); animation-timing-function: cubic-bezier(0.3, 0.7, 0.4, 1); }
+  8% { opacity: 1; }
+  32% { transform: translateY(0.6px); animation-timing-function: ease-out; }
+  38% { transform: translateY(-0.5px); animation-timing-function: ease-in-out; }
+  44%, 78% { opacity: 1; transform: translateY(0); animation-timing-function: ease-in; }
+  92%, 100% { opacity: 0; transform: translateY(-8px); }
+}
+.footer-brand span { font-size: clamp(44px, 13vw, 184px); font-weight: 700; line-height: 1; }
+
+.footer-bottom {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 24px;
+  padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.25); font-size: 14px;
+}
+.footer-bottom a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
+.footer-bottom a:hover { text-decoration: underline; }
+
+@media (max-width: 900px) {
+  .landing-links { display: none; }
+  .peek-frame { grid-template-columns: 1fr 1fr; }
+  .peek-chat { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .landing-nav { gap: 12px; padding: 16px; }
+  .landing-brand span { display: none; }
+  .landing-login, .landing-signup { min-height: 44px; padding: 0 16px; font-size: 16px; }
+  .landing-hero { padding-top: 56px; }
+  .peek-frame { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+  .peek-risk { min-height: 160px; }
+  .landing-section { padding-top: 80px; }
+  .landing-section.landing-privacy { flex-direction: column; align-items: flex-start; margin-top: 80px; padding: 28px 24px; }
+}
