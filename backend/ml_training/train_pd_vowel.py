@@ -426,9 +426,19 @@ def write_model_card(metrics: dict, path: Path, template: Path = CARD_TEMPLATE) 
     return text
 
 
+def _settings_hf_token() -> str:
+    """``HF_TOKEN`` from backend/.env via the app settings (the file is not shell-sourceable)."""
+    try:
+        from app.core.config import settings
+
+        return settings.hf_token or ""
+    except Exception:  # noqa: BLE001 - training may run without the app package
+        return ""
+
+
 def push_to_hub(repo: str, folder: Path | str = DEFAULT_OUT) -> str:
     """Upload the artefact folder to the HF Hub when ``HF_TOKEN`` is set; otherwise describe the plan."""
-    token = os.environ.get("HF_TOKEN")
+    token = os.environ.get("HF_TOKEN") or _settings_hf_token()
     files = sorted(p.name for p in Path(folder).iterdir() if p.is_file())
     if not token:
         return f"[dry-run] HF_TOKEN not set; would create model repo '{repo}' (exist_ok) and upload {files} from {folder}"

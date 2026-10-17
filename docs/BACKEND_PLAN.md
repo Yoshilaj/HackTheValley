@@ -15,7 +15,7 @@ integration code exists but has never been run against the live service (no keys
 | A2 PD screener | Built | `/api/screener/pd`; one id set (content-bank ids), legacy ids accepted |
 | A2 Suita score | Built | `app/ml/suita.py`; context only, never drives the level |
 | A4 PD vowel model training | Built | `ml_training/train_pd_vowel.py`; UCI, subject-grouped CV, pooled OOF AUC 0.74 (95% CI 0.53–0.91); served from `backend/models/` |
-| A4 HF Hub push | Not built (run) | `push_to_hub` code path exists but was never run (no `HF_TOKEN`); the app loads the local model folder |
+| A4 HF Hub push | Built | Private repo `Yoshil061111/pd-vowel-experimental-v1`, pinned by `PD_VOWEL_HUB_REVISION` in `.env` (2026-10-17). App loads `backend/models/` first, else `snapshot_download` at that revision (`PdVowelModel.load_default`). Re-push: `python -m ml_training.train_pd_vowel --push-to-hub <repo>` then re-pin. Caveat: serving features (Praat) ≠ training features (MDVP) — score is experimental until validated (audit item 2) |
 | A4 Gated models (ADReSS picture description, mPower tapping) | Not built | access not requested yet (see HANDOFF) |
 | B Database (models, SQLite/Postgres, pgvector) | Built | tables created at startup; `CREATE EXTENSION vector` on Postgres (Postgres path untested here) |
 | B Alembic migrations | Not built | `init_db` create_all only |
