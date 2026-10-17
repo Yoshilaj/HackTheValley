@@ -1,0 +1,796 @@
+{
+  "model_version": "pd_vowel_experimental_v1",
+  "created_utc": "2026-10-17T07:20:27+00:00",
+  "dataset": {
+    "name": "UCI Parkinson's (Little et al. 2008/2009)",
+    "loader": "datasets",
+    "n_recordings": 195,
+    "n_subjects": 32,
+    "n_pd_subjects": 24,
+    "n_healthy_subjects": 8,
+    "n_pd_recordings": 147,
+    "documented_subjects": "31 subjects (23 PD) per parkinsons.names; subject IDs derived from `name` give the counts above"
+  },
+  "cv": {
+    "outer": "GroupKFold(n_splits=5) by subject",
+    "inner": "StratifiedGroupKFold(n_splits<=4) by subject for GridSearchCV and sigmoid CalibratedClassifierCV",
+    "repeats": 10,
+    "bootstrap": "2000 subject-cluster resamples"
+  },
+  "candidates": {
+    "logreg": {
+      "auc_pooled_oof": 0.7355442176870749,
+      "auc_ci95_subject_bootstrap": [
+        0.5306800133899685,
+        0.907829213016414
+      ],
+      "auc_fold_mean": 0.8252538829151733,
+      "auc_fold_sd": 0.24897958454954758,
+      "threshold_at_80_specificity": 0.8387272401623085,
+      "sensitivity_at_80_specificity": 0.4965986394557823,
+      "achieved_specificity": 0.8125,
+      "brier": 0.16447881630922104,
+      "confusion_at_0.5": {
+        "tn": 19,
+        "fp": 29,
+        "fn": 13,
+        "tp": 134
+      },
+      "subject_level": {
+        "auc_median_prob": 0.7552083333333334,
+        "sensitivity_at_threshold": 0.5,
+        "specificity_at_threshold": 0.75,
+        "per_subject": [
+          {
+            "subject": "phon_R01_S01",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.9739,
+            "min_prob": 0.9642,
+            "max_prob": 0.9791
+          },
+          {
+            "subject": "phon_R01_S02",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8557,
+            "min_prob": 0.5602,
+            "max_prob": 0.8967
+          },
+          {
+            "subject": "phon_R01_S04",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.7062,
+            "min_prob": 0.5014,
+            "max_prob": 0.9257
+          },
+          {
+            "subject": "phon_R01_S05",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.9532,
+            "min_prob": 0.8916,
+            "max_prob": 0.9913
+          },
+          {
+            "subject": "phon_R01_S06",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.703,
+            "min_prob": 0.5485,
+            "max_prob": 0.8594
+          },
+          {
+            "subject": "phon_R01_S07",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.455,
+            "min_prob": 0.3708,
+            "max_prob": 0.5315
+          },
+          {
+            "subject": "phon_R01_S08",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.4735,
+            "min_prob": 0.2798,
+            "max_prob": 0.5915
+          },
+          {
+            "subject": "phon_R01_S10",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.4089,
+            "min_prob": 0.3916,
+            "max_prob": 0.4397
+          },
+          {
+            "subject": "phon_R01_S13",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.7297,
+            "min_prob": 0.6856,
+            "max_prob": 0.7912
+          },
+          {
+            "subject": "phon_R01_S16",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8977,
+            "min_prob": 0.8899,
+            "max_prob": 0.9054
+          },
+          {
+            "subject": "phon_R01_S17",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.4208,
+            "min_prob": 0.3015,
+            "max_prob": 0.5257
+          },
+          {
+            "subject": "phon_R01_S18",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8875,
+            "min_prob": 0.8648,
+            "max_prob": 0.9411
+          },
+          {
+            "subject": "phon_R01_S19",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.7714,
+            "min_prob": 0.7297,
+            "max_prob": 0.8408
+          },
+          {
+            "subject": "phon_R01_S20",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.9456,
+            "min_prob": 0.7723,
+            "max_prob": 0.9743
+          },
+          {
+            "subject": "phon_R01_S21",
+            "status": 1,
+            "n_recordings": 7,
+            "median_prob": 0.9092,
+            "min_prob": 0.7784,
+            "max_prob": 0.9309
+          },
+          {
+            "subject": "phon_R01_S22",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.7499,
+            "min_prob": 0.7184,
+            "max_prob": 0.8187
+          },
+          {
+            "subject": "phon_R01_S24",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.9748,
+            "min_prob": 0.9501,
+            "max_prob": 0.9853
+          },
+          {
+            "subject": "phon_R01_S25",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.3143,
+            "min_prob": 0.2599,
+            "max_prob": 0.4546
+          },
+          {
+            "subject": "phon_R01_S26",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.6754,
+            "min_prob": 0.5359,
+            "max_prob": 0.7915
+          },
+          {
+            "subject": "phon_R01_S27",
+            "status": 1,
+            "n_recordings": 7,
+            "median_prob": 0.7303,
+            "min_prob": 0.5655,
+            "max_prob": 0.8201
+          },
+          {
+            "subject": "phon_R01_S31",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.769,
+            "min_prob": 0.7404,
+            "max_prob": 0.9134
+          },
+          {
+            "subject": "phon_R01_S32",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.7051,
+            "min_prob": 0.4748,
+            "max_prob": 0.8189
+          },
+          {
+            "subject": "phon_R01_S33",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.9508,
+            "min_prob": 0.907,
+            "max_prob": 0.9579
+          },
+          {
+            "subject": "phon_R01_S34",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8216,
+            "min_prob": 0.6473,
+            "max_prob": 0.952
+          },
+          {
+            "subject": "phon_R01_S35",
+            "status": 1,
+            "n_recordings": 7,
+            "median_prob": 0.9404,
+            "min_prob": 0.917,
+            "max_prob": 0.9542
+          },
+          {
+            "subject": "phon_R01_S37",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8647,
+            "min_prob": 0.7961,
+            "max_prob": 0.9296
+          },
+          {
+            "subject": "phon_R01_S39",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.9221,
+            "min_prob": 0.7461,
+            "max_prob": 0.9849
+          },
+          {
+            "subject": "phon_R01_S42",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.4493,
+            "min_prob": 0.3948,
+            "max_prob": 0.7625
+          },
+          {
+            "subject": "phon_R01_S43",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.8986,
+            "min_prob": 0.8804,
+            "max_prob": 0.9022
+          },
+          {
+            "subject": "phon_R01_S44",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.5513,
+            "min_prob": 0.488,
+            "max_prob": 0.6602
+          },
+          {
+            "subject": "phon_R01_S49",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.8632,
+            "min_prob": 0.8013,
+            "max_prob": 0.9238
+          },
+          {
+            "subject": "phon_R01_S50",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.728,
+            "min_prob": 0.7038,
+            "max_prob": 0.8169
+          }
+        ]
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_test": 37,
+          "n_test_subjects": 6,
+          "auc": 0.9193548387096775,
+          "best_params": {
+            "clf__C": 1.0,
+            "select__k": 8
+          },
+          "inner_auc": 0.8997222222222221
+        },
+        {
+          "fold": 1,
+          "n_test": 37,
+          "n_test_subjects": 6,
+          "auc": 0.8064516129032259,
+          "best_params": {
+            "clf__C": 0.01,
+            "select__k": "all"
+          },
+          "inner_auc": 0.8697670250896057
+        },
+        {
+          "fold": 2,
+          "n_test": 37,
+          "n_test_subjects": 6,
+          "auc": 1.0,
+          "best_params": {
+            "clf__C": 0.01,
+            "select__k": "all"
+          },
+          "inner_auc": 0.7608557347670251
+        },
+        {
+          "fold": 3,
+          "n_test": 42,
+          "n_test_subjects": 7,
+          "auc": 0.4027777777777778,
+          "best_params": {
+            "clf__C": 0.01,
+            "select__k": 15
+          },
+          "inner_auc": 0.8862455197132617
+        },
+        {
+          "fold": 4,
+          "n_test": 42,
+          "n_test_subjects": 7,
+          "auc": 0.9976851851851852,
+          "best_params": {
+            "clf__C": 0.01,
+            "select__k": 8
+          },
+          "inner_auc": 0.8284796893667862
+        }
+      ],
+      "repeated_cv": {
+        "n_repeats": 10,
+        "aucs": [
+          0.7851473922902493,
+          0.7884070294784581,
+          0.8154761904761905,
+          0.7766439909297053,
+          0.848922902494331,
+          0.8048469387755102,
+          0.8011621315192744,
+          0.7594954648526078,
+          0.7824546485260772,
+          0.7694160997732427
+        ],
+        "mean": 0.7931972789115646,
+        "sd": 0.025775457411893868,
+        "range": [
+          0.7594954648526078,
+          0.848922902494331
+        ]
+      }
+    },
+    "xgboost": {
+      "auc_pooled_oof": 0.5439342403628118,
+      "auc_ci95_subject_bootstrap": [
+        0.29260570206889225,
+        0.7902640305147706
+      ],
+      "auc_fold_mean": 0.7428464755077658,
+      "auc_fold_sd": 0.25158259759359525,
+      "threshold_at_80_specificity": 0.9068871096305582,
+      "sensitivity_at_80_specificity": 0.12244897959183673,
+      "achieved_specificity": 0.8125,
+      "brier": 0.18917803128123376,
+      "confusion_at_0.5": {
+        "tn": 11,
+        "fp": 37,
+        "fn": 15,
+        "tp": 132
+      },
+      "subject_level": {
+        "auc_median_prob": 0.5364583333333334,
+        "sensitivity_at_threshold": 0.125,
+        "specificity_at_threshold": 0.875,
+        "per_subject": [
+          {
+            "subject": "phon_R01_S01",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.9101,
+            "min_prob": 0.9081,
+            "max_prob": 0.9121
+          },
+          {
+            "subject": "phon_R01_S02",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8334,
+            "min_prob": 0.3179,
+            "max_prob": 0.8434
+          },
+          {
+            "subject": "phon_R01_S04",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8407,
+            "min_prob": 0.7389,
+            "max_prob": 0.8818
+          },
+          {
+            "subject": "phon_R01_S05",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8647,
+            "min_prob": 0.8644,
+            "max_prob": 0.8649
+          },
+          {
+            "subject": "phon_R01_S06",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.7623,
+            "min_prob": 0.4315,
+            "max_prob": 0.8209
+          },
+          {
+            "subject": "phon_R01_S07",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.8486,
+            "min_prob": 0.8351,
+            "max_prob": 0.8955
+          },
+          {
+            "subject": "phon_R01_S08",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.4457,
+            "min_prob": 0.2818,
+            "max_prob": 0.8344
+          },
+          {
+            "subject": "phon_R01_S10",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.4894,
+            "min_prob": 0.4824,
+            "max_prob": 0.5471
+          },
+          {
+            "subject": "phon_R01_S13",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.8544,
+            "min_prob": 0.8275,
+            "max_prob": 0.8625
+          },
+          {
+            "subject": "phon_R01_S16",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8192,
+            "min_prob": 0.8182,
+            "max_prob": 0.8198
+          },
+          {
+            "subject": "phon_R01_S17",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.5976,
+            "min_prob": 0.4254,
+            "max_prob": 0.6697
+          },
+          {
+            "subject": "phon_R01_S18",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8445,
+            "min_prob": 0.8433,
+            "max_prob": 0.8458
+          },
+          {
+            "subject": "phon_R01_S19",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.7516,
+            "min_prob": 0.6793,
+            "max_prob": 0.8223
+          },
+          {
+            "subject": "phon_R01_S20",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8553,
+            "min_prob": 0.7741,
+            "max_prob": 0.8639
+          },
+          {
+            "subject": "phon_R01_S21",
+            "status": 1,
+            "n_recordings": 7,
+            "median_prob": 0.8197,
+            "min_prob": 0.816,
+            "max_prob": 0.8262
+          },
+          {
+            "subject": "phon_R01_S22",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8019,
+            "min_prob": 0.7832,
+            "max_prob": 0.8171
+          },
+          {
+            "subject": "phon_R01_S24",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.913,
+            "min_prob": 0.9107,
+            "max_prob": 0.9296
+          },
+          {
+            "subject": "phon_R01_S25",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.4089,
+            "min_prob": 0.3749,
+            "max_prob": 0.5696
+          },
+          {
+            "subject": "phon_R01_S26",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8358,
+            "min_prob": 0.6425,
+            "max_prob": 0.8708
+          },
+          {
+            "subject": "phon_R01_S27",
+            "status": 1,
+            "n_recordings": 7,
+            "median_prob": 0.8008,
+            "min_prob": 0.7345,
+            "max_prob": 0.8407
+          },
+          {
+            "subject": "phon_R01_S31",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8287,
+            "min_prob": 0.8006,
+            "max_prob": 0.8432
+          },
+          {
+            "subject": "phon_R01_S32",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.7195,
+            "min_prob": 0.4257,
+            "max_prob": 0.8132
+          },
+          {
+            "subject": "phon_R01_S33",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.909,
+            "min_prob": 0.909,
+            "max_prob": 0.9094
+          },
+          {
+            "subject": "phon_R01_S34",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8321,
+            "min_prob": 0.7612,
+            "max_prob": 0.8451
+          },
+          {
+            "subject": "phon_R01_S35",
+            "status": 1,
+            "n_recordings": 7,
+            "median_prob": 0.818,
+            "min_prob": 0.8118,
+            "max_prob": 0.8181
+          },
+          {
+            "subject": "phon_R01_S37",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8254,
+            "min_prob": 0.8215,
+            "max_prob": 0.8415
+          },
+          {
+            "subject": "phon_R01_S39",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.8608,
+            "min_prob": 0.4295,
+            "max_prob": 0.8638
+          },
+          {
+            "subject": "phon_R01_S42",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.3765,
+            "min_prob": 0.3551,
+            "max_prob": 0.802
+          },
+          {
+            "subject": "phon_R01_S43",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.9099,
+            "min_prob": 0.9069,
+            "max_prob": 0.9231
+          },
+          {
+            "subject": "phon_R01_S44",
+            "status": 1,
+            "n_recordings": 6,
+            "median_prob": 0.6773,
+            "min_prob": 0.4111,
+            "max_prob": 0.8273
+          },
+          {
+            "subject": "phon_R01_S49",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.8731,
+            "min_prob": 0.5222,
+            "max_prob": 0.9252
+          },
+          {
+            "subject": "phon_R01_S50",
+            "status": 0,
+            "n_recordings": 6,
+            "median_prob": 0.7953,
+            "min_prob": 0.7787,
+            "max_prob": 0.8319
+          }
+        ]
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_test": 37,
+          "n_test_subjects": 6,
+          "auc": 0.935483870967742,
+          "best_params": {
+            "clf__learning_rate": 0.1,
+            "clf__max_depth": 3,
+            "clf__n_estimators": 100
+          },
+          "inner_auc": 0.7778897849462366
+        },
+        {
+          "fold": 1,
+          "n_test": 37,
+          "n_test_subjects": 6,
+          "auc": 0.45698924731182794,
+          "best_params": {
+            "clf__learning_rate": 0.1,
+            "clf__max_depth": 2,
+            "clf__n_estimators": 300
+          },
+          "inner_auc": 0.8826836917562724
+        },
+        {
+          "fold": 2,
+          "n_test": 37,
+          "n_test_subjects": 6,
+          "auc": 1.0,
+          "best_params": {
+            "clf__learning_rate": 0.1,
+            "clf__max_depth": 3,
+            "clf__n_estimators": 100
+          },
+          "inner_auc": 0.6237679211469535
+        },
+        {
+          "fold": 3,
+          "n_test": 42,
+          "n_test_subjects": 7,
+          "auc": 0.4953703703703704,
+          "best_params": {
+            "clf__learning_rate": 0.05,
+            "clf__max_depth": 3,
+            "clf__n_estimators": 100
+          },
+          "inner_auc": 0.7892876344086022
+        },
+        {
+          "fold": 4,
+          "n_test": 42,
+          "n_test_subjects": 7,
+          "auc": 0.826388888888889,
+          "best_params": {
+            "clf__learning_rate": 0.05,
+            "clf__max_depth": 3,
+            "clf__n_estimators": 300
+          },
+          "inner_auc": 0.8245221027479093
+        }
+      ],
+      "repeated_cv": {
+        "n_repeats": 10,
+        "aucs": [
+          0.592828798185941,
+          0.4444444444444444,
+          0.671485260770975,
+          0.5007086167800454,
+          0.667517006802721,
+          0.560374149659864,
+          0.6267006802721089,
+          0.6118197278911565,
+          0.687783446712018,
+          0.6045918367346939
+        ],
+        "mean": 0.5968253968253967,
+        "sd": 0.07733441251700403,
+        "range": [
+          0.4444444444444444,
+          0.687783446712018
+        ]
+      }
+    }
+  },
+  "chosen_model": "logreg",
+  "threshold": 0.8387272401623085,
+  "threshold_rule": "predict 'above threshold' if calibrated probability >= threshold; chosen on pooled out-of-fold recording-level probabilities for 80% specificity",
+  "aggregation": "median probability over the 3 repetitions of a session",
+  "features": [
+    "MDVP:Fo(Hz)",
+    "MDVP:Fhi(Hz)",
+    "MDVP:Flo(Hz)",
+    "MDVP:Jitter(%)",
+    "MDVP:Jitter(Abs)",
+    "MDVP:RAP",
+    "MDVP:PPQ",
+    "Jitter:DDP",
+    "MDVP:Shimmer",
+    "MDVP:Shimmer(dB)",
+    "Shimmer:APQ3",
+    "Shimmer:APQ5",
+    "MDVP:APQ",
+    "Shimmer:DDA",
+    "NHR",
+    "HNR",
+    "RPDE",
+    "DFA",
+    "spread1",
+    "spread2",
+    "D2",
+    "PPE"
+  ],
+  "feature_notes_approximate": [
+    "MDVP:Fhi(Hz)",
+    "MDVP:Flo(Hz)",
+    "NHR",
+    "RPDE",
+    "DFA",
+    "spread1",
+    "spread2",
+    "D2",
+    "PPE"
+  ],
+  "fast_mode": false,
+  "final_fit": {
+    "best_params": {
+      "clf__C": 0.01,
+      "select__k": "all"
+    },
+    "inner_auc": 0.8535448028673835,
+    "n_train": 195
+  },
+  "train_seconds": 12.7
+}

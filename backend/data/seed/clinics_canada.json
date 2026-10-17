@@ -1,0 +1,111 @@
+{
+  "_note": "FICTIONAL demo clinics in Toronto for the hackathon. Names, addresses and contacts are invented: e-mails are @*.example.com (reserved, undeliverable), phone numbers are in the fictional 555-01xx range, websites point at the backend's own mock clinic ({BASE_URL} is replaced with settings.base_url at load time). Do not contact.",
+  "timezone": "America/Toronto",
+  "clinics": [
+    {
+      "id": "seed_bloor_heart",
+      "name": "Bloor Street Heart Clinic (demo)",
+      "specialty": "cardiology", "kind": "specialist",
+      "address": "401 Bloor St W, Toronto, ON M5S 1X5 (fictional)",
+      "lat": 43.6672, "lng": -79.4036,
+      "email": "booking@bloorheart.example.com",
+      "phone": "+1 416-555-0101",
+      "website": "{BASE_URL}/mock-clinic",
+      "rating": 4.6,
+      "opening_hours": {"mon": [["08:30", "16:30"]], "tue": [["08:30", "16:30"]], "wed": [["08:30", "16:30"]],
+                        "thu": [["08:30", "19:00"]], "fri": [["08:30", "15:00"]]}
+    },
+    {
+      "id": "seed_queen_west_cardio",
+      "name": "Queen West Cardiology Associates (demo)",
+      "specialty": "cardiology", "kind": "specialist",
+      "address": "720 Queen St W, Toronto, ON M6J 1E8 (fictional)",
+      "lat": 43.6476, "lng": -79.4040,
+      "email": "referrals@queenwestcardio.example.com",
+      "phone": "+1 416-555-0102",
+      "website": "{BASE_URL}/mock-clinic/email-only",
+      "rating": 4.2,
+      "opening_hours": {"mon": [["09:00", "17:00"]], "tue": [["09:00", "17:00"]], "wed": [["09:00", "12:00"], ["13:00", "17:00"]],
+                        "thu": [["09:00", "17:00"]], "fri": [["09:00", "17:00"]]}
+    },
+    {
+      "id": "seed_midtown_memory",
+      "name": "Midtown Memory Clinic (demo)",
+      "specialty": "memory_clinic", "kind": "specialist",
+      "address": "1440 Yonge St, Toronto, ON M4T 1Y5 (fictional)",
+      "lat": 43.6880, "lng": -79.3940,
+      "email": "intake@midtownmemory.example.com",
+      "phone": "+1 416-555-0103",
+      "website": "{BASE_URL}/mock-clinic/login",
+      "rating": 4.4,
+      "opening_hours": {"mon": [["09:00", "16:00"]], "tue": [["09:00", "16:00"]], "wed": [["09:00", "16:00"]],
+                        "thu": [["09:00", "16:00"]]}
+    },
+    {
+      "id": "seed_danforth_neuro",
+      "name": "Danforth Neurology & Movement Disorders (demo)",
+      "specialty": "neurology", "kind": "specialist",
+      "address": "880 Danforth Ave, Toronto, ON M4J 1L6 (fictional)",
+      "lat": 43.6790, "lng": -79.3450,
+      "email": "appointments@danforthneuro.example.com",
+      "phone": "+1 416-555-0104",
+      "website": "{BASE_URL}/mock-clinic/captcha",
+      "rating": 4.5,
+      "opening_hours": {"mon": [["08:00", "16:00"]], "tue": [["08:00", "16:00"]], "wed": [["08:00", "16:00"]],
+                        "thu": [["08:00", "16:00"]], "fri": [["08:00", "13:00"]]}
+    },
+    {
+      "id": "seed_harbord_geriatrics",
+      "name": "Harbord Geriatric Medicine (demo)",
+      "specialty": "geriatrics", "kind": "specialist",
+      "address": "120 Harbord St, Toronto, ON M5S 1G6 (fictional)",
+      "lat": 43.6630, "lng": -79.4040,
+      "email": "clinic@harbordgeriatrics.example.com",
+      "phone": "+1 416-555-0105",
+      "website": "{BASE_URL}/mock-clinic",
+      "rating": 4.7,
+      "opening_hours": {"tue": [["09:00", "17:00"]], "wed": [["09:00", "17:00"]], "thu": [["09:00", "17:00"]],
+                        "fri": [["09:00", "17:00"]]}
+    },
+    {
+      "id": "seed_kensington_fht",
+      "name": "Kensington Family Health Team (demo)",
+      "specialty": "family_medicine", "kind": "family",
+      "address": "210 Augusta Ave, Toronto, ON M5T 2L6 (fictional)",
+      "lat": 43.6545, "lng": -79.4005,
+      "email": "frontdesk@kensingtonfht.example.com",
+      "phone": "+1 416-555-0106",
+      "website": "{BASE_URL}/mock-clinic/email-only",
+      "rating": 4.1,
+      "opening_hours": {"mon": [["08:00", "20:00"]], "tue": [["08:00", "20:00"]], "wed": [["08:00", "20:00"]],
+                        "thu": [["08:00", "20:00"]], "fri": [["08:00", "17:00"]], "sat": [["09:00", "13:00"]]}
+    },
+    {
+      "id": "seed_yonge_eglinton_walkin",
+      "name": "Yonge & Eglinton Walk-in Clinic (demo)",
+      "specialty": "walk_in", "kind": "walk_in",
+      "address": "2300 Yonge St, Toronto, ON M4P 1E4 (fictional)",
+      "lat": 43.7066, "lng": -79.3986,
+      "email": null,
+      "phone": "+1 416-555-0107",
+      "website": null,
+      "rating": 3.9,
+      "opening_hours": {"mon": [["09:00", "21:00"]], "tue": [["09:00", "21:00"]], "wed": [["09:00", "21:00"]],
+                        "thu": [["09:00", "21:00"]], "fri": [["09:00", "21:00"]], "sat": [["10:00", "16:00"]],
+                        "sun": [["10:00", "16:00"]]}
+    },
+    {
+      "id": "seed_lakeshore_general",
+      "name": "Toronto Lakeshore General Hospital — Outpatient Clinics (demo)",
+      "specialty": "hospital", "kind": "hospital",
+      "address": "3100 Lake Shore Blvd W, Toronto, ON M8V 1K2 (fictional)",
+      "lat": 43.6020, "lng": -79.5040,
+      "email": "outpatient.booking@lakeshoregeneral.example.com",
+      "phone": "+1 416-555-0108",
+      "website": "{BASE_URL}/mock-clinic/email-only",
+      "rating": 3.8,
+      "opening_hours": {"mon": [["08:00", "16:00"]], "tue": [["08:00", "16:00"]], "wed": [["08:00", "16:00"]],
+                        "thu": [["08:00", "16:00"]], "fri": [["08:00", "16:00"]]}
+    }
+  ]
+}

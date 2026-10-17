@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="{{ d.language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ L.title }} — {{ d.patient.name }}</title>
+<style>
+  :root { --ink:#1b1f24; --muted:#5b6470; --line:#d7dce2; --accent:#1f5f8b; --warn:#9a5b00; --bg:#ffffff; --soft:#f4f6f8; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font: 14px/1.55 -apple-system, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--accent); color: var(--accent); }
+  h3 { font-size: 14px; margin: 16px 0 6px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .share-banner { background:#fff6e0; border-bottom:1px solid #e8c766; color:#5a4300; padding:10px 16px; text-align:center; font-weight:600; }
+  .summary { background: var(--soft); border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 4px; }
+  .summary .src { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  table { width:100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; }
+  .tablewrap { overflow-x: auto; }
+  .score { font-size: 26px; font-weight: 700; }
+  .label { display:block; color: var(--warn); font-weight: 600; font-size: 13px; }
+  .pill { display:inline-block; padding: 1px 8px; border-radius: 10px; background: var(--soft); border:1px solid var(--line); font-size: 12px; }
+  .flag { color: var(--warn); }
+  .muted { color: var(--muted); }
+  .exp { color: var(--warn); font-size: 12px; }
+  ol.refs li { margin-bottom: 4px; }
+  footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .print-btn { float:right; font-size: 12px; }
+  @page { size: A4; margin: 16mm 14mm; }
+  @media print {
+    body { font-size: 11pt; }
+    main { max-width: none; padding: 0; }
+    .print-btn { display: none; }
+    .share-banner { background: none; border: 1px solid #999; }
+    h2 { break-after: avoid; }
+    table, .summary, li { break-inside: avoid; }
+    .tablewrap { overflow: visible; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+{{ share_marker | safe }}
+<main>
+  <button class="print-btn" onclick="window.print()">Print / 印刷</button>
+  <h1>{{ L.title }}</h1>
+  <div class="meta">
+    {{ L.patient }}: <strong>{{ d.patient.name }}</strong>
+    · {{ L.age }}: {{ d.patient.age or "—" }} · {{ L.sex }}: {{ d.patient.sex or "—" }}<br>
+    {{ L.pathway }}: {{ d.pathway_name }} · {{ L.level }}: <span class="pill">{{ d.level }}</span>
+    · {{ L.generated }}: {{ d.generated_at }}
+  </div>
+
+  <h2>{{ L.summary }}</h2>
+  <div class="summary">
+    <p>{{ d.summary }}</p>
+    <div class="src">{{ "AI-drafted from the structured data below" if d.summary_source == "llm" else "Generated from the structured data below" }}</div>
+  </div>
+
+  <h2>{{ L.reason }}</h2>
+  <div class="tablewrap"><table>
+    <tr><th>{{ L.rule }}</th><th>{{ L.version }}</th><th>{{ L.finding }}</th></tr>
+    {% for r in d.reason_for_referral %}
+    <tr><td>{{ r.rule_id }}</td><td>{{ r.version }}</td>
+        <td>{{ r.text }}{% if r.evidence %}<br><span class="muted">{{ r.evidence | join("; ") }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+
+  <h2>{{ L.observed }}</h2>
+  {% if d.bp %}
+  <h3>{{ L.bp }}</h3>
+  <p>{{ L.bp_mean }}: <strong>{{ d.bp.mean_systolic }}/{{ d.bp.mean_diastolic }} mmHg</strong>
+     ({{ d.bp.n_days }} {{ L.days }}, {{ d.bp.window_start }} – {{ d.bp.window_end }})
+     {% if d.bp.morning %}· {{ L.morning }} {{ d.bp.morning.systolic }}/{{ d.bp.morning.diastolic }}{% endif %}
+     {% if d.bp.evening %}· {{ L.evening }} {{ d.bp.evening.systolic }}/{{ d.bp.evening.diastolic }}{% endif %}
+     <br><span class="muted">{{ d.bp.method }}</span></p>
+  <div class="tablewrap"><table>
+    <tr><th>{{ L.date }}</th><th>{{ L.session }}</th><th>{{ L.sys_dia }}</th><th>{{ L.pulse }}</th><th>{{ L.flags }}</th></tr>
+    {% for r in d.bp.readings %}
+    <tr{% if not r.valid %} class="muted"{% endif %}>
+      <td>{{ r.measured_at }}</td><td>{{ r.session }}</td><td>{{ r.systolic }}/{{ r.diastolic }}</td><td>{{ r.pulse or "—" }}</td>
+      <td>{% if r.irregular_pulse_flag %}<span class="flag">{{ L.irregular }}</span> {% endif %}{% if not r.valid %}{{ L.invalid }}: {{ r.invalid_reason }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+  {% if d.rhythm %}
+  <h3>{{ L.rhythm }}</h3>
+  <div class="tablewrap"><table>
+    <tr><th>{{ L.date }}</th><th>{{ L.source }}</th><th>{{ L.result }}</th><th>{{ L.device_label }}</th></tr>
+    {% for r in d.rhythm %}<tr><td>{{ r.recorded_at }}</td><td>{{ r.source_name }}</td><td>{{ r.label }}</td><td>{{ r.raw_label or "—" }}</td></tr>{% endfor %}
+  </table></div>
+  {% endif %}
+  {% if d.tasks %}
+  <h3>{{ L.tasks }}</h3>
+  <div class="tablewrap"><table>
+    <tr><th>{{ L.task }}</th><th>{{ L.latest }}</th><th>{{ L.date }}</th><th>{{ L.baseline }}</th><th>{{ L.n }}</th></tr>
+    {% for t in d.tasks %}<tr><td>{{ t.task }}</td><td>{{ t.latest_score }}</td><td>{{ t.latest_at }}</td><td>{{ t.baseline_median if t.baseline_median is not none else "—" }}</td><td>{{ t.baseline_n }}</td></tr>{% endfor %}
+  </table></div>
+  {% endif %}
+  {% if not (d.bp or d.rhythm or d.tasks) %}<p class="muted">{{ L.none_recorded }}</p>{% endif %}
+
+  <h2>{{ L.context }}</h2>
+  {% if d.patient_context %}
+  <div class="tablewrap"><table>
+    <tr><th>{{ L.date }}</th><th>{{ L.kind }}</th><th>{{ L.finding }}</th><th>{{ L.severity }}</th><th>{{ L.onset }}</th><th>{{ L.details }}</th></tr>
+    {% for o in d.patient_context %}<tr><td>{{ o.date }}</td><td>{{ o.kind }}</td><td>{{ o.label }}</td><td>{{ o.severity or "—" }}</td><td>{{ o.onset or "—" }}</td><td>{{ o.details or "" }}</td></tr>{% endfor %}
+  </table></div>
+  {% else %}<p class="muted">{{ L.none_recorded }}</p>{% endif %}
+
+  <h2>{{ L.medications }}</h2>
+  {% if d.medications %}<ul>{% for m in d.medications %}<li>{{ m.name }} {{ m.dose or "" }} {{ m.schedule or "" }}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">{{ L.none_recorded }}</p>{% endif %}
+
+  <h2>{{ L.scores }}</h2>
+  <h3>{{ L.priority }}</h3>
+  <p><span class="score">{{ d.priority.score if d.priority.score is not none else "—" }} / 100</span>
+     <span class="label">{{ d.priority.label }}</span></p>
+  {% if d.probabilities %}
+  <h3>{{ L.probabilities }}</h3>
+  <ul>
+  {% for p in d.probabilities %}
+    <li><strong>{{ p.label }}</strong>:
+      {% if p.value_display is not none %}{{ p.value_display }}%{% else %}{{ p.reason or "—" }}{% endif %}
+      {% if p.category_label %} — {{ p.category_label }}{% endif %}
+      <span class="muted">({{ L.population_estimate }})</span>
+      {% if p.inputs_used %}<br><span class="muted">{{ L.inputs_used }}: {{ p.inputs_used | join(", ") }}</span>{% endif %}
+      {% if p.missing_inputs %}<br><span class="muted">{{ L.missing }}: {{ p.missing_inputs | join(", ") }}</span>{% endif %}
+      {% if p.note %}<br><span class="muted">{{ p.note }}</span>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+  {% if d.model_scores %}
+  <h3>{{ L.models }}</h3>
+  <div class="tablewrap"><table>
+    <tr><th>{{ L.model }}</th><th>{{ L.version }}</th><th>{{ L.score }}</th><th>{{ L.dataset }}</th></tr>
+    {% for m in d.model_scores %}
+    <tr><td>{{ m.label }}{% if m.experimental %}<br><span class="exp">experimental</span>{% endif %}</td><td>{{ m.version }}</td>
+        <td>{{ m.probability if m.probability is not none else "—" }}</td>
+        <td>{{ m.dataset }}{% if m.note %}<br><span class="muted">{{ m.note }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+  {% if d.rule_versions %}<p class="muted">{{ L.rules_versions }}: {% for k, v in d.rule_versions | dictsort %}{{ k }} v{{ v }}{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+
+  <h2>{{ L.data_provenance }}</h2>
+  <ul>
+    {% for p in d.data_provenance %}<li>{{ p.data }}: {{ p.sources | join(", ") }} (n={{ p.n }})</li>{% endfor %}
+    {% if d.missing_inputs %}<li>{{ L.missing }}: {{ d.missing_inputs | join(", ") }}</li>{% endif %}
+    {% if d.data_quality %}<li>{{ L.data_quality }}: {% for k, v in d.data_quality | dictsort %}{{ k }}={{ v }}{{ ", " if not loop.last }}{% endfor %}</li>{% endif %}
+  </ul>
+
+  {% if d.preventive_measures %}
+  <h2>{{ L.preventive }}</h2>
+  <ul>{% for m in d.preventive_measures %}<li>{{ m.text }}{% if m.ref %} [{{ m.ref }}]{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <h2>{{ L.references }}</h2>
+  {% if d.references %}
+  <ol class="refs">
+    {% for r in d.references %}
+    <li>{% if r.authors %}{{ r.authors.rstrip(".") }}. {% endif %}{% if r.url %}<a href="{{ r.url }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}{% if r.year %} ({{ r.year }}){% endif %}{% if r.doi %}. doi:{{ r.doi }}{% endif %}</li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="muted">{{ L.none_recorded }}</p>{% endif %}
+
+  <footer><strong>{{ L.disclaimer }}:</strong> {{ d.disclaimer }}<br>Report for assessment {{ d.assessment_id }} · assessed {{ d.assessed_at }}</footer>
+</main>
+</body>
+</html>

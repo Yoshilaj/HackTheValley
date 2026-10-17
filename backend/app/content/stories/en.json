@@ -1,0 +1,182 @@
+{
+  "bank_version": "2026.10.1",
+  "language": "en",
+  "stories": [
+    {
+      "id": "en-01-market",
+      "language": "en",
+      "title": "The Forgotten Umbrella",
+      "text": "On Saturday morning, Helen Ward took the bus to the farmers market in Riverside. She wanted fresh tomatoes and some yellow flowers for her sister Margaret, who was coming to lunch. At the first stall, an old farmer named Tom sold her six ripe tomatoes and a small jar of honey. The flower stall had no yellow flowers left, so Helen chose white ones instead. On the way home, she realised that she had left her umbrella at the honey stall. She hurried back, and Tom was waiting for her with the umbrella under his table. Helen thanked him and bought another jar of honey. When Margaret arrived at noon, they ate tomato soup and laughed about the umbrella.",
+      "word_count": 119,
+      "sentence_count": 8,
+      "entities": [
+        "Helen Ward",
+        "Riverside",
+        "Margaret",
+        "Tom"
+      ],
+      "content_units": [
+        "Helen went to the market on Saturday morning",
+        "She took the bus",
+        "The market was in Riverside",
+        "She wanted tomatoes and yellow flowers",
+        "Her sister Margaret was coming to lunch",
+        "Tom the farmer sold her six tomatoes and honey",
+        "There were no yellow flowers so she chose white ones",
+        "She left her umbrella at the honey stall",
+        "She went back and Tom had kept the umbrella",
+        "She bought another jar of honey",
+        "They ate tomato soup at noon and laughed"
+      ],
+      "theme": "shopping",
+      "version": "2026.10.1"
+    },
+    {
+      "id": "en-02-seaside",
+      "language": "en",
+      "title": "A Trip to Westport",
+      "text": "Last spring, Peter Lane and his wife Susan travelled by train to the seaside town of Westport. They were going to visit an old friend, Daniel, who ran a small bakery near the harbour. The train was delayed for an hour because of strong wind, so they bought sandwiches at the station. When they finally arrived, it was raining heavily. Daniel met them at the station in his blue van and drove them to the bakery. A warm apple cake was waiting for them on the table. In the afternoon the sun came out, and the three friends walked slowly along the harbour. Before they left, Daniel gave Susan a loaf of bread for their neighbour, Mrs. Green.",
+      "word_count": 118,
+      "sentence_count": 9,
+      "entities": [
+        "Peter Lane",
+        "Susan",
+        "Westport",
+        "Daniel",
+        "Mrs. Green"
+      ],
+      "content_units": [
+        "Peter and his wife Susan travelled by train",
+        "They went to the seaside town of Westport",
+        "They visited their old friend Daniel",
+        "Daniel ran a bakery near the harbour",
+        "The train was an hour late because of wind",
+        "They bought sandwiches at the station",
+        "It was raining when they arrived",
+        "Daniel picked them up in a blue van",
+        "An apple cake was waiting at the bakery",
+        "The sun came out and they walked along the harbour",
+        "Daniel gave them bread for their neighbour Mrs. Green"
+      ],
+      "theme": "travel",
+      "version": "2026.10.1"
+    },
+    {
+      "id": "en-03-cake",
+      "language": "en",
+      "title": "The Birthday Cake",
+      "text": "Kate Morris wanted to make a birthday cake for her grandson Leo, who was turning seven. On Thursday she walked to the small shop on Hill Street to buy flour, eggs and strawberries. The shopkeeper, Mr. Brown, said the strawberries had sold out that morning, so she bought peaches instead. At home, Kate baked the cake in the afternoon, but the oven was too hot and the edges turned dark. She cut off the dark edges and covered the cake with cream and sliced peaches. On Sunday, Leo and his mother Emma came to visit. Leo blew out all seven candles and said it was the best cake he had ever eaten.",
+      "word_count": 112,
+      "sentence_count": 8,
+      "entities": [
+        "Kate Morris",
+        "Leo",
+        "Hill Street",
+        "Mr. Brown",
+        "Emma"
+      ],
+      "content_units": [
+        "Kate wanted to make a birthday cake",
+        "The cake was for her grandson Leo",
+        "Leo was turning seven",
+        "She walked to the shop on Hill Street on Thursday",
+        "She went to buy flour, eggs and strawberries",
+        "Mr. Brown said the strawberries were sold out",
+        "She bought peaches instead",
+        "The oven was too hot and the edges burned",
+        "She cut off the edges and added cream and peaches",
+        "Leo and his mother Emma visited on Sunday",
+        "Leo blew out seven candles and loved the cake"
+      ],
+      "theme": "family",
+      "version": "2026.10.1"
+    },
+    {
+      "id": "en-04-cat",
+      "language": "en",
+      "title": "The Cat on the Roof",
+      "text": "Every morning, George Hill waters the vegetables in the small garden behind his house. One Tuesday, he noticed that his neighbour's grey cat, Pepper, was sitting on the roof of his shed and could not get down. George fetched a ladder from the garage, but it was too short to reach the roof. He telephoned his neighbour, Ruth Allen, who was shopping in the town centre. While he waited, a young man named Sam, who worked at the post office, stopped his bicycle and offered to help. Sam climbed onto the fence, reached across the roof and carried Pepper down safely. That evening, Ruth brought George and Sam a basket of fresh oranges to say thank you.",
+      "word_count": 117,
+      "sentence_count": 7,
+      "entities": [
+        "George Hill",
+        "Pepper",
+        "Ruth Allen",
+        "Sam",
+        "the post office"
+      ],
+      "content_units": [
+        "George waters his vegetable garden every morning",
+        "On Tuesday the neighbour's grey cat was on his shed roof",
+        "The cat was called Pepper and could not get down",
+        "George got a ladder from the garage",
+        "The ladder was too short",
+        "He phoned his neighbour Ruth, who was shopping in town",
+        "Sam from the post office stopped his bicycle to help",
+        "Sam climbed the fence and brought the cat down",
+        "Ruth brought them a basket of oranges that evening"
+      ],
+      "theme": "neighbours",
+      "version": "2026.10.1"
+    },
+    {
+      "id": "en-05-photo",
+      "language": "en",
+      "title": "The Photography Class",
+      "text": "On Wednesday, Mary Clark went to the library in Oakfield to return three books about birds. At the front desk, the librarian, James Reed, told her about a free photography class that was starting the next week. Mary had an old camera that she had not used for years, so she decided to join. On the first day, the teacher, Linda, asked everyone to go to the park and photograph one thing. Mary walked to the pond and took a picture of two white ducks. The following week, Linda printed the best photographs and hung them on the library wall. Mary was surprised to see her ducks in the middle, and she phoned her son to come and see them.",
+      "word_count": 120,
+      "sentence_count": 7,
+      "entities": [
+        "Mary Clark",
+        "Oakfield",
+        "James Reed",
+        "Linda"
+      ],
+      "content_units": [
+        "Mary went to the library on Wednesday",
+        "The library was in Oakfield",
+        "She returned three books about birds",
+        "The librarian James told her about a free photography class",
+        "She had an old camera she had not used for years",
+        "She decided to join the class",
+        "The teacher Linda asked them to photograph something in the park",
+        "Mary photographed two white ducks at the pond",
+        "Linda hung the best photos on the library wall",
+        "Mary's ducks were in the middle",
+        "She phoned her son to come and see"
+      ],
+      "theme": "hobby",
+      "version": "2026.10.1"
+    },
+    {
+      "id": "en-06-soup",
+      "language": "en",
+      "title": "The Soup Festival",
+      "text": "Every November, the town of Maple Creek holds a soup festival. This year, Frank Wilson and his friend Alice decided to cook a large pot of vegetable soup together. On Friday evening, they bought carrots, potatoes and onions at the market and chopped them in Alice's kitchen. The next morning, they carried the heavy pot to the town hall in Frank's car. Halfway there, the car had a flat tyre, so a neighbour, Ken Ito, drove them the rest of the way. At the festival, people tasted forty different soups and voted for their favourite. Frank and Alice won second prize, a red frying pan, and they gave the first bowl of soup to Ken.",
+      "word_count": 115,
+      "sentence_count": 7,
+      "entities": [
+        "Maple Creek",
+        "Frank Wilson",
+        "Alice",
+        "Ken Ito",
+        "the town hall"
+      ],
+      "content_units": [
+        "Maple Creek has a soup festival every November",
+        "Frank and his friend Alice made vegetable soup",
+        "They bought carrots, potatoes and onions on Friday",
+        "They chopped the vegetables in Alice's kitchen",
+        "They took the pot to the town hall in Frank's car",
+        "The car had a flat tyre on the way",
+        "Their neighbour Ken drove them the rest of the way",
+        "People tasted forty soups and voted",
+        "Frank and Alice won second prize",
+        "The prize was a red frying pan",
+        "They gave the first bowl to Ken"
+      ],
+      "theme": "community",
+      "version": "2026.10.1"
+    }
+  ]
+}

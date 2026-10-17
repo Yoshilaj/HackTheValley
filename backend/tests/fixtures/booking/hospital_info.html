@@ -1,0 +1,40 @@
+<!doctype html><html><head><title>Princess Margaret Cancer Centre - UHN</title></head>
+<body>
+<header>
+  <form action="/search" method="get" role="search">
+    <label for="q">Search UHN</label><input id="q" name="q" type="search" placeholder="Search">
+    <button type="submit">Search</button>
+  </form>
+  <nav><a href="/PMCC/Patients">Patients &amp; Visitors</a> <a href="/PMCC/Appointments">Your appointments</a>
+  <a href="/PMCC/Referrals">Referring physicians</a> <a href="/Contact">Contact us</a></nav>
+</header>
+<main>
+  <h1>Princess Margaret Cancer Centre</h1>
+  <p>Before your first appointment, your doctor must send a referral. Appointments are scheduled by the
+     clinic; call 416-946-2000 to reschedule an appointment.</p>
+  <h2>Find a doctor</h2>
+  <form action="/PMCC/FindADoctor" method="get">
+    <label for="fn">Doctor name</label><input id="fn" name="doctor_name">
+    <label for="sp">Specialty</label><select id="sp" name="specialty"><option>Oncology</option></select>
+    <button type="submit">Find</button>
+  </form>
+</main>
+<footer>
+  <h2>Stay informed</h2>
+  <form action="https://newsletter.uhn.ca/subscribe" method="post">
+    <label for="nf">First name</label><input id="nf" name="first_name">
+    <label for="nl">Last name</label><input id="nl" name="last_name">
+    <label for="ne">E-mail</label><input id="ne" name="email" type="email" required>
+    <label for="np">Phone (optional)</label><input id="np" name="phone" type="tel">
+    <label><input type="checkbox" name="consent" required> Yes, send me the UHN newsletter about appointments,
+      events and research.</label>
+    <button type="submit">Subscribe</button>
+  </form>
+  <form action="/Feedback" method="post">
+    <label for="cn">Your name</label><input id="cn" name="name">
+    <label for="ce">E-mail</label><input id="ce" name="email" type="email">
+    <label for="cm">Message about your visit or appointment</label><textarea id="cm" name="message"></textarea>
+    <button type="submit">Send</button>
+  </form>
+</footer>
+</body></html>

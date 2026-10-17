@@ -1,0 +1,9 @@
+[
+ {"id": "src_test_bp_jats", "title": "Home blood pressure monitoring protocol (test article)", "authors": "Test A", "year": 2020,
+  "journal": "Test J", "doi": "10.0000/test.1", "url": "https://example.org/bp", "pathway_tags": ["cardio"], "kind": "paper",
+  "file": "bp_article.xml"},
+ {"id": "src_test_memory_html", "title": "Story recall and memory (test page)", "authors": "Test B", "year": 2023,
+  "url": "https://example.org/memory", "pathway_tags": ["cognitive"], "kind": "device_documentation", "file": "memory_page.html"},
+ {"id": "src_test_notes", "title": "Voice tremor metadata-only source", "authors": "Test C", "year": 2008, "journal": "Test Trans",
+  "url": "https://example.org/voice", "pathway_tags": ["parkinsons"], "kind": "paper", "file": null}
+]

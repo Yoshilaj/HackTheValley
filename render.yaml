@@ -1,0 +1,111 @@
+# Render Blueprint (repo root; one source of truth). The service builds from backend/ (rootDir).
+# Database: use Neon or Supabase Postgres (pgvector available; the app runs
+# CREATE EXTENSION IF NOT EXISTS vector at startup) and paste its URL into DATABASE_URL.
+# Render's own Postgres also works if the vector extension is enabled.
+#
+# Sized for the 512 MB free instance: Gemini + ElevenLabs are remote; the only local model is the
+# quantized nomic embedder (~285 MB RSS once loaded, baked into the image at build time, see
+# backend/Dockerfile). The cross-encoder reranker (+140 MB) and the Playwright web-booking channel
+# (~340 MB peak per run) do not fit next to it, so RERANKER=identity and WEB_BOOKING_ENABLED=false
+# (bookings go by e-mail / phone). On a >= 1 GB instance: RERANKER=cross_encoder, build with
+# --build-arg WEB_BOOKING=1 --build-arg WITH_RERANKER=1 and set WEB_BOOKING_ENABLED=true.
+# "sync: false" = secret, entered in the Render dashboard (never committed).
+services:
+  - type: web
+    name: hackthevalley-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # --- runtime switches
+      - key: DEV_MODE
+        value: "false"
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: SCHEDULER_TIMEZONE
+        value: America/Toronto
+      - key: STORAGE_DIR
+        value: ./data/uploads
+      - key: LOG_JSON
+        value: "true"
+      # --- providers
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: STT_PROVIDER
+        value: elevenlabs
+      - key: TTS_PROVIDER
+        value: elevenlabs
+      - key: EMBEDDING_PROVIDER
+        value: local
+      - key: EMBEDDING_MODEL
+        value: nomic-ai/nomic-embed-text-v1.5-Q
+      - key: RERANKER
+        value: identity
+      - key: FASTEMBED_CACHE_PATH
+        value: /opt/fastembed   # must match the Dockerfile (model baked in at build time)
+      - key: LOCAL_EMBED_MAX_TOKENS
+        value: "512"            # caps forward-pass memory if the corpus is ever ingested on this box
+      # --- booking agent
+      - key: BOOKING_TARGET_MODE
+        value: sandbox          # never "live" for the demo: outbound goes to the SANDBOX_* targets only
+      - key: WEB_BOOKING_ENABLED
+        value: "false"
+      - key: SANDBOX_CLINIC_EMAIL
+        sync: false
+      - key: SANDBOX_CLINIC_PHONE
+        sync: false
+      - key: SANDBOX_CLINIC_WEBSITE
+        sync: false
+      - key: BOOKING_REPLY_DOMAIN
+        sync: false
+      # --- infrastructure / auth
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_SECRET
+        generateValue: true
+      - key: APPOINTMENT_TOKEN_SECRET
+        generateValue: true
+      - key: FIELD_ENCRYPTION_KEY
+        sync: false   # Fernet key; must be a valid base64 32-byte key, so not auto-generated
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: BASE_URL
+        sync: false   # this service's public https URL (webhooks, share links, OAuth redirect)
+      # --- third-party keys (secrets)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_AGENT_ID
+        sync: false
+      - key: ELEVENLABS_AGENT_PHONE_NUMBER_ID
+        sync: false
+      - key: ELEVENLABS_WEBHOOK_SECRET
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
+      - key: CLINIC_FALLBACK_EMAIL
+        sync: false
+      - key: HF_TOKEN
+        sync: false

@@ -1,0 +1,325 @@
+{
+  "version": "2026.10.1",
+  "spec": "phase-a-assessments.md §1.4 (Linus-informed 3-word delayed recall)",
+  "notes": "Unrelated concrete nouns, high imageability. JA words are written in the form TTS reads unambiguously; each JA item lists accepted variants (kanji/kana) for scoring.",
+  "sets": [
+    {
+      "id": "wr-01",
+      "en": [
+        "apple",
+        "chair",
+        "river"
+      ],
+      "ja": [
+        "りんご",
+        "いす",
+        "かわ"
+      ],
+      "variants": {
+        "en": {
+          "apple": [],
+          "chair": [],
+          "river": []
+        },
+        "ja": {
+          "りんご": [
+            "林檎"
+          ],
+          "いす": [
+            "椅子"
+          ],
+          "かわ": [
+            "川"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-02",
+      "en": [
+        "button",
+        "horse",
+        "candle"
+      ],
+      "ja": [
+        "ボタン",
+        "うま",
+        "ろうそく"
+      ],
+      "variants": {
+        "en": {
+          "button": [],
+          "horse": [],
+          "candle": []
+        },
+        "ja": {
+          "ボタン": [],
+          "うま": [
+            "馬"
+          ],
+          "ろうそく": [
+            "蝋燭",
+            "ロウソク"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-03",
+      "en": [
+        "bread",
+        "mountain",
+        "pencil"
+      ],
+      "ja": [
+        "パン",
+        "やま",
+        "えんぴつ"
+      ],
+      "variants": {
+        "en": {
+          "bread": [],
+          "mountain": [],
+          "pencil": []
+        },
+        "ja": {
+          "パン": [
+            "ぱん"
+          ],
+          "やま": [
+            "山"
+          ],
+          "えんぴつ": [
+            "鉛筆"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-04",
+      "en": [
+        "bicycle",
+        "lemon",
+        "window"
+      ],
+      "ja": [
+        "じてんしゃ",
+        "レモン",
+        "まど"
+      ],
+      "variants": {
+        "en": {
+          "bicycle": [
+            "bike"
+          ],
+          "lemon": [],
+          "window": []
+        },
+        "ja": {
+          "じてんしゃ": [
+            "自転車"
+          ],
+          "レモン": [
+            "れもん"
+          ],
+          "まど": [
+            "窓"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-05",
+      "en": [
+        "garden",
+        "spoon",
+        "tiger"
+      ],
+      "ja": [
+        "にわ",
+        "スプーン",
+        "とら"
+      ],
+      "variants": {
+        "en": {
+          "garden": [],
+          "spoon": [],
+          "tiger": []
+        },
+        "ja": {
+          "にわ": [
+            "庭"
+          ],
+          "スプーン": [],
+          "とら": [
+            "虎",
+            "トラ"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-06",
+      "en": [
+        "violin",
+        "ship",
+        "onion"
+      ],
+      "ja": [
+        "バイオリン",
+        "ふね",
+        "たまねぎ"
+      ],
+      "variants": {
+        "en": {
+          "violin": [],
+          "ship": [],
+          "onion": []
+        },
+        "ja": {
+          "バイオリン": [
+            "ヴァイオリン"
+          ],
+          "ふね": [
+            "船",
+            "舟"
+          ],
+          "たまねぎ": [
+            "玉ねぎ",
+            "玉葱",
+            "タマネギ"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-07",
+      "en": [
+        "clock",
+        "rabbit",
+        "shoe"
+      ],
+      "ja": [
+        "とけい",
+        "うさぎ",
+        "くつ"
+      ],
+      "variants": {
+        "en": {
+          "clock": [],
+          "rabbit": [],
+          "shoe": [
+            "shoes"
+          ]
+        },
+        "ja": {
+          "とけい": [
+            "時計"
+          ],
+          "うさぎ": [
+            "兎",
+            "ウサギ"
+          ],
+          "くつ": [
+            "靴"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-08",
+      "en": [
+        "piano",
+        "egg",
+        "forest"
+      ],
+      "ja": [
+        "ピアノ",
+        "たまご",
+        "もり"
+      ],
+      "variants": {
+        "en": {
+          "piano": [],
+          "egg": [],
+          "forest": []
+        },
+        "ja": {
+          "ピアノ": [],
+          "たまご": [
+            "卵",
+            "玉子"
+          ],
+          "もり": [
+            "森"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-09",
+      "en": [
+        "umbrella",
+        "desk",
+        "peach"
+      ],
+      "ja": [
+        "かさ",
+        "つくえ",
+        "もも"
+      ],
+      "variants": {
+        "en": {
+          "umbrella": [],
+          "desk": [],
+          "peach": []
+        },
+        "ja": {
+          "かさ": [
+            "傘"
+          ],
+          "つくえ": [
+            "机"
+          ],
+          "もも": [
+            "桃",
+            "モモ"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wr-10",
+      "en": [
+        "kettle",
+        "train",
+        "sunflower"
+      ],
+      "ja": [
+        "やかん",
+        "でんしゃ",
+        "ひまわり"
+      ],
+      "variants": {
+        "en": {
+          "kettle": [],
+          "train": [],
+          "sunflower": []
+        },
+        "ja": {
+          "やかん": [
+            "薬缶",
+            "ヤカン"
+          ],
+          "でんしゃ": [
+            "電車"
+          ],
+          "ひまわり": [
+            "向日葵",
+            "ヒマワリ"
+          ]
+        }
+      }
+    }
+  ]
+}

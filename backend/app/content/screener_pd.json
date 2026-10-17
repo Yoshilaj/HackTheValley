@@ -1,0 +1,77 @@
+{
+  "id": "pd",
+  "version": "2026.10.1",
+  "spec": "phase-a-assessments.md §5.1 (StrivePD-style + prodromal items)",
+  "response_type": "yes_no",
+  "period": {
+    "en": "In the last 3 months, have you noticed:",
+    "ja": "この3か月の間に、次のようなことがありましたか："
+  },
+  "rule": "PD-01: >=2 motor items, or 1 motor + >=1 non-motor -> watch (evaluated in app/ml/rules.py)",
+  "items": [
+    {
+      "id": "tremor_rest",
+      "type": "motor",
+      "text": {
+        "en": "New shaking of a hand while it is resting",
+        "ja": "手を休めているときに、新たにふるえが出る"
+      }
+    },
+    {
+      "id": "stiffness_slowness",
+      "type": "motor",
+      "text": {
+        "en": "Stiffness or slowness of movement",
+        "ja": "体のこわばりや、動作が遅くなった"
+      }
+    },
+    {
+      "id": "clumsiness_handwriting",
+      "type": "motor",
+      "text": {
+        "en": "Clumsiness, or handwriting that has become smaller",
+        "ja": "手先が不器用になった、または字が小さくなった"
+      }
+    },
+    {
+      "id": "soft_voice",
+      "type": "motor",
+      "text": {
+        "en": "A softer or quieter voice than before",
+        "ja": "声が以前より小さく、弱くなった"
+      }
+    },
+    {
+      "id": "smell_loss",
+      "type": "nonmotor",
+      "text": {
+        "en": "A reduced sense of smell",
+        "ja": "においが分かりにくくなった"
+      }
+    },
+    {
+      "id": "dream_enactment",
+      "type": "nonmotor",
+      "text": {
+        "en": "Acting out dreams, or shouting or moving during sleep",
+        "ja": "寝ている間に、夢に合わせて叫んだり体を動かしたりする"
+      }
+    },
+    {
+      "id": "constipation",
+      "type": "nonmotor",
+      "text": {
+        "en": "Constipation",
+        "ja": "便秘がある"
+      }
+    },
+    {
+      "id": "falls",
+      "type": "nonmotor",
+      "text": {
+        "en": "A fall or a near-fall",
+        "ja": "転んだ、または転びそうになった"
+      }
+    }
+  ]
+}
