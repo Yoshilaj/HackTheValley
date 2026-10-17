@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { activity } from "../data/placeholder.js";
 
 export default function ActivityChart() {
@@ -7,9 +8,9 @@ export default function ActivityChart() {
         <h2>Daily activity</h2>
         <div className="head-actions">
           <button className="chip">This week</button>
-          <button className="round-btn" aria-label="Open activity details">
+          <Link to="/vitals" className="round-btn" aria-label="Open vitals">
             ↗
-          </button>
+          </Link>
         </div>
       </div>
 

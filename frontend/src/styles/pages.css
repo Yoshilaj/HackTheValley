@@ -1,0 +1,73 @@
+/* Detail pages: vitals, appointments, medications */
+.page { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+h1:focus { outline: none; }
+.section-title { margin-bottom: 12px; }
+.section-title sup { color: var(--muted); }
+h3 { margin: 0; font-size: 16px; font-weight: 600; }
+
+.btn-primary { min-height: 44px; padding: 0 24px; border-radius: 999px; background: var(--primary); color: #fff; font-size: 14px; font-weight: 600; }
+.btn-primary:hover { background: var(--primary-strong); }
+
+/* vitals */
+.vitals-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.vital-tile { display: flex; flex-direction: column; gap: 8px; }
+.vital-tile.watch { background: #fffbeb; border-color: #fde68a; }
+.tile-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tile-head h2 { font-size: 15px; color: var(--muted); font-weight: 500; }
+.sparkline { width: 100%; max-width: 160px; height: 36px; fill: none; }
+.sparkline polyline { stroke: var(--primary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sparkline circle { fill: var(--primary); }
+.vital-tile.watch .sparkline polyline { stroke: #b45309; }
+.vital-tile.watch .sparkline circle { fill: #b45309; }
+.range { font-size: 13px; color: var(--muted); }
+.page-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.readings li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.readings li:first-child { border-top: 0; }
+.readings li > div { flex: 1; min-width: 0; }
+.readings b { display: block; font-weight: 600; }
+.readings small { color: var(--muted); font-size: 13px; }
+.reading-value { font-weight: 600; }
+
+/* appointments */
+.appt-list { display: flex; flex-direction: column; gap: 12px; }
+.appt-card { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto 44px; align-items: center; gap: 16px; }
+.appt-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: grid; place-items: center; font-size: 14px; font-weight: 700; }
+.appt-meta { font-size: 14px; color: var(--muted); }
+.appt-note { font-size: 14px; margin-top: 4px; }
+.appt-when { text-align: right; font-size: 14px; }
+.appt-when b { display: block; font-weight: 600; }
+.appt-when span { color: var(--muted); }
+.status.completed { background: #e2e8f0; color: #334155; }
+
+/* medications */
+.progress-text { font-size: 14px; font-weight: 600; color: var(--primary-strong); }
+.progress { height: 10px; background: var(--primary-soft); border-radius: 999px; overflow: hidden; margin-bottom: 8px; }
+.progress span { display: block; height: 100%; background: var(--primary); border-radius: 999px; transition: width 0.3s ease; }
+.schedule li { border-top: 1px solid var(--border); }
+.schedule li:first-child { border-top: 0; }
+.dose-check { display: flex; align-items: center; gap: 14px; min-height: 52px; cursor: pointer; font-size: 15px; }
+.dose-check input { width: 24px; height: 24px; accent-color: var(--primary); flex: none; }
+.dose-check input:focus-visible { outline: none; box-shadow: var(--focus); border-radius: 6px; }
+.dose-time { width: 80px; font-weight: 600; flex: none; }
+.dose-name small { color: var(--muted); font-size: 13px; margin-left: 4px; }
+.dose-check input:checked ~ .dose-name { text-decoration: line-through; color: var(--muted); }
+.med-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.med-top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.med-top .badge { margin-left: auto; }
+.med-glyph { width: 44px; height: 44px; border-radius: 12px; background: var(--primary-soft); color: var(--primary-strong); display: grid; place-items: center; font-weight: 700; flex: none; }
+.med-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 0; }
+.med-facts dt { font-size: 13px; color: var(--muted); }
+.med-facts dd { margin: 0; font-size: 14px; font-weight: 500; }
+
+@media (max-width: 1000px) {
+  .vitals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-split { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .vitals-grid, .med-grid, .med-facts { grid-template-columns: 1fr; }
+  .appt-card { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  .appt-when, .appt-card .status { grid-column: 2; text-align: left; }
+  .appt-card .dots { grid-column: 3; grid-row: 1; }
+  .dose-time { width: 72px; }
+}

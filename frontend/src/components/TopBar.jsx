@@ -1,20 +1,10 @@
-import { useEffect, useState } from "react";
-import { getHealth } from "../api/client.js";
+import { Link, NavLink } from "react-router-dom";
 import { navItems, patient } from "../data/placeholder.js";
 
 export default function TopBar() {
-  const [active, setActive] = useState(navItems[0]);
-  const [online, setOnline] = useState(false);
-
-  useEffect(() => {
-    getHealth()
-      .then(() => setOnline(true))
-      .catch(() => setOnline(false));
-  }, []);
-
   return (
     <header className="topbar">
-      <div className="logo">
+      <Link to="/" className="logo" aria-label="CareSync home">
         <span className="logo-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24">
             <path d="M12 5v14M5 12h14" />
@@ -23,26 +13,22 @@ export default function TopBar() {
         <span>
           care<b>sync</b>
         </span>
-      </div>
+      </Link>
 
       <nav className="pill-nav" aria-label="Main">
         {navItems.map((item) => (
-          <button
-            key={item}
-            className={item === active ? "active" : ""}
-            aria-current={item === active ? "page" : undefined}
-            onClick={() => setActive(item)}
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === "/"}
+            className={({ isActive }) => (isActive ? "active" : "")}
           >
-            {item}
-          </button>
+            {item.label}
+          </NavLink>
         ))}
       </nav>
 
       <div className="top-actions">
-        <span className={`status-pill ${online ? "on" : ""}`} role="status">
-          <span className="status-dot" aria-hidden="true" />
-          {online ? "Connected" : "Offline"}
-        </span>
         <button className="icon-btn" aria-label="Search">
           <svg viewBox="0 0 24 24">
             <circle cx="11" cy="11" r="7" />

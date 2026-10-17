@@ -2,7 +2,13 @@
 
 export const patient = { name: "Micky", initials: "ML" };
 
-export const navItems = ["Overview", "Vitals", "Appointments", "Medications"];
+export const navItems = [
+  { to: "/", label: "Overview" },
+  { to: "/vitals", label: "Vitals" },
+  { to: "/appointments", label: "Appointments" },
+  { to: "/medications", label: "Medications" },
+  { to: "/chat", label: "Assistant" },
+];
 
 export const wellness = {
   score: "86",
@@ -68,3 +74,41 @@ export const medications = {
     { id: 4, name: "Omega-3", next: "Next dose 8:00 PM", dose: "1000", unit: "mg", glyph: "O" },
   ],
 };
+
+// ---- Detail pages ----
+
+export const vitals = [
+  { id: "hr", label: "Heart rate", value: "72", unit: "bpm", status: "normal", range: "60-100 bpm", trend: [70, 74, 71, 69, 73, 75, 72] },
+  { id: "bp", label: "Blood pressure", value: "128/84", unit: "mmHg", status: "watch", range: "Under 120/80 mmHg", trend: [122, 126, 124, 130, 127, 131, 128] },
+  { id: "spo2", label: "Blood oxygen", value: "98", unit: "%", status: "normal", range: "95-100 %", trend: [97, 98, 98, 97, 99, 98, 98] },
+  { id: "temp", label: "Temperature", value: "36.7", unit: "°C", status: "normal", range: "36.1-37.2 °C", trend: [36.6, 36.8, 36.7, 36.6, 36.9, 36.7, 36.7] },
+  { id: "weight", label: "Weight", value: "68.4", unit: "kg", status: "normal", range: "Goal 67-70 kg", trend: [69.1, 68.9, 68.8, 68.7, 68.6, 68.5, 68.4] },
+  { id: "glucose", label: "Blood glucose", value: "6.2", unit: "mmol/L", status: "watch", range: "4.0-5.6 mmol/L fasting", trend: [5.6, 5.9, 6.1, 5.8, 6.3, 6.0, 6.2] },
+];
+
+export const readings = [
+  { id: 1, date: "Jul 03, 7:45 AM", vital: "Blood pressure", value: "128/84 mmHg", status: "watch" },
+  { id: 2, date: "Jul 03, 7:45 AM", vital: "Heart rate", value: "72 bpm", status: "normal" },
+  { id: 3, date: "Jul 02, 8:10 PM", vital: "Blood glucose", value: "6.2 mmol/L", status: "watch" },
+  { id: 4, date: "Jul 02, 7:50 AM", vital: "Blood oxygen", value: "98 %", status: "normal" },
+  { id: 5, date: "Jul 01, 7:40 AM", vital: "Weight", value: "68.5 kg", status: "normal" },
+];
+
+export const appointmentList = {
+  upcoming: [
+    { id: 1, name: "Dr. Amira Patel", specialty: "Cardiology", date: "Jul 04, 2025", time: "9:40 AM", place: "Riverside Heart Clinic", length: "30 min", status: "Confirmed", glyph: "AP", note: "Bring your blood pressure log." },
+    { id: 2, name: "Dr. Lucas Chen", specialty: "Family medicine", date: "Jul 11, 2025", time: "2:15 PM", place: "Maple Family Practice", length: "20 min", status: "Confirmed", glyph: "LC", note: "Annual check-up." },
+    { id: 3, name: "Blood panel", specialty: "Laboratory", date: "Jul 18, 2025", time: "8:00 AM", place: "Westside Lab", length: "15 min", status: "Pending", glyph: "LB", note: "Fasting for 8 hours beforehand." },
+  ],
+  past: [
+    { id: 4, name: "Dr. Priya Nair", specialty: "Endocrinology", date: "May 22, 2025", time: "10:30 AM", place: "Lakeview Diabetes Centre", length: "25 min", status: "Completed", glyph: "PN", note: "Medication dose reviewed." },
+    { id: 5, name: "Dr. Lucas Chen", specialty: "Family medicine", date: "Mar 14, 2025", time: "1:00 PM", place: "Maple Family Practice", length: "20 min", status: "Completed", glyph: "LC", note: "Flu shot given." },
+  ],
+};
+
+export const medicationList = [
+  { id: 1, name: "Lisinopril", dose: "10 mg", frequency: "Once daily", purpose: "Blood pressure", prescriber: "Dr. Amira Patel", refills: 3, times: ["8:00 AM"], glyph: "L" },
+  { id: 2, name: "Metformin", dose: "500 mg", frequency: "Twice daily with meals", purpose: "Blood sugar", prescriber: "Dr. Priya Nair", refills: 1, times: ["8:00 AM", "6:00 PM"], glyph: "M" },
+  { id: 3, name: "Vitamin D", dose: "2000 IU", frequency: "Once daily", purpose: "Bone health", prescriber: "Dr. Lucas Chen", refills: 5, times: ["8:00 PM"], glyph: "D" },
+  { id: 4, name: "Omega-3", dose: "1000 mg", frequency: "Once daily", purpose: "Heart health", prescriber: "Dr. Amira Patel", refills: 0, times: ["8:00 PM"], glyph: "O" },
+];

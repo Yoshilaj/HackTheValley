@@ -34,14 +34,10 @@
 body {
   margin: 0;
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
   font-family: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  background: radial-gradient(900px 500px at 10% 0%, #c9ebe6 0%, transparent 60%), var(--bg);
+  background: var(--surface-soft);
   color: var(--text);
 }
 

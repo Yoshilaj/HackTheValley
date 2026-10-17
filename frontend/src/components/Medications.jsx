@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { medications } from "../data/placeholder.js";
 
 export default function Medications() {
@@ -7,9 +8,9 @@ export default function Medications() {
         <h2>
           Medications <sup>{medications.count}</sup>
         </h2>
-        <a href="#" className="see-all">
+        <Link to="/medications" className="see-all">
           Manage ›
-        </a>
+        </Link>
       </div>
 
       <div className="med-icons" aria-hidden="true">

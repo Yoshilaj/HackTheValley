@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { appointments } from "../data/placeholder.js";
 
 export default function Appointments() {
@@ -7,9 +8,9 @@ export default function Appointments() {
         <h2>
           Upcoming appointments <sup>{appointments.count}</sup>
         </h2>
-        <a href="#" className="see-all">
+        <Link to="/appointments" className="see-all">
           See all ›
-        </a>
+        </Link>
       </div>
 
       {appointments.rows.map((t) => (
@@ -20,7 +21,7 @@ export default function Appointments() {
           <span className="appt-name">{t.name}</span>
           <span className={`status ${t.status.toLowerCase()}`}>{t.status}</span>
           <span className="appt-date">{t.date}</span>
-          <span className="appt-card">{t.place}</span>
+          <span className="appt-place">{t.place}</span>
           <span className="appt-amt">{t.amount}</span>
           <button className="dots" aria-label={`More options for ${t.name}`}>⋮</button>
         </div>
