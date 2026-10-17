@@ -573,8 +573,17 @@ def pd04(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
                           "Finger-tapping results have shifted from your usual range — a change worth checking")
 
 
+def _pd_vowel_rule_enabled() -> bool:
+    from app.core.config import settings  # lazy: rules are importable without app settings
+
+    return bool(settings.pd_vowel_rule_enabled)
+
+
 def pd03(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
-    """Voice score ≥ threshold on ≥2 sessions ≥7 days apart AND PD-01/02/04 fired (spec §5.4)."""
+    """Voice score ≥ threshold on ≥2 sessions ≥7 days apart AND PD-01/02/04 fired (spec §5.4).
+
+    Fires only when ``settings.pd_vowel_rule_enabled`` is true; otherwise the same condition is
+    reported as a display-only note (the served model is unvalidated on app-extracted audio)."""
     scored = []
     for s in _recent(ctx.task_sessions, "created_at", ctx.as_of, PD03_LOOKBACK):
         m = s.model_scores.get(PD_VOWEL_MODEL_KEY) if s.task_type == "sustained_vowel" and s.valid else None
@@ -592,6 +601,11 @@ def pd03(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
     if not others:
         return RuleOutcome("not_fired", evidence,
                            note="Experimental voice-model score was above its threshold; on its own this does not raise the level.")
+    if not _pd_vowel_rule_enabled():
+        # Display-only until a model validated on app-extracted audio is served (config.pd_vowel_rule_enabled).
+        return RuleOutcome("not_fired", evidence, data={"supporting_rules": others, "display_only": True},
+                           note="Experimental voice-model score was above its threshold on two sessions; the model is "
+                                "not yet validated on app recordings, so this is shown for information only.")
     return RuleOutcome("fired", evidence, data={"supporting_rules": others},
                        summary="Experimental voice-model score was above threshold on two sessions, alongside another finding")
 

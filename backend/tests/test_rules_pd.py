@@ -87,10 +87,23 @@ def with_fired(*ids):
     return sc
 
 
-def test_pd03_fires_with_supporting_rule():
+def test_pd03_fires_with_supporting_rule(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "pd_vowel_rule_enabled", True)
     c = C(task_sessions=[vowel(20, 0.8), vowel(5, 0.7)])
     o = run_rule("PD-03", c, with_fired("PD-01"))
     assert o.fired and o.data["supporting_rules"] == ["PD-01"]
+
+
+def test_pd03_display_only_by_default():
+    """Default config: the voice model is unvalidated on app audio, so PD-03 notes but never fires."""
+    from app.core.config import settings
+
+    assert settings.pd_vowel_rule_enabled is False
+    o = run_rule("PD-03", C(task_sessions=[vowel(20, 0.8), vowel(5, 0.7)]), with_fired("PD-01"))
+    assert o.status == "not_fired" and o.data.get("display_only") is True
+    assert o.evidence and "information only" in (o.note or "")
 
 
 def test_pd03_voice_alone_never_fires_but_notes():

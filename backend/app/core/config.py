@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # Pin ``pd_vowel_hub_revision`` to a commit sha so a Hub push can never change what is served.
     pd_vowel_hub_repo: str = ""
     pd_vowel_hub_revision: str = "main"
+    # PD-03 may only escalate on the voice score once a model validated on app-extracted audio is served.
+    # v1 (UCI/MDVP features) scores AUC 0.31 on real audio through the app's extractor (2026-10-17 audit),
+    # so the score is display-only until this is switched on deliberately.
+    pd_vowel_rule_enabled: bool = False
     google_client_id: str = ""
     google_client_secret: str = ""
     google_maps_api_key: str = ""

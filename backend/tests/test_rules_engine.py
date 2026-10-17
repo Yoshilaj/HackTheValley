@@ -89,7 +89,7 @@ def test_bp05_asymptomatic_urgent_followup_level():
     assert fr["BP-05"] == "followup_recommended" and "EMG-02" not in fr
 
 
-def test_pd03_escalates_only_with_other_finding():
+def test_pd03_escalates_only_with_other_finding(monkeypatch):
     voice = [vowel(20, 0.8), vowel(5, 0.7)]
     alone = evaluate_pathway(ctx("parkinsons", task_sessions=voice))
     # review fix 13: voice data exists, so PD is not insufficient_data; voice alone never raises
@@ -97,8 +97,15 @@ def test_pd03_escalates_only_with_other_finding():
     assert "PD-03" not in alone.fired_rule_ids and alone.level == "no_finding"
     assert "pd_screener" in alone.data_quality["missing_optional_inputs"]
     assert any(i["rule_id"] == "PD-03" for i in alone.informational)
-    both = evaluate_pathway(ctx("parkinsons", task_sessions=voice,
-                                screeners=[screener({"tremor_rest": True, "soft_voice": True})]))
+    with_screener = ctx("parkinsons", task_sessions=voice, screeners=[screener({"tremor_rest": True, "soft_voice": True})])
+    # default config: voice model is display-only, so PD-03 notes but does not fire
+    default = evaluate_pathway(with_screener)
+    assert default.fired_rule_ids == ["PD-01"] and default.level == "watch"
+    assert any(i["rule_id"] == "PD-03" for i in default.informational)
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "pd_vowel_rule_enabled", True)
+    both = evaluate_pathway(with_screener)
     assert both.fired_rule_ids == ["PD-01", "PD-03"] and both.level == "watch"
     assert both.probabilities[0]["kind"] == "experimental_model_score"
 
