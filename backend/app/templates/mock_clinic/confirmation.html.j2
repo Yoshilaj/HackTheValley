@@ -1,0 +1,15 @@
+{% extends "base.html.j2" %}
+{% block title %}Appointment booked — {{ clinic.name }}{% endblock %}
+{% block body %}
+<main class="wrap">
+  <h1>Your appointment is booked</h1>
+  <div class="notice" id="confirmation">
+    <p>Thank you, {{ booking.first_name }}. Your appointment is confirmed for
+      <strong><time datetime="{{ booking.slot_start }}">{{ when }}</time></strong> (Eastern Time).</p>
+    <p>Reference number: <span class="ref" id="reference">{{ booking.reference }}</span></p>
+    <p>Reason: {{ booking.reason }}</p>
+    <p>Please arrive 10 minutes early. To change or cancel, call {{ clinic.phone }} and quote your reference number.</p>
+  </div>
+  <p><a href="{{ p }}">Back to home</a></p>
+</main>
+{% endblock %}

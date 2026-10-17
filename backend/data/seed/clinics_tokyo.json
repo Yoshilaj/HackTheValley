@@ -1,0 +1,65 @@
+{
+  "_note": "FICTIONAL demo clinics for the hackathon. Names, addresses and contacts are invented; all e-mails are @example.com and phone numbers use the unassigned 03-0000 range. Do not contact.",
+  "clinics": [
+    {
+      "id": "seed_nishishinjuku_heart",
+      "name": "Nishi-Shinjuku Heart & BP Clinic (demo) / 西新宿ハート血圧クリニック（デモ）",
+      "specialty": "cardiology",
+      "address": "東京都新宿区西新宿3-1-1 デモビル4F (fictional)",
+      "lat": 35.6877, "lng": 139.6895,
+      "email": "booking@nishishinjuku-heart.example.com",
+      "phone": "+81-3-0000-1101",
+      "hours": "Mon-Fri 9:00-18:00, Sat 9:00-12:00"
+    },
+    {
+      "id": "seed_ebisu_cardio",
+      "name": "Ebisu Cardiology Office (demo) / 恵比寿循環器内科（デモ）",
+      "specialty": "cardiology",
+      "address": "東京都渋谷区恵比寿南1-2-3 (fictional)",
+      "lat": 35.6467, "lng": 139.7100,
+      "email": "reception@ebisu-cardio.example.com",
+      "phone": "+81-3-0000-1102",
+      "hours": "Mon-Fri 9:30-17:30"
+    },
+    {
+      "id": "seed_yoyogi_neuro",
+      "name": "Yoyogi Neurology & Memory Clinic (demo) / 代々木脳神経内科・もの忘れ外来（デモ）",
+      "specialty": "neurology",
+      "address": "東京都渋谷区代々木1-4-5 (fictional)",
+      "lat": 35.6835, "lng": 139.7020,
+      "email": "appointments@yoyogi-neuro.example.com",
+      "phone": "+81-3-0000-1103",
+      "hours": "Mon-Fri 9:00-17:00 (memory clinic Tue/Thu PM)"
+    },
+    {
+      "id": "seed_ichigaya_movement",
+      "name": "Ichigaya Movement Disorders Clinic (demo) / 市ヶ谷神経内科（デモ）",
+      "specialty": "neurology",
+      "address": "東京都千代田区九段南4-6-7 (fictional)",
+      "lat": 35.6920, "lng": 139.7360,
+      "email": "contact@ichigaya-neuro.example.com",
+      "phone": "+81-3-0000-1104",
+      "hours": "Mon-Sat 9:00-13:00, Mon-Fri 14:30-18:00"
+    },
+    {
+      "id": "seed_hatsudai_internal",
+      "name": "Hatsudai Family Internal Medicine (demo) / 初台ファミリー内科（デモ）",
+      "specialty": "internal_medicine",
+      "address": "東京都渋谷区初台1-8-9 (fictional)",
+      "lat": 35.6810, "lng": 139.6860,
+      "email": "hello@hatsudai-naika.example.com",
+      "phone": "+81-3-0000-1105",
+      "hours": "Mon-Sat 8:30-12:30, Mon-Fri 15:00-19:00"
+    },
+    {
+      "id": "seed_nakano_memory",
+      "name": "Nakano Mind & Memory Clinic (demo) / 中野こころともの忘れクリニック（デモ）",
+      "specialty": "psychiatry_memory",
+      "address": "東京都中野区中野2-10-11 (fictional)",
+      "lat": 35.7060, "lng": 139.6650,
+      "email": "desk@nakano-memory.example.com",
+      "phone": "+81-3-0000-1106",
+      "hours": "Mon-Fri 10:00-18:00"
+    }
+  ]
+}

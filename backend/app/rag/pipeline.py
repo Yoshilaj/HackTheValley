@@ -1,22 +1,23 @@
-"""High-level RAG entry points used by the API layer."""
+"""High-level RAG entry points (kept for backwards compatibility; logic lives in services).
 
-from app.rag.chunking import chunk_text
-from app.rag.embeddings import embed
-from app.rag.store import store
+- ``ingest_text`` → :func:`app.rag.ingest.ingest_text`
+- ``answer_question`` → retrieve + cited answer via :mod:`app.services.rag_service`
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.rag.ingest import ingest_text  # noqa: F401  (re-export)
 
 
-def ingest_text(text: str, source: str) -> int:
-    chunks = chunk_text(text)
-    vectors = embed(chunks)
-    for chunk, vec in zip(chunks, vectors):
-        store.add(chunk, source, vec)
-    return len(chunks)
+def answer_question(db: Session, question: str, llm: Any = None, provider: Any = None,
+                    language: str = "en", k: int = 6) -> dict[str, Any]:
+    """Retrieve ``k`` chunks and answer with ``[n]`` citations (no user context)."""
+    from app.providers.llm import get_llm_provider
+    from app.services import rag_service
 
-
-def answer_question(question: str) -> tuple[str, list[str]]:
-    hits = store.search(embed([question])[0])
-    if not hits:
-        return "No documents ingested yet.", []
-    # TODO: pass `hits` as context to an LLM and return its answer.
-    context = "\n---\n".join(h.text for h in hits)
-    return f"[stub] Retrieved context:\n{context}", [h.source for h in hits]
+    hits = rag_service.retrieve(db, question, k=k, embedding_provider=provider)
+    return rag_service.answer_with_citations(db, llm or get_llm_provider(), question, hits, "", language)

@@ -1,0 +1,39 @@
+{% extends "base.html.j2" %}
+{% block title %}Book an appointment — {{ clinic.name }}{% endblock %}
+{% block body %}
+<main class="wrap">
+  <h1>Book an appointment</h1>
+  <p>Choose a time and tell us how to reach you. Fields marked * are required. Please do not include medical details here — your doctor will go through them at the visit.</p>
+  {% if errors %}<div class="errors" role="alert">{% for e in errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+  <form class="booking" id="booking-form" method="post" action="{{ p }}/book">
+    <div><label for="first_name">First name *</label><input type="text" id="first_name" name="first_name" autocomplete="given-name" required value="{{ form.first_name or '' }}"></div>
+    <div><label for="last_name">Last name *</label><input type="text" id="last_name" name="last_name" autocomplete="family-name" required value="{{ form.last_name or '' }}"></div>
+    <div><label for="date_of_birth">Date of birth *</label><input type="date" id="date_of_birth" name="date_of_birth" autocomplete="bday" required value="{{ form.date_of_birth or '' }}"></div>
+    <div><label for="phone">Phone *</label><input type="tel" id="phone" name="phone" autocomplete="tel" required value="{{ form.phone or '' }}"></div>
+    <div><label for="email">E-mail *</label><input type="email" id="email" name="email" autocomplete="email" required value="{{ form.email or '' }}"></div>
+    <div><label for="postal_code">Postal code *</label><input type="text" id="postal_code" name="postal_code" autocomplete="postal-code" required pattern="[A-Za-z][0-9][A-Za-z][ -]?[0-9][A-Za-z][0-9]" value="{{ form.postal_code or '' }}"></div>
+    {% if variant.health_card_required %}
+    <div class="full"><label for="health_card">Ontario health card number *</label><input type="text" id="health_card" name="health_card" required placeholder="1234-567-890-AB"><div class="hint">Required for all new patient bookings.</div></div>
+    {% endif %}
+    <div class="full"><label for="reason">Reason for visit *</label>
+      <select id="reason" name="reason" required>
+        <option value="">Please choose…</option>
+        {% for r in reasons %}<option value="{{ r }}"{% if form.reason == r %} selected{% endif %}>{{ r }}</option>{% endfor %}
+      </select></div>
+    <div class="full"><label for="appointment_time">Preferred date and time *</label>
+      <select id="appointment_time" name="appointment_time" required>
+        <option value="">Choose an available time…</option>
+        {% for day, items in slot_groups %}<optgroup label="{{ day }}">{% for s in items %}<option value="{{ s.value }}"{% if form.appointment_time == s.value %} selected{% endif %}>{{ s.label }}</option>{% endfor %}</optgroup>
+        {% endfor %}
+      </select>
+      <div class="hint">Only open times for the next 14 days are shown.</div></div>
+    <div class="full"><label for="notes">Anything else we should know? (optional)</label><textarea id="notes" name="notes" rows="3">{{ form.notes or '' }}</textarea></div>
+    {% if variant.captcha %}
+    <div class="full"><label>Verification</label>
+      <iframe class="captcha-box" title="CAPTCHA verification" src="/mock-clinic/widget/captcha" data-sitekey="demo-placeholder-sitekey"></iframe></div>
+    {% endif %}
+    <div class="full"><label class="check"><input type="checkbox" id="consent" name="consent" value="yes" required> I agree that {{ clinic.name }} may contact me by phone or e-mail about this appointment and have read the privacy notice.</label></div>
+    <div class="full"><button class="btn" type="submit">Book appointment</button></div>
+  </form>
+</main>
+{% endblock %}

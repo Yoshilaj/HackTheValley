@@ -1,5 +1,54 @@
 # Backend Plan — Doctorless Check-up / Health Advocate (HackTheValley)
 
+## Build status (2026-10-17 overnight)
+
+Legend: **Built** = implemented and covered by tests with fake providers. **Built-needs-key** = the real
+integration code exists but has never been run against the live service (no keys on the build machine).
+**Not built** = not implemented. Full suite: `cd backend && .venv/bin/pytest -q` (green); end-to-end demo test:
+`tests/test_e2e_demo.py`; live smoke: `scripts/demo_smoke.py` (10/10 against a local server). Morning notes: `docs/HANDOFF.md`.
+
+| Board item | Status | Notes |
+|---|---|---|
+| A2/A3 Decision rules (BP, RHY, SUITA, COG, PD, GEN, EMG) | Built | `app/ml/rules.py` + engine; fires / not fired / insufficient tests per rule; demo replay → cardio `[BP-02, RHY-01]` score 70 |
+| A2 Story recall task (3-step battery + delay) | Built | `app/ml/story_task.py`, `/api/tasks/story/*`; semantic-recall score is experimental, no validated thresholds |
+| A2 3-word recall, finger tapping, sustained vowel | Built | `/api/tasks/word-recall`, `/tapping`, `/vowel`; vowel sessions aggregated per day (median) for PD-03 |
+| A2 PD screener | Built | `/api/screener/pd`; one id set (content-bank ids), legacy ids accepted |
+| A2 Suita score | Built | `app/ml/suita.py`; context only, never drives the level |
+| A4 PD vowel model training | Built | `ml_training/train_pd_vowel.py`; UCI, subject-grouped CV, pooled OOF AUC 0.74 (95% CI 0.53–0.91); served from `backend/models/` |
+| A4 HF Hub push | Not built (run) | `push_to_hub` code path exists but was never run (no `HF_TOKEN`); the app loads the local model folder |
+| A4 Gated models (ADReSS picture description, mPower tapping) | Not built | access not requested yet (see HANDOFF) |
+| B Database (models, SQLite/Postgres, pgvector) | Built | tables created at startup; `CREATE EXTENSION vector` on Postgres (Postgres path untested here) |
+| B Alembic migrations | Not built | `init_db` create_all only |
+| C1 Metrics, BP, rhythm, daily log, observations | Built | `/api/metrics*`, `/api/logs/daily`, `/api/observations` |
+| C1 Apple Health export import | Built | background task, job status `pending → running → done / failed` |
+| C1 iOS Shortcut | Built | `docs/shortcut.md` + device tokens; not tried on a real iPhone |
+| C1 Document / BP-photo extraction | Built-needs-key | Claude vision/extraction; fake LLM in tests |
+| C2 Chat (text) + extraction + red-flag short-circuit | Built | red flags are keyword-based |
+| C2 Voice chat (Whisper) | Built-needs-key | OpenAI Whisper path unverified; FakeStt in tests |
+| C2 Daily check-in | Built | `/api/chat/checkin` |
+| C3 RAG (corpus ingest, retrieval, cited answers) | Built | fake embeddings by default; Voyage path Built-needs-key |
+| C3 LLM answers (Anthropic) | Built-needs-key | `AnthropicLlm` unverified against the live API |
+| C4 Risk service, dashboard cards, history | Built | `/api/risk/*`, `/api/dashboard` (spec §11.4 shape) |
+| C5 Scheduler (APScheduler) + job registry | Built | 5 jobs; start path exercised in the live smoke run |
+| C6 Booking agent (tool loop + deterministic fallback) | Built | seed clinics; Claude tool loop Built-needs-key |
+| C6 Google Calendar OAuth / FreeBusy / events | Built-needs-key | fake calendar without `GOOGLE_CLIENT_ID/SECRET` |
+| C6 Google Places clinic search | Built-needs-key | falls back to `data/seed/clinics_tokyo.json` |
+| C6 Clinic confirm link | Built | HMAC link; `/api/admin/appointments/{id}/confirm-links` for demos |
+| C6 Resend inbound webhook | Not built | confirm link only |
+| C6 Twilio voice call | Not built | stretch |
+| C7 Report (Markdown + HTML + public share link) | Built | `/r/{token}`, print CSS |
+| C7 PDF rendering (weasyprint) | Not built | `render_pdf` raises; use browser Print → PDF |
+| C8 Notifications + e-mail | Built | e-mail via Resend is Built-needs-key; FakeEmail logs otherwise |
+| D Auth (signup/login JWT, device tokens, dev X-User-Id) | Built | |
+| E Consent, audit log, guardrails, export/delete | Built | `DELETE /api/me` removes rows (incl. OAuth credentials) and stored files; Google revoke endpoint not called |
+| E Rate limiting | Built | slowapi-based dependency on chat/uploads/tasks, 30/min default |
+| E Field encryption (Fernet) | Built | `FIELD_ENCRYPTION_KEY` required when `DEV_MODE=false` |
+| E Private storage bucket (Supabase Storage) | Not built | local disk (`STORAGE_DIR`); `SupabaseStorage` stub |
+| F Docker + Render blueprint | Built | `backend/Dockerfile`, `render.yaml` at repo root (`rootDir: backend`); never deployed |
+| F CI (GitHub Actions) | Not built | |
+
+---
+
 ## Context
 
 A medical-advocate app: it accumulates a user's health data (wearables, voice chat with the AI, manual daily logs, manual blood-pressure readings, doctor's notes), runs company-informed **assessment tasks, device results and decision rules** (plus one experimental trained model) in the cloud for three pathways (cognitive decline / Alzheimer's, stroke risk / AF / heart, Parkinson's), and when a concerning pattern appears it produces an evidence-backed, RAG-cited doctor report and autonomously books an appointment. The AI advocates; it never diagnoses.
@@ -230,3 +279,29 @@ Cut order if behind: gated extras → delayed-recall condition of story task →
 ## After approval
 - Copy this plan into the repo as `docs/BACKEND_PLAN.md` so the team sees it, and save a memory pointer so it is recalled in later sessions.
 - Next discussion: the risk-assessment model in detail (dataset access status, feature sets, fusion thresholds, evaluation).
+
+---
+
+## Revision 2026-10-17 (agreed with the user)
+
+- **Region: Canada only, English only** (aging-population prevention framing). Emergency guidance
+  911 / Health Link 811 / 9-8-8 crisis line; timezone America/Toronto; seed clinics in Toronto.
+  The Suita score is Japan-specific: for Canada the long-term context calculator is the Framingham
+  Risk Score as used by the Canadian Cardiovascular Society; Suita kept in code, off for CA.
+  Home BP thresholds 135/85 match Hypertension Canada.
+- **Providers:** Gemini (LLM: chat, extraction, booking agent, vision), ElevenLabs (STT with word
+  timestamps + TTS for story audio, cached per story), local embeddings. Anthropic/OpenAI/Voyage
+  remain as optional alternatives; fakes for tests.
+- **RAG rebuilt on the GymSync design:** parent sections + ~380-word child chunks, local
+  `nomic-embed-text-v1.5` (768-d, fastembed/ONNX, quantized), hybrid search (vector + keyword,
+  Postgres FTS / in-process BM25 on SQLite), reciprocal rank fusion, cross-encoder rerank
+  (ms-marco-MiniLM), parent expansion, token-budget packing with [n] citations, query cache keyed by
+  corpus version. Per-user memory RAG is cut.
+- **RAG quality pass (2026-10-17):** English-only corpus (JSH 2019, Suita, OMRON press release out of
+  the RAG; the rules engine still cites them as references), back matter dropped at ingest,
+  cross-encoder relevance floor −6.0, 3000-token budget, soft per-source cap, `cited` in chat
+  responses, labelled eval set + gated quality test (`scripts/eval_rag.py`, `tests/test_rag_eval.py`).
+- **Booking agent v2:** Places discovery near the user + calendar ∩ opening hours + channels
+  web form → email (with inbound replies) → AI phone call; login/CAPTCHA ⇒ skip to next channel
+  without asking the user; one approval before contact; sandbox targets by default.
+  Spec: `docs/specs/booking-v2.md`. Build order: email, phone, web (against the mock clinic).

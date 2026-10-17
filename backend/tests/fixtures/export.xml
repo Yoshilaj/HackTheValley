@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE HealthData [
+<!ELEMENT HealthData (ExportDate,Me,(Record|Correlation|Workout|ActivitySummary)*)>
+<!ATTLIST HealthData locale CDATA #REQUIRED>
+]>
+<HealthData locale="ja_JP">
+ <ExportDate value="2026-10-15 09:00:00 +0900"/>
+ <Me HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexMale"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Taro's iPhone" unit="count" startDate="2026-09-01 08:00:00 +0900" endDate="2026-09-01 08:10:00 +0900" value="999"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Taro's iPhone" unit="count" startDate="2026-10-10 08:00:00 +0900" endDate="2026-10-10 08:10:00 +0900" value="1000"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Taro's iPhone" unit="count" startDate="2026-10-10 12:00:00 +0900" endDate="2026-10-10 12:30:00 +0900" value="2000"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Taro's Apple Watch" unit="count" startDate="2026-10-10 08:00:00 +0900" endDate="2026-10-10 12:30:00 +0900" value="2500"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Taro's iPhone" unit="count" startDate="2026-10-11 09:00:00 +0900" endDate="2026-10-11 09:40:00 +0900" value="4000"/>
+ <Record type="HKQuantityTypeIdentifierDistanceWalkingRunning" sourceName="Taro's iPhone" unit="km" startDate="2026-10-10 08:00:00 +0900" endDate="2026-10-10 08:10:00 +0900" value="1.5"/>
+ <Record type="HKQuantityTypeIdentifierRestingHeartRate" sourceName="Taro's Apple Watch" unit="count/min" startDate="2026-10-10 06:00:00 +0900" endDate="2026-10-10 06:00:00 +0900" value="60"/>
+ <Record type="HKQuantityTypeIdentifierRestingHeartRate" sourceName="Taro's Apple Watch" unit="count/min" startDate="2026-10-10 22:00:00 +0900" endDate="2026-10-10 22:00:00 +0900" value="64"/>
+ <Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" sourceName="Taro's Apple Watch" unit="ms" startDate="2026-10-10 03:00:00 +0900" endDate="2026-10-10 03:01:00 +0900" value="45"/>
+ <Record type="HKQuantityTypeIdentifierOxygenSaturation" sourceName="Taro's Apple Watch" unit="%" startDate="2026-10-10 02:00:00 +0900" endDate="2026-10-10 02:00:00 +0900" value="0.97"/>
+ <Record type="HKQuantityTypeIdentifierOxygenSaturation" sourceName="Taro's Apple Watch" unit="%" startDate="2026-10-10 04:00:00 +0900" endDate="2026-10-10 04:00:00 +0900" value="0.95"/>
+ <Record type="HKQuantityTypeIdentifierWalkingSpeed" sourceName="Taro's iPhone" unit="km/hr" startDate="2026-10-10 08:00:00 +0900" endDate="2026-10-10 08:01:00 +0900" value="3.6"/>
+ <Record type="HKQuantityTypeIdentifierWalkingStepLength" sourceName="Taro's iPhone" unit="cm" startDate="2026-10-10 08:00:00 +0900" endDate="2026-10-10 08:01:00 +0900" value="65"/>
+ <Record type="HKQuantityTypeIdentifierWalkingDoubleSupportPercentage" sourceName="Taro's iPhone" unit="%" startDate="2026-10-10 08:00:00 +0900" endDate="2026-10-10 08:01:00 +0900" value="0.28"/>
+ <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Health" unit="kg" startDate="2026-10-10 07:00:00 +0900" endDate="2026-10-10 07:00:00 +0900" value="70.2"/>
+ <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Taro's Apple Watch" unit="count/min" startDate="2026-10-10 07:00:00 +0900" endDate="2026-10-10 07:00:00 +0900" value="72"/>
+ <Correlation type="HKCorrelationTypeIdentifierBloodPressure" sourceName="OMRON connect" startDate="2026-10-11 07:10:00 +0900" endDate="2026-10-11 07:10:00 +0900">
+  <Record type="HKQuantityTypeIdentifierBloodPressureSystolic" sourceName="OMRON connect" unit="mmHg" startDate="2026-10-11 07:10:00 +0900" endDate="2026-10-11 07:10:00 +0900" value="142"/>
+  <Record type="HKQuantityTypeIdentifierBloodPressureDiastolic" sourceName="OMRON connect" unit="mmHg" startDate="2026-10-11 07:10:00 +0900" endDate="2026-10-11 07:10:00 +0900" value="91"/>
+ </Correlation>
+ <Record type="HKQuantityTypeIdentifierBloodPressureSystolic" sourceName="OMRON connect" unit="mmHg" startDate="2026-10-11 21:30:00 +0900" endDate="2026-10-11 21:30:00 +0900" value="135"/>
+ <Record type="HKQuantityTypeIdentifierBloodPressureDiastolic" sourceName="OMRON connect" unit="mmHg" startDate="2026-10-11 21:30:00 +0900" endDate="2026-10-11 21:30:00 +0900" value="85"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Taro's iPhone" startDate="2026-10-10 23:00:00 +0900" endDate="2026-10-11 07:00:00 +0900" value="HKCategoryValueSleepAnalysisInBed"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Taro's Apple Watch" startDate="2026-10-10 23:30:00 +0900" endDate="2026-10-11 02:00:00 +0900" value="HKCategoryValueSleepAnalysisAsleepCore"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Taro's Apple Watch" startDate="2026-10-11 02:00:00 +0900" endDate="2026-10-11 03:00:00 +0900" value="HKCategoryValueSleepAnalysisAsleepDeep"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Taro's Apple Watch" startDate="2026-10-11 03:00:00 +0900" endDate="2026-10-11 04:00:00 +0900" value="HKCategoryValueSleepAnalysisAsleepREM"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Taro's Apple Watch" startDate="2026-10-11 04:00:00 +0900" endDate="2026-10-11 04:10:00 +0900" value="HKCategoryValueSleepAnalysisAwake"/>
+ <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Taro's Apple Watch" startDate="2026-10-11 04:10:00 +0900" endDate="2026-10-11 06:40:00 +0900" value="HKCategoryValueSleepAnalysisAsleepCore"/>
+ <Record type="HKCategoryTypeIdentifierIrregularHeartRhythmEvent" sourceName="Taro's Apple Watch" startDate="2026-10-12 03:00:00 +0900" endDate="2026-10-12 03:30:00 +0900" value="HKCategoryValueNotApplicable"/>
+ <Record type="HKCategoryTypeIdentifierHighHeartRateEvent" sourceName="Taro's Apple Watch" startDate="2026-10-12 15:00:00 +0900" endDate="2026-10-12 15:10:00 +0900" value="HKCategoryValueNotApplicable"/>
+ <Workout workoutActivityType="HKWorkoutActivityTypeWalking" duration="30" startDate="2026-10-10 18:00:00 +0900" endDate="2026-10-10 18:30:00 +0900"/>
+</HealthData>

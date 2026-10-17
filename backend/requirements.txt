@@ -1,17 +1,71 @@
-# Core API
-fastapi>=0.115
-uvicorn[standard]>=0.32
-pydantic>=2.9
-pydantic-settings>=2.6
-python-dotenv>=1.0
-httpx>=0.27
+# Python 3.12. Pinned to the versions in the uv-managed .venv.
+# Install: uv pip install -r requirements.txt   (or: pip install -r requirements.txt)
 
-# Dev
-pytest>=8.3
+# --- API core
+fastapi==0.143.3
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+python-dotenv==1.2.4
+python-multipart==0.0.32
+httpx==0.28.1
+slowapi==0.1.10
 
-# RAG / ML — uncomment what you actually use.
-# anthropic>=0.40
-# sentence-transformers>=3.3
-# faiss-cpu>=1.9
-# chromadb>=0.5
-# numpy>=2.1
+# --- Database
+sqlalchemy==2.1.5
+psycopg[binary]==3.3.6
+pgvector==0.5.1
+
+# --- Auth / security
+pyjwt==2.15.1
+bcrypt==5.0.0          # used directly; passlib 1.7.4 is broken with bcrypt 5
+cryptography==50.0.2
+
+# --- Jobs
+apscheduler==3.11.3
+
+# --- AI providers / integrations
+anthropic==1.15.0
+voyageai==0.5.0
+openai==3.33.0
+resend==2.50.0
+google-api-python-client==2.201.0
+google-auth==2.62.0
+google-auth-oauthlib==1.5.0
+huggingface-hub==1.33.0   # fastembed 0.9 requires <2.0
+google-genai==2.31.0   # Gemini (LLM_PROVIDER=gemini): chat, extraction, booking agent, vision
+
+# --- RAG (local embeddings + hybrid search)
+fastembed==0.9.0       # ONNX nomic-embed-text-v1.5(-Q) embedder + ms-marco-MiniLM cross-encoder
+onnxruntime==1.31.0    # fastembed backend (pinned: it decides wheel size / memory)
+tokenizers==0.23.3
+rank-bm25==0.2.2       # in-process keyword search on SQLite (Postgres uses FTS)
+
+# --- Booking agent (web channel)
+playwright==1.64.0     # Python package only; Chromium: python -m playwright install --only-shell chromium
+python-dateutil==2.9.0.post0   # slot-option parsing in channels/web.py
+
+# --- ML / audio / features
+numpy==2.5.4
+scipy==1.18.1
+scikit-learn==1.9.1
+xgboost==3.4.1
+joblib==1.6.0
+praat-parselmouth==0.4.7
+librosa==1.0.0
+soundfile==0.14.0
+fugashi==1.5.2
+unidic-lite==1.0.8
+
+# --- Documents / reports
+pypdf==6.21.0
+jinja2==3.1.6
+markdown==3.11.1
+
+# --- Training only (ml_training/)
+datasets==5.1.0
+pandas==3.0.6
+
+# --- Dev
+pytest==9.1.1
+pytest-asyncio==1.4.0

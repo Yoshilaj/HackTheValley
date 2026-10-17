@@ -18,7 +18,9 @@ backend/data/raw/*
 backend/data/processed/*
 !backend/data/raw/.gitkeep
 !backend/data/processed/.gitkeep
-backend/models/
+backend/models/*
+!backend/models/pd_vowel_experimental_v1/
+!backend/models/pd_vowel_experimental_v1/**
 *.pkl
 *.pt
 *.bin
@@ -33,3 +35,11 @@ backend/models/
 .DS_Store
 .vscode/
 .idea/
+
+# local dev database and uploaded files
+backend/data/dev.db
+backend/data/*.db
+backend/data/uploads/
+backend/data/*.db-wal
+backend/data/*.db-shm
+backend/data/*.db-journal

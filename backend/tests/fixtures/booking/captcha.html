@@ -1,0 +1,9 @@
+<!doctype html><html><head><script src="https://www.google.com/recaptcha/api.js" async defer></script></head>
+<body><h1>Book an appointment</h1>
+<form action="/mock-clinic/captcha" method="post">
+  <label>Name <input name="name" required></label>
+  <label>Phone <input name="phone" type="tel"></label>
+  <label>Date <input name="date" type="date"></label>
+  <div class="g-recaptcha" data-sitekey="6Lc-example"></div>
+  <button type="submit">Book</button>
+</form></body></html>

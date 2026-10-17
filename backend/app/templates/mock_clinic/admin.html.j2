@@ -1,0 +1,109 @@
+{% extends "base.html.j2" %}
+{% block title %}Front desk — {{ clinic.name }}{% endblock %}
+{% block head %}
+<style>
+  .desk-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .desk-head h1 { margin: 18px 0 4px; font-size: 26px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; }
+  .live .dot { width: 9px; height: 9px; border-radius: 50%; background: #2e9d5b; }
+  .live.stale .dot { background: var(--error); }
+  .btn.secondary { background: #fff; color: var(--error); border: 1px solid var(--error); font-size: 14px; padding: 7px 14px; }
+  .btn.secondary:hover { background: #fbeeec; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; margin-top: 12px; }
+  table.desk { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 980px; }
+  table.desk th { text-align: left; background: var(--sand); color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.desk td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.desk tr:last-child td { border-bottom: 0; }
+  table.desk td.ref { font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; font-size: 14px; }
+  table.desk td.nowrap { white-space: nowrap; }
+  table.desk tr.new td { animation: arrive 4s ease-out; }
+  @keyframes arrive { 0% { background: #ffe9a8; } 70% { background: #fff6d6; } 100% { background: transparent; } }
+  .empty { color: var(--muted); padding: 22px 10px; text-align: center; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #e6f3f3; color: var(--teal-dark); }
+  .tag.warn { background: #fbeeec; color: var(--error); }
+</style>
+{% endblock %}
+{% block body %}
+<main class="wrap" style="max-width: 1200px">
+  <div class="desk-head">
+    <div>
+      <h1>Front desk — online bookings</h1>
+      <span class="live" id="live"><span class="dot"></span><span id="live-text">Live · refreshes every 3 s</span></span>
+      · Bookings: <span id="count">{{ rows|length }}</span>
+    </div>
+    <button class="btn secondary" id="clear" type="button">Clear demo bookings</button>
+  </div>
+  <p class="hint">Staff view of the fictional demo clinic. Health card numbers are never stored — only whether one was given.</p>
+  <div class="table-wrap">
+    <table class="desk">
+      <thead><tr>
+        <th>Received</th><th>Reference</th><th>Patient</th><th>Date of birth</th><th>Phone</th><th>E-mail</th>
+        <th>Postal code</th><th>Reason</th><th>Appointment</th><th>Consent</th><th>Health card</th>
+      </tr></thead>
+      <tbody id="rows">
+      {% for r in rows %}
+        <tr data-ref="{{ r.reference }}">
+          <td class="nowrap">{{ r.received }}</td><td class="ref">{{ r.reference }}</td><td>{{ r.name }}</td>
+          <td class="nowrap">{{ r.dob }}</td><td class="nowrap">{{ r.phone }}</td><td>{{ r.email }}</td>
+          <td class="nowrap">{{ r.postal_code }}</td><td class="nowrap">{{ r.reason }}</td><td class="nowrap">{{ r.slot }}</td>
+          <td>{{ r.consent }}</td><td class="nowrap">{{ r.health_card }}</td>
+        </tr>
+      {% else %}
+        <tr><td class="empty" colspan="11">No bookings yet. They appear here as soon as the form is submitted.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+<script>
+(() => {
+  const qs = window.location.search;  // keeps ?key=… for non-dev deployments
+  const headers = { "ngrok-skip-browser-warning": "1" };
+  const tbody = document.getElementById("rows");
+  const known = new Set(Array.from(tbody.querySelectorAll("tr[data-ref]")).map(tr => tr.dataset.ref));
+  const cols = [["received", "nowrap"], ["reference", "ref"], ["name", ""], ["dob", "nowrap"], ["phone", "nowrap"],
+                ["email", ""], ["postal_code", "nowrap"], ["reason", "nowrap"], ["slot", "nowrap"], ["consent", ""],
+                ["health_card", "nowrap"]];
+  function render(rows) {
+    const frag = document.createDocumentFragment();
+    if (!rows.length) {
+      const tr = document.createElement("tr"); const td = document.createElement("td");
+      td.className = "empty"; td.colSpan = cols.length;
+      td.textContent = "No bookings yet. They appear here as soon as the form is submitted.";
+      tr.appendChild(td); frag.appendChild(tr);
+    }
+    for (const r of rows) {
+      const tr = document.createElement("tr"); tr.dataset.ref = r.reference;
+      if (!known.has(r.reference)) { tr.className = "new"; known.add(r.reference); }
+      for (const [key, cls] of cols) {
+        const td = document.createElement("td"); if (cls) td.className = cls;
+        td.textContent = r[key] || ""; tr.appendChild(td);
+      }
+      frag.appendChild(tr);
+    }
+    tbody.replaceChildren(frag);
+    document.getElementById("count").textContent = rows.length;
+  }
+  function live(ok) {
+    document.getElementById("live").classList.toggle("stale", !ok);
+    document.getElementById("live-text").textContent = ok ? "Live · refreshes every 3 s" : "Connection lost · retrying";
+  }
+  async function refresh() {
+    try {
+      const r = await fetch("/mock-clinic/admin/feed" + qs, { headers, cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      render((await r.json()).rows || []); live(true);
+    } catch (e) { live(false); }
+  }
+  document.getElementById("clear").addEventListener("click", async () => {
+    if (!confirm("Delete all demo bookings from the front desk?")) return;
+    try {
+      const r = await fetch("/mock-clinic/admin/clear" + qs, { method: "POST", headers: { ...headers, "X-Front-Desk": "1" } });
+      if (!r.ok) throw new Error(r.status);
+      known.clear(); await refresh();
+    } catch (e) { alert("Could not clear the bookings (" + e.message + ")."); }
+  });
+  setInterval(refresh, 3000);
+})();
+</script>
+{% endblock %}

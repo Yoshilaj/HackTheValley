@@ -1,0 +1,255 @@
+"""Advocate chat (BACKEND_PLAN C2): text/voice → guardrails → RAG-cited answer → Observations.
+
+Turn pipeline (:func:`handle_message`):
+  a. save the user ChatMessage; deterministic red-flag check → emergency short-circuit
+     (emergency answer, ``notify_emergency``, ``Observation(kind='red_flag')``), no LLM call;
+  b. compact health-context block (``app.prompts.chat_system.build_context_block``);
+  c. retrieve k=6 research chunks (pathway inferred from keywords) → cited answer → output guard;
+  d. structured extraction with the cheap model → Observations (deduped vs. last 24 h);
+  e. every LLM call audited via ``llm_audit_hook``; the turn is committed at the end.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.security import audit
+from app.db.models import AssessmentTask, ChatMessage, Observation, User
+from app.prompts.chat_system import build_context_block
+from app.prompts.extraction import EXTRACTABLE_KINDS, OBSERVATION_SCHEMA, SEVERITIES, extraction_system
+from app.providers.embeddings import EmbeddingProvider
+from app.providers.llm import LlmConfigError, LlmError, LlmProvider
+from app.rag.ingest import detect_language
+from app.services import llm_audit_hook, rag_service
+from app.services.guardrails import RED_FLAG_LABELS, detect_red_flags, output_guard
+
+log = logging.getLogger(__name__)
+
+HISTORY_TURNS = 6
+DEDUPE_HOURS = 24
+FREE_SPEECH_PROTOCOL = "chat_free_speech_v1"
+
+_HINTS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("story_recall", frozenset({"memory_lapse", "confusion", "getting_lost", "repeating_questions",
+                                "missed_appointments", "trouble_managing_money", "trouble_managing_medication",
+                                "word_finding_difficulty"})),
+    ("pd_screener", frozenset({"tremor", "stiffness", "slowness_of_movement", "voice_change", "small_handwriting",
+                               "loss_of_smell", "acting_out_dreams", "balance_problem"})),
+    ("bp_and_rhythm_check", frozenset({"palpitations", "irregular_heartbeat_feeling", "dizziness",
+                                       "breathlessness", "headache"})),
+)
+
+
+@dataclass
+class ChatTurn:
+    answer: str
+    sources: list[dict[str, Any]] = field(default_factory=list)
+    cited: list[int] = field(default_factory=list)  # the ``n`` of sources the answer actually cites
+    observations_created: list[Observation] = field(default_factory=list)
+    red_flags: list[str] = field(default_factory=list)
+    assessment_hint: str | None = None
+    message_id: str | None = None
+    user_message_id: str | None = None
+    language: str = "en"
+    transcript: str | None = None
+    task_id: str | None = None
+
+
+def resolve_language(text: str, language: str | None, user: User | None = None) -> str:
+    """Explicit ``language`` > script of the message > profile language > 'en' (Canada)."""
+    if language:
+        return "ja" if language.lower().startswith("ja") else "en"
+    if text and text.strip():
+        return detect_language(text)
+    prof = user.profile if user else None
+    return "ja" if ((prof.language if prof else None) or "en").startswith("ja") else "en"
+
+
+def _snake(label: str) -> str:
+    s = re.sub(r"[^0-9a-zA-Z぀-ヿ一-鿿]+", "_", (label or "").strip().lower()).strip("_")
+    return s[:100]
+
+
+def _recent_history(db: Session, user_id: str, limit: int = HISTORY_TURNS) -> list[dict[str, str]]:
+    rows = db.scalars(select(ChatMessage).where(ChatMessage.user_id == user_id, ChatMessage.role.in_(("user", "assistant")))
+                      .order_by(ChatMessage.created_at.desc()).limit(limit)).all()
+    return [{"role": r.role, "content": r.content} for r in reversed(rows)]
+
+
+def _emergency_turn(db: Session, user: User, msg: ChatMessage, labels: list[str], lang: str) -> ChatTurn:
+    from app.services.emergency import handle_red_flags
+
+    obs = []
+    for label in labels:
+        o = Observation(user_id=user.id, kind="red_flag", label=label, severity="urgent",
+                        onset=datetime.now(timezone.utc).date().isoformat(), free_text=msg.content[:500],
+                        source="chat", source_id=msg.id)
+        db.add(o)
+        obs.append(o)
+    db.flush()
+    # shared §7 path: guidance + throttled notify_emergency + RiskAssessment(trigger='event')
+    answer = handle_red_flags(db, user, labels, source="chat", source_id=msg.id, language=lang,
+                              observations=obs, extra={"message_id": msg.id})
+    reply = ChatMessage(user_id=user.id, role="assistant", content=answer, sources=[])
+    db.add(reply)
+    db.flush()
+    audit(db, user.id, "chat.emergency", f"chat_message:{msg.id}", {"red_flags": labels, "rule": "EMG-01"},
+          actor="system")
+    db.commit()
+    return ChatTurn(answer=answer, sources=[], observations_created=obs, red_flags=labels,
+                    assessment_hint="emergency", message_id=reply.id, user_message_id=msg.id, language=lang)
+
+
+def extract_observations(db: Session, user: User, llm: LlmProvider, text: str, message_id: str,
+                         audit_hook=None, now: datetime | None = None) -> list[Observation]:
+    """Cheap-model extraction → validated, deduped (same label within 24 h) Observations."""
+    try:
+        data = llm.extract(extraction_system(), text, OBSERVATION_SCHEMA, model=llm.model_cheap,
+                           tool_name="record_observations", purpose="chat_extraction", audit_hook=audit_hook)
+    except LlmConfigError:
+        raise  # misconfiguration (missing key) → 503 via app.main handler, not a silent fallback
+    except LlmError as exc:
+        log.warning("chat extraction failed: %s", exc)
+        return []
+    items = data.get("observations") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return []
+    now = now or datetime.now(timezone.utc)
+    recent = set(db.scalars(select(Observation.label).where(
+        Observation.user_id == user.id, Observation.created_at >= now - timedelta(hours=DEDUPE_HOURS))))
+    created: list[Observation] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        kind = it.get("kind")
+        label = _snake(str(it.get("label") or ""))
+        if kind not in EXTRACTABLE_KINDS or not label or label in RED_FLAG_LABELS or label in recent:
+            continue
+        sev = it.get("severity")
+        o = Observation(user_id=user.id, kind=kind, label=label, severity=sev if sev in SEVERITIES else None,
+                        onset=(str(it["onset"])[:100] if it.get("onset") else None),
+                        free_text=(str(it["free_text"])[:2000] if it.get("free_text") else None),
+                        source="chat", source_id=message_id)
+        db.add(o)
+        created.append(o)
+        recent.add(label)
+    db.flush()
+    return created
+
+
+def assessment_hint(observations: list[Observation]) -> str | None:
+    labels = {o.label for o in observations}
+    return next((hint for hint, keys in _HINTS if labels & keys), None)
+
+
+def handle_message(db: Session, user: User, text: str, llm: LlmProvider, embedding_provider: EmbeddingProvider | None,
+                   language: str | None = None, audio_meta: dict[str, Any] | None = None, k: int = 6) -> ChatTurn:
+    """Run one chat turn (see module docstring). Commits."""
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("empty message")
+    lang = resolve_language(text, language, user)
+    history = _recent_history(db, user.id)
+
+    msg = ChatMessage(user_id=user.id, role="user", content=text,
+                      audio_url=(audio_meta or {}).get("audio_url"))
+    db.add(msg)
+    db.flush()
+
+    red_flags = detect_red_flags(text, lang)
+    if red_flags:
+        return _emergency_turn(db, user, msg, red_flags, lang)
+
+    hook = llm_audit_hook(db, user.id, resource=f"chat_message:{msg.id}")
+    context = build_context_block(db, user)
+    pathway = rag_service.infer_pathway(text)
+    try:
+        hits = rag_service.retrieve(db, text, k=k, pathway=pathway, embedding_provider=embedding_provider)
+    except Exception:  # embedding provider down → answer without excerpts
+        log.exception("retrieval failed")
+        hits = []
+    result = rag_service.answer_with_citations(db, llm, text, hits, context, lang, history=history, audit_hook=hook)
+    answer = output_guard(result["answer"], lang)
+    reply = ChatMessage(user_id=user.id, role="assistant", content=answer, sources=result["sources"])
+    db.add(reply)
+    db.flush()
+
+    obs = extract_observations(db, user, llm, text, msg.id, audit_hook=hook)
+    audit(db, user.id, "chat.message", f"chat_message:{msg.id}",
+          {"pathway": pathway, "n_hits": len(hits), "cited": result["cited"],
+           "observations": [o.label for o in obs], "voice": bool(audio_meta)})
+    db.commit()
+    return ChatTurn(answer=answer, sources=result["sources"], cited=rag_service.cited_numbers(answer, len(hits)),
+                    observations_created=obs, red_flags=[],
+                    assessment_hint=assessment_hint(obs), message_id=reply.id, user_message_id=msg.id, language=lang)
+
+
+def _speech_task(db: Session, user: User, transcript: Any, audio_bytes: bytes, audio_url: str | None,
+                 lang: str) -> AssessmentTask | None:
+    """AssessmentTask(free_speech) with lexical + temporal features; None if the speech module fails."""
+    try:
+        from app.ml.features.speech import lexical_features, temporal_features
+
+        timing = transcript.word_timestamps or transcript.segments or []
+        feats = {"lexical": lexical_features(transcript.text, lang),
+                 "temporal": temporal_features(timing, transcript.duration_s, language=lang, text=transcript.text)}
+    except Exception:
+        log.exception("speech features failed")
+        return None
+    quality: dict[str, Any]
+    valid, reason = bool(transcript.text.strip()), None
+    try:
+        from app.ml.features.quality import assess_quality, load_audio
+
+        y, sr = load_audio(audio_bytes)
+        q = assess_quality(y, sr)
+        quality = q.to_dict()
+        valid = valid and q.ok
+        reason = "; ".join(q.reasons) or None
+    except Exception:
+        quality = {"assessed": False, "duration_s": transcript.duration_s, "reasons": ["audio_decode_failed"]}
+    task = AssessmentTask(user_id=user.id, task_type="free_speech", protocol_version=FREE_SPEECH_PROTOCOL,
+                          language=lang, recording_quality=quality, raw_url=audio_url,
+                          raw_json={"transcript": transcript.to_dict()}, features=feats, valid=valid,
+                          invalid_reason=None if valid else (reason or "empty_transcript"))
+    db.add(task)
+    db.flush()
+    return task
+
+
+def handle_voice_message(db: Session, user: User, audio_bytes: bytes, filename: str | None, stt: Any,
+                         llm: LlmProvider, embedding_provider: EmbeddingProvider | None,
+                         language: str | None = None, storage: Any = None) -> ChatTurn:
+    """Transcribe (language forced) → store audio → AssessmentTask(free_speech) → :func:`handle_message`."""
+    from app.providers.storage import get_storage
+
+    lang = resolve_language("", language, user)  # explicit > profile language (forced for STT)
+    transcript = stt.transcribe(audio_bytes, language=lang, filename=filename)
+    text = (transcript.text or "").strip()
+    if not text:
+        raise ValueError("no speech recognised in the recording")
+    audio_url = None
+    try:
+        audio_url = (storage or get_storage()).save(user.id, "chat_audio", filename or "voice.webm", audio_bytes)
+    except Exception:
+        log.exception("audio storage failed")
+    task = _speech_task(db, user, transcript, audio_bytes, audio_url, lang)
+    turn = handle_message(db, user, text, llm, embedding_provider, language=lang,
+                          audio_meta={"audio_url": audio_url, "task_id": task.id if task else None})
+    turn.transcript = text
+    turn.task_id = task.id if task else None
+    return turn
+
+
+def history(db: Session, user: User, limit: int = 50) -> list[ChatMessage]:
+    """Last ``limit`` messages, oldest first."""
+    rows = db.scalars(select(ChatMessage).where(ChatMessage.user_id == user.id)
+                      .order_by(ChatMessage.created_at.desc()).limit(limit)).all()
+    return list(reversed(rows))

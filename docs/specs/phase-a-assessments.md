@@ -1,6 +1,6 @@
 # Phase A detailed spec — Assessment tasks, calculators, rules
 
-Companion to `docs/BACKEND_PLAN.md` Phase A. Decisions (2026-10-17): own story-recall prototype following the Novoic Storyteller / ASRT protocol; Suita score as the long-term cardio calculator; one trained model (UCI sustained-vowel PD classifier, experimental); ADReSS and mPower are access-gated extras.
+Companion to `docs/BACKEND_PLAN.md` Phase A. Decisions (2026-10-17): own story-recall prototype following the Novoic Storyteller / ASRT protocol; Suita score as the long-term cardio calculator (superseded 2026-10-17 for Canada: Framingham Risk Score / CCS, §3a); one trained model (UCI sustained-vowel PD classifier, experimental); ADReSS and mPower are access-gated extras.
 
 ---
 
@@ -44,7 +44,9 @@ Present 3 unrelated words (TTS), ask again after the check-in questions (~2 min)
 
 ---
 
-## 2. Cardio module 2 — Home BP protocol (JSH 2019, to be reconciled with JSH 2025)
+## 2. Cardio module 2 — Home BP protocol (Hypertension Canada 2020 primary; JSH 2019 secondary)
+
+> Canada (2026-10-17, verified in Hypertension Canada's 2020–22 Highlights guide, `data/raw/research/hypertension_canada_2020_highlights.pdf`; full guideline Rabi et al., *Can J Cardiol* 2020;36:596-624): home BP series = duplicate readings morning and evening for 7 days, discard day 1, average the rest; **HBPM series mean ≥135/85 = hypertension** (diagnostic algorithm); office mean ≥180/110 = hypertension at once. Our 135/85 thresholds are unchanged. The 145/90 single-window cut-off (BP-02), morning hypertension (BP-03) and the morning–evening difference (BP-04) come from JSH 2019 and stay as secondary sources. Rule sources: `src_hypertension_canada_2020`, `src_jsh2019`.
 
 > JSH 2025 (高血圧管理・治療ガイドライン2025) has been published. Before the BP rules are enabled, check JSH 2025 for changes to the home classification, thresholds and targets and record the differences here.
 >
@@ -77,7 +79,18 @@ Rules:
 
 ---
 
-## 3. Cardio module 3 — Suita score (10-year **coronary heart disease** risk calculator; not stroke, not general heart disease, not an early-warning signal)
+## 3a. Cardio module 3 (Canada) — Framingham Risk Score (10-year general CVD risk; context only)
+
+Source: D'Agostino RB Sr et al., *Circulation* 2008;117:743-753 (`src_framingham2008`); Canadian use: Pearson GJ et al., 2021 CCS dyslipidemia guideline, *Can J Cardiol* 2021;37:1129-1150 (`src_ccs_lipids_2021`). Implemented in `app/ml/framingham.py`.
+
+- Equation: risk = 1 − S0(10)^exp(Σβx − mean). Women: ln age 2.32888, ln TC 1.20904, ln HDL −0.70833, ln SBP untreated 2.76157 / treated 2.82263, smoker 0.52873, diabetes 0.69154, S0 0.95012, mean 26.1931. Men: 3.06117, 1.12370, −0.93263, 1.93303 / 1.99881, 0.65451, 0.57367, S0 0.88936, mean 23.9802 (checked against the Framingham Heart Study risk-function page; tests reproduce the FHS calculator spreadsheet to 1e-9 and the 10.48% / 15.62% worked examples).
+- Cholesterol enters in mg/dL (as in the paper); Profile stores mg/dL, the API shows mmol/L (÷ 38.67). Lab uploads in mmol/L are converted.
+- CCS 2021: the FRS percent is doubled for a first-degree relative with premature CVD (men ≤55, women ≤65) at age 30–59 without diabetes; categories low <10%, intermediate 10–19.9%, high ≥20%; reassess every 5 years at 40–75.
+- Inputs: age (30–74), sex, smoker, diabetes, 7-day home SBP mean (used as-is in place of office SBP), BP treated (from the medication list), TC, HDL. Any missing → `insufficient_data` with `missing_inputs`; never imputed. Known CHD → `not_applicable`.
+- `FRS-01` (informational): ≥10% (CCS intermediate/high) → "discuss at the visit"; never changes the level. What-if: stop smoking; SBP 120 mmHg; TC 5.2 mmol/L; HDL 1.3 mmol/L.
+- Limitation: US Framingham cohort; home rather than office SBP.
+
+## 3. Cardio module 3 (Japan only, kept in code) — Suita score (10-year **coronary heart disease** risk calculator; not stroke, not general heart disease, not an early-warning signal)
 
 Source: Nishimura et al., *J Atheroscler Thromb* 2014;21:784-798. Cohort: 5,521 Japanese adults without CHD, Suita city, mean follow-up 11.8 y, 213 CHD events. CHD = definite/probable acute MI (MONICA criteria), sudden cardiac death within 24 h, or CHD followed by CABG/PCI. C-statistic 0.831 (LDL model with CKD). Framingham overestimated risk in this cohort.
 
@@ -116,7 +129,7 @@ The TC variant (Table 5a: age 36–45=30, 46–55=39, 56–65=46, >65=58; female
 Implementation notes:
 - The Suita BP categories are office-style. We feed the 7-day home mean as-is and state this; adding 5 mmHg to approximate office BP is not justified by the paper.
 - Eligibility: age 35–79, no known CHD. Outside → `not_applicable`. Missing LDL/HDL/eGFR → `insufficient_data` for this module; **never impute normal values** (report says "lipids/kidney values needed; ask your doctor").
-- Output is **context only** (shown in the doctor report with the citation and the cohort description). It never fires a follow-up rule by itself. `SUITA-01`: ≥9% → noted as "elevated long-term risk, discuss at the visit".
+- Output is **context only** (shown in the doctor report with the citation and the cohort description). It never fires a follow-up rule by itself. `SUITA-01`: ≥9% → noted as "elevated long-term risk, discuss at the visit". Registered only for region `JP` (`Rule.regions`); with `DEFAULT_COUNTRY=CA` the engine uses §3a.
 - Limitation stated: Japanese urban cohort, baseline 1989–1994 era, categories not individualised, no wearable inputs.
 
 ---
@@ -155,12 +168,12 @@ Metrics: walking speed, step length, double-support %, walking asymmetry, walkin
 ---
 
 ## 6. Personal-baseline change detector (HearO-informed)
-`app/ml/baseline.py`: for any numeric series, robust baseline = median/MAD of the trailing 30 days excluding the last 7; flag when ≥5 of the last 7 daily values deviate ≥1.5 MAD in the adverse direction. Requires ≥14 baseline days else `insufficient_data`. Used by COG-02, PD-02, PD-04, and general sleep/fatigue (`GEN-01`: sleep duration or self-rated fatigue). Output text: "change from your usual range worth checking", never a disease name.
+`app/ml/baseline.py`: for any numeric series, robust baseline = median/MAD of the trailing 30 days excluding the last 7; flag when ≥5 of the last 7 daily values deviate ≥1.5 × scaled MAD (MAD × 1.4826, a robust σ) in the adverse direction. Requires ≥14 baseline days else `insufficient_data`. Used by COG-02, PD-02, PD-04, and general sleep/fatigue (`GEN-01`: sleep duration or self-rated fatigue). Output text: "change from your usual range worth checking", never a disease name.
 
 ---
 
 ## 7. Emergency path
-`EMG-01` red-flag symptom extracted from chat or daily log: chest pain/pressure, sudden face droop / arm weakness / speech difficulty, fainting, severe sudden headache, suicidal ideation. `EMG-02` = BP-05. Action: immediate emergency guidance in the reply (call 119 in Japan / local number by profile), notify emergency contact if consented, create `RiskAssessment(level=emergency)`; **no booking agent**.
+`EMG-01` red-flag symptom extracted from chat or daily log: chest pain/pressure, sudden face droop / arm weakness / speech difficulty, fainting, severe sudden headache, suicidal ideation. `EMG-02` = BP-05. Action: immediate emergency guidance in the reply (Canada: call 911; if unsure, the 811 nurse line — Health Link / Health811; for suicidal ideation 9-8-8, call or text), notify emergency contact if consented, create `RiskAssessment(level=emergency)`; **no booking agent**.
 
 ---
 
@@ -170,7 +183,7 @@ Rule = {id, pathway, version, inputs: [field names], condition(ctx) -> bool,
         level, rationale, sources: [ResearchSource ids], review_status}
 evaluate(user) -> for each pathway: {level, fired: [rule ids], insufficient: [inputs], evidence: [...]}
 ```
-Level per pathway = max over fired rules by order `no_finding < watch < followup_recommended < emergency`; `insufficient_data` and `invalid_measurement` are reported alongside, and are the level when nothing fired and inputs are missing/invalid.
+Level per pathway = max over fired rules by order `no_finding < watch < followup_recommended < emergency`; `insufficient_data` and `invalid_measurement` are reported alongside, and are the level when nothing fired and a **gate** rule's inputs are missing/invalid (cardio `BP-00`/`RHY-02`, cognitive `COG-01`, general `GEN-01`; Parkinson's only when no screener, mobility, tapping or voice input is usable) — other rules' missing inputs are listed in `data_quality.missing_optional_inputs` and do not change the level.
 
 Tests (pytest): for every rule, three synthetic cases (fires / does not fire / insufficient). Replay harness over the seeded demo user must produce `[BP-02, RHY-01] → followup_recommended`.
 
@@ -183,7 +196,7 @@ Tests (pytest): for every rule, three synthetic cases (fires / does not fire / i
 
 ## 10. Assessment output contract (store separately, never collapse into one number)
 Every assessment run writes, per pathway:
-1. **Measured result / device finding** — `AssessmentTask.features` + score, `DeviceRhythmResult.label`, `BpWindow` means, Suita total points and 10-year CHD %.
+1. **Measured result / device finding** — `AssessmentTask.features` + score, `DeviceRhythmResult.label`, `BpWindow` means, Framingham 10-year CVD % and CCS category (Suita points / CHD % for JP).
 2. **Model score + version** where a model exists — `model_scores{name, version, probability, threshold, calibration_note}`.
 3. **Data quality and missing inputs** — `recording_quality`, `valid` flags, `missing_inputs[]`, `baseline_n_days`.
 4. **Rule that suggested follow-up** — `fired_rules[]` with rule version.
@@ -194,7 +207,7 @@ The user-facing level and the booking trigger come only from (4). Items (1)–(3
 
 ## 11. Risk percentage UI — "Follow-up priority" score (decided 2026-10-17)
 
-The dashboard shows one percentage per pathway. It is a **follow-up priority score (0–100)** derived from the fired rules, labelled on screen as *"Follow-up priority — not the probability of having a disease."* Where a real probability exists (Suita 10-year CHD risk) it is shown as a second, separately labelled number.
+The dashboard shows one percentage per pathway. It is a **follow-up priority score (0–100)** derived from the fired rules, labelled on screen as *"Follow-up priority — not the probability of having a disease."* Where a real probability exists (Framingham 10-year CVD risk in Canada; Suita CHD risk for JP) it is shown as a second, separately labelled number.
 
 ### 11.1 Computation (`app/ml/priority.py`)
 Deterministic, from the rule engine output only.
@@ -211,11 +224,11 @@ Examples: BP-02 alone → 60. BP-02 + RHY-01 → 70. BP-02 + RHY-01 + BP-04 (wat
 Booking trigger is unchanged: `followup_recommended` level (score ≥60 by construction), after consent check. The score never triggers anything by itself.
 
 ### 11.2 Real probabilities shown alongside (separately labelled)
-- Cardio card: **"10-year coronary heart disease risk: X%"** (Suita, LDL or TC sheet), with `inputs_used`, `missing_inputs`, and a **what-if** list: recomputed X% for each modifiable change (stop smoking; BP to <120/80; LDL to <100; HDL ≥60). Shown only when eligible and inputs complete; otherwise "needs lipid / kidney values".
+- Cardio card: **"10-year cardiovascular disease risk: X% (CCS low/intermediate/high)"** (Framingham, §3a) in `long_term_risk` and `probabilities[]`, with `inputs` (mmol/L), `inputs_used`, `missing_inputs`, and a **what-if** list (stop smoking; SBP 120; TC 5.2 mmol/L; HDL 1.3 mmol/L). Shown only when eligible and inputs complete; otherwise "needs cholesterol values / BP-treatment status". (JP: Suita CHD risk, what-if stop smoking; BP <120/80; LDL <100; HDL ≥60.)
 - Parkinson's card: vowel classifier probability shown only in the detail view as *"experimental voice-model score"* with the model card link; never on the main gauge.
 
 ### 11.3 Preventive measures
-Per pathway, the card lists 2–4 measures tied to the fired rules' modifiable inputs, each with a RAG citation and the framing "to discuss with your doctor": BP (salt <6 g/day, alcohol, exercise, weight, medication adherence), CHD (smoking, lipids, diabetes control), sleep/activity (sleep regularity, daytime activity), cognitive and PD (exercise, hearing/vision check, social activity, sleep — framed as general brain-health guidance, not as lowering a disease percentage).
+Per pathway, the card lists 2–4 measures tied to the fired rules' modifiable inputs, each with a RAG citation and the framing "to discuss with your doctor": BP (Hypertension Canada: less salt / DASH-style diet, alcohol <2 drinks/day, 30–60 min moderate activity 4–7 days/week, weight, medication adherence), long-term CVD (smoking, lipids, diabetes control; CCS 2021), sleep/activity (sleep regularity, daytime activity), cognitive and PD (exercise, hearing/vision check, social activity, sleep — framed as general brain-health guidance, not as lowering a disease percentage).
 
 ### 11.4 API shape (`GET /api/dashboard` → `pathways[]`, also `GET /api/risk/latest`)
 ```json
@@ -234,14 +247,22 @@ Per pathway, the card lists 2–4 measures tied to the fired rules' modifiable i
   "data_quality": {"valid_bp_days": 7, "invalid_readings": 1},
   "trend": [{"week": "2026-09-21", "priority_score": 0}, {"week": "2026-09-28", "priority_score": 25}, {"week": "2026-10-05", "priority_score": 60}, {"week": "2026-10-12", "priority_score": 70}],
   "probabilities": [
-    {"name": "10-year coronary heart disease risk (Suita score)", "value_pct": 9, "kind": "population_estimate",
-     "inputs_used": ["age", "sex", "bp", "ldl", "hdl", "smoking", "diabetes", "egfr"], "missing_inputs": [],
-     "what_if": [{"change": "stop smoking", "value_pct": 5}, {"change": "BP < 120/80", "value_pct": 3}],
-     "source_id": "src_suita2014"}
+    {"name": "10-year cardiovascular disease risk (Framingham Risk Score)", "calculator": "framingham_2008",
+     "value_pct": 49.8, "value_display": "49.8", "category": "high", "kind": "population_estimate",
+     "inputs_used": ["age", "sex", "smoker", "diabetes", "bp", "bp_treated", "total_chol", "hdl"], "missing_inputs": [],
+     "what_if": [{"change": "stop smoking", "value_pct": 30.1, "value_display": "30.1", "category": "high"},
+                 {"change": "systolic BP 120 mmHg", "value_pct": 37.5, "value_display": "37.5", "category": "high"}],
+     "source_id": "src_framingham2008", "guideline_source_id": "src_ccs_lipids_2021"}
   ],
+  "long_term_risk": {"calculator": "framingham_2008", "status": "ok", "percent_10y": 49.8, "display": "49.8",
+     "category": "high", "inputs": {"age": 68, "sex": "male", "smoker": true, "diabetes": false,
+       "systolic_bp_mmhg": 146.4, "bp_treated": false, "total_chol_mmol_l": 5.8, "hdl_mmol_l": 1.15,
+       "family_history_premature_cvd": false},
+     "inputs_used": ["…"], "missing_inputs": [], "what_if": [{"change": "stop smoking", "percent_10y": 30.1, "display": "30.1", "category": "high"}],
+     "source_id": "src_framingham2008", "guideline_source_id": "src_ccs_lipids_2021", "note": "BP input is the 7-day home systolic mean …"},
   "preventive_measures": [
-    {"text": "Reduce salt to under 6 g/day", "source_id": "src_jsh2019"},
-    {"text": "Keep taking blood-pressure medication at the same time daily", "source_id": "src_jsh2019"}
+    {"text": "Eat less salt and follow a DASH-style diet (more vegetables, fruit and fibre, less saturated fat) (to discuss with your doctor)", "source_id": "src_hypertension_canada_2020"},
+    {"text": "Bring your device's rhythm recordings to the visit (to discuss with your doctor)", "source_id": "src_ccs_af_2020"}
   ],
   "next_action": {"type": "appointment_requested", "appointment_id": "apt_…"},
   "disclaimer": "This is not a diagnosis. The priority score reflects which follow-up rules fired, not the chance that you have a condition."

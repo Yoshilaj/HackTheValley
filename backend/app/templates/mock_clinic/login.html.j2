@@ -1,0 +1,27 @@
+{% extends "base.html.j2" %}
+{% block title %}Patient sign in — {{ clinic.name }}{% endblock %}
+{% block body %}
+<main class="wrap">
+  {% if register %}
+  <h1>Create a patient account</h1>
+  <p>Create an account to book appointments online.</p>
+  <form class="booking" method="post" action="{{ p }}/book">
+    <div><label for="r-name">Full name</label><input type="text" id="r-name" name="name" required></div>
+    <div><label for="r-email">E-mail</label><input type="email" id="r-email" name="email" required></div>
+    <div><label for="r-password">Password</label><input type="password" id="r-password" name="password" required></div>
+    <div><label for="r-password2">Confirm password</label><input type="password" id="r-password2" name="password2" required></div>
+    <div class="full"><button class="btn" type="submit">Create account</button></div>
+  </form>
+  {% else %}
+  <h1>Online booking</h1>
+  <p>Online booking is available to registered patients. Please sign in to book an appointment.
+     New patients: <a href="{{ p }}/register">create an account</a> first, or call {{ clinic.phone }}.</p>
+  {% if errors %}<div class="errors">{% for e in errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+  <form class="booking" method="post" action="{{ p }}/book">
+    <div class="full"><label for="l-email">E-mail</label><input type="email" id="l-email" name="email" required></div>
+    <div class="full"><label for="l-password">Password</label><input type="password" id="l-password" name="password" required></div>
+    <div class="full"><button class="btn" type="submit">Sign in</button></div>
+  </form>
+  {% endif %}
+</main>
+{% endblock %}

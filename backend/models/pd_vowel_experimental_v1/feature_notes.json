@@ -1,0 +1,126 @@
+{
+  "overall": "UCI features were computed by MDVP (Kay Elemetrics) and Little's MATLAB code on studio recordings (25 kHz, head-mounted microphone). Serving features come from Praat (parselmouth) and our re-implementations on phone recordings; the classifier therefore faces a measurement-domain shift that has not been validated.",
+  "approximate_features": [
+    "MDVP:Fhi(Hz)",
+    "MDVP:Flo(Hz)",
+    "NHR",
+    "RPDE",
+    "DFA",
+    "spread1",
+    "spread2",
+    "D2",
+    "PPE"
+  ],
+  "features": {
+    "MDVP:Fo(Hz)": {
+      "approximate": false,
+      "method": "Praat To Pitch (ac), 75-600 Hz; mean of voiced frames",
+      "difference": "MDVP pitch extraction differs from Praat's autocorrelation tracker; means agree closely on clean vowels."
+    },
+    "MDVP:Fhi(Hz)": {
+      "approximate": true,
+      "method": "max of Praat voiced pitch frames",
+      "difference": "Extremes are sensitive to octave errors; MDVP's tracker and windowing differ, so Fhi/Flo are only approximately comparable."
+    },
+    "MDVP:Flo(Hz)": {
+      "approximate": true,
+      "method": "min of Praat voiced pitch frames",
+      "difference": "See MDVP:Fhi(Hz)."
+    },
+    "MDVP:Jitter(%)": {
+      "approximate": false,
+      "method": "Praat Get jitter (local) on PointProcess (periodic, cc), as a fraction (UCI stores the fraction, e.g. 0.0078)",
+      "difference": "Praat manual states jitter (local) corresponds to MDVP Jitt; period detection algorithm differs."
+    },
+    "MDVP:Jitter(Abs)": {
+      "approximate": false,
+      "method": "Praat Get jitter (local, absolute), seconds",
+      "difference": "Corresponds to MDVP Jita."
+    },
+    "MDVP:RAP": {
+      "approximate": false,
+      "method": "Praat Get jitter (rap)",
+      "difference": "Corresponds to MDVP RAP."
+    },
+    "MDVP:PPQ": {
+      "approximate": false,
+      "method": "Praat Get jitter (ppq5)",
+      "difference": "Corresponds to MDVP PPQ (5-point)."
+    },
+    "Jitter:DDP": {
+      "approximate": false,
+      "method": "Praat Get jitter (ddp) (= 3 x RAP)",
+      "difference": "Definitional equivalent."
+    },
+    "MDVP:Shimmer": {
+      "approximate": false,
+      "method": "Praat Get shimmer (local)",
+      "difference": "Corresponds to MDVP Shim."
+    },
+    "MDVP:Shimmer(dB)": {
+      "approximate": false,
+      "method": "Praat Get shimmer (local_dB)",
+      "difference": "Corresponds to MDVP ShdB."
+    },
+    "Shimmer:APQ3": {
+      "approximate": false,
+      "method": "Praat Get shimmer (apq3)",
+      "difference": "Definitional equivalent."
+    },
+    "Shimmer:APQ5": {
+      "approximate": false,
+      "method": "Praat Get shimmer (apq5)",
+      "difference": "Definitional equivalent."
+    },
+    "MDVP:APQ": {
+      "approximate": false,
+      "method": "Praat Get shimmer (apq11)",
+      "difference": "Praat manual: apq11 corresponds to MDVP APQ."
+    },
+    "Shimmer:DDA": {
+      "approximate": false,
+      "method": "Praat Get shimmer (dda) (= 3 x APQ3)",
+      "difference": "Definitional equivalent."
+    },
+    "NHR": {
+      "approximate": true,
+      "method": "10 ** (-HNR / 10) from Praat harmonicity (cc)",
+      "difference": "MDVP NHR is an energy ratio of 1.5-4.5 kHz inharmonic to 70-4.5 kHz harmonic energy; the HNR conversion is a different (broadband) quantity with a different scale."
+    },
+    "HNR": {
+      "approximate": false,
+      "method": "Praat To Harmonicity (cc), 0.01 s, 75 Hz, mean in dB",
+      "difference": "UCI HNR came from Little's code / MDVP-family processing; Praat HNR is the standard equivalent."
+    },
+    "RPDE": {
+      "approximate": true,
+      "method": "Recurrence period density entropy (Little 2007): signal resampled to 25 kHz, normalised to [-1,1], time-delay embedded (m=4, tau=35), close returns within eps=0.12 up to T_max=1000 samples, normalised Shannon entropy H/ln(T_max) on a central 0.3 s segment",
+      "difference": "Embedding parameters are our reconstruction from the paper; Little's code also pre-filtered the signal and used the whole recording."
+    },
+    "DFA": {
+      "approximate": true,
+      "method": "Detrended fluctuation analysis (Little 2007) of the 25 kHz signal, window sizes L=50..100 step 10, scaling exponent alpha, reported as logistic 1/(1+exp(-alpha))",
+      "difference": "Window range and logistic transform as described in Little 2007; exact segment/overlap choices of the original code unknown."
+    },
+    "spread1": {
+      "approximate": true,
+      "method": "ln(std) of the whitened semitone pitch residual (AR(2) linear prediction), residual in octaves",
+      "difference": "No public algorithmic definition of spread1/spread2 exists; this is our closest documented approximation, chosen to measure nonlinear F0 variation on a comparable scale (UCI range about -7.9 to -2.4)."
+    },
+    "spread2": {
+      "approximate": true,
+      "method": "std of the mean-removed semitone pitch contour, in octaves",
+      "difference": "No public definition; approximation on a comparable scale (UCI range about 0.006 to 0.45)."
+    },
+    "D2": {
+      "approximate": true,
+      "method": "Grassberger-Procaccia correlation dimension: 25 kHz signal decimated x2, embedding m=10, tau=8, 1500 sampled points, Theiler window 50, slope of log C(r) vs log r between the 2nd and 30th percentiles of pairwise distances",
+      "difference": "Embedding and scaling-region choices are ours; correlation-dimension estimates are highly parameter dependent."
+    },
+    "PPE": {
+      "approximate": true,
+      "method": "Pitch period entropy (Little 2009): pitch to semitones re 127.09 Hz, AR(2) whitening, entropy of residual histogram (0.1-semitone bins over +/-3 semitones) normalised by ln(n_bins)",
+      "difference": "Histogram binning and normalisation are our choices; Little used a different probability-density estimate."
+    }
+  }
+}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}{{ clinic.name }}{% endblock %}</title>
+<style>
+  :root { --teal: #0f6b6b; --teal-dark: #0a4d4d; --sand: #f6f3ee; --ink: #1f2a2e; --muted: #5c6b70; --line: #dfe5e6; --error: #a33a2c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Helvetica Neue", Arial, sans-serif; color: var(--ink); background: #fff; line-height: 1.5; }
+  a { color: var(--teal); }
+  .demo-banner { background: #fff4d6; color: #6b4e00; font-size: 13px; text-align: center; padding: 6px 16px; }
+  header.site { background: var(--teal); color: #fff; }
+  header.site .wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  header.site .brand { font-weight: 700; font-size: 20px; color: #fff; text-decoration: none; }
+  header.site nav a { color: #e6f3f3; text-decoration: none; margin-left: 18px; font-size: 15px; }
+  header.site nav a.cta { background: #fff; color: var(--teal-dark); padding: 6px 14px; border-radius: 18px; font-weight: 600; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 16px; }
+  .hero { background: var(--sand); }
+  .hero h1 { font-size: 32px; margin: 18px 0 6px; }
+  .hero p { color: var(--muted); font-size: 18px; margin: 0 0 16px; }
+  .btn { display: inline-block; background: var(--teal); color: #fff; border: 0; padding: 10px 20px; border-radius: 6px; font-size: 16px; text-decoration: none; cursor: pointer; }
+  .btn:hover { background: var(--teal-dark); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  table.hours { border-collapse: collapse; }
+  table.hours td { padding: 3px 18px 3px 0; }
+  form.booking { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; max-width: 720px; }
+  form.booking .full { grid-column: 1 / -1; }
+  form.booking label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  form.booking input[type=text], form.booking input[type=email], form.booking input[type=tel], form.booking input[type=date],
+  form.booking input[type=password], form.booking select, form.booking textarea { width: 100%; padding: 8px 10px; border: 1px solid #b9c4c6; border-radius: 5px; font-size: 15px; font-family: inherit; }
+  form.booking .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .errors { border: 1px solid var(--error); background: #fbeeec; color: var(--error); border-radius: 6px; padding: 10px 16px; max-width: 720px; }
+  .notice { border: 1px solid var(--line); background: var(--sand); border-radius: 8px; padding: 16px 20px; max-width: 720px; }
+  .ref { font-size: 26px; font-weight: 700; letter-spacing: 1px; }
+  .captcha-box { border: 1px solid #c7cfd1; border-radius: 4px; width: 304px; height: 78px; }
+  footer { border-top: 1px solid var(--line); margin-top: 40px; color: var(--muted); font-size: 13px; }
+  @media (max-width: 640px) { form.booking { grid-template-columns: 1fr; } header.site nav a { margin-left: 10px; } }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="demo-banner">Fictional demo clinic for a hackathon project — not a real medical practice. Do not enter real health information.</div>
+<header class="site"><div class="wrap">
+  <a class="brand" href="{{ p }}">{{ clinic.name }}</a>
+  <nav>
+    <a href="{{ p }}#services">Services</a>
+    <a href="{{ p }}#hours">Hours</a>
+    <a href="{{ p }}#contact">Contact</a>
+    {% if variant.booking != "email" %}<a class="cta" href="{{ p }}/book">Book online</a>{% else %}<a class="cta" href="{{ p }}/book">Appointments</a>{% endif %}
+  </nav>
+</div></header>
+{% block body %}{% endblock %}
+<footer><div class="wrap">
+  {{ clinic.name }} · {{ clinic.address }} (fictional) · Tel. {{ clinic.phone }} · Fax {{ clinic.fax }}<br>
+  In an emergency call 911. For health advice call Health811 (dial 811).
+</div></footer>
+</body>
+</html>

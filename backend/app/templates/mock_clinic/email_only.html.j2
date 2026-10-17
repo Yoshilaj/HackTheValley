@@ -1,0 +1,13 @@
+{% extends "base.html.j2" %}
+{% block title %}Appointments — {{ clinic.name }}{% endblock %}
+{% block body %}
+<main class="wrap">
+  <h1>Appointments</h1>
+  <div class="notice">
+    <p>Our front desk handles all appointment requests personally. Please e-mail
+      <a href="mailto:{{ clinic.email }}?subject=Appointment%20request">{{ clinic.email }}</a>
+      with your name, date of birth, phone number and a few times that work for you, or call {{ clinic.phone }}.</p>
+    <p>We usually reply within one business day.</p>
+  </div>
+</main>
+{% endblock %}
