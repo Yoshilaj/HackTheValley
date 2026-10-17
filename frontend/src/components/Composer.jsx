@@ -3,19 +3,13 @@ import useSpeechRecognition from "../hooks/useSpeechRecognition.js";
 import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 import TypewriterHint from "./TypewriterHint.jsx";
 
-// Pill-shaped chat bar: + menu (files / photo), text box, mode picker,
-// microphone (speech to text) and send. Calls onSend(text, files, mode).
+// Pill-shaped chat bar: + menu (files / photo), text box, microphone
+// (speech to text) and send. Calls onSend(text, files).
 
 const ACCEPT = ".pdf,.txt,.csv,.doc,.docx,.png,.jpg,.jpeg,.heic";
 const MAX_FILES = 5;
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB per file
 const MAX_HEIGHT = 164; // about 6 lines
-
-const MODES = [
-  { id: "auto", label: "Auto", hint: "Picks the right depth for you" },
-  { id: "quick", label: "Quick", hint: "Short, simple answers" },
-  { id: "detailed", label: "Detailed", hint: "Longer explanations" },
-];
 
 // Questions the empty chat box types out in turn (see TypewriterHint). Kept
 // short so they fit the box on a phone.
@@ -46,7 +40,7 @@ export function FileIcon() {
 // hints: optional list of questions to type out while the box is empty. With
 // reduced motion the first one is shown as a plain placeholder instead.
 const Composer = forwardRef(function Composer(
-  { onSend, disabled = false, allowFiles = true, showMode = true, placeholder = "Ask CareSync anything…", hints, id = "chat" },
+  { onSend, disabled = false, allowFiles = true, placeholder = "Ask CareSync anything…", hints, id = "chat" },
   ref
 ) {
   const [draft, setDraft] = useState("");
@@ -54,15 +48,13 @@ const Composer = forwardRef(function Composer(
   const reduceMotion = usePrefersReducedMotion();
   const [files, setFiles] = useState([]);
   const [fileError, setFileError] = useState("");
-  const [menu, setMenu] = useState(null); // null | "add" | "mode"
-  const [mode, setMode] = useState("auto");
+  const [menu, setMenu] = useState(null); // null | "add"
   const [tall, setTall] = useState(false);
   const rootRef = useRef(null);
   const textRef = useRef(null);
   const fileRef = useRef(null);
   const photoRef = useRef(null);
   const addBtnRef = useRef(null);
-  const modeBtnRef = useRef(null);
 
   const speech = useSpeechRecognition((text) => setDraft((d) => join(d, text)));
 
@@ -87,7 +79,7 @@ const Composer = forwardRef(function Composer(
     setTall(el.scrollHeight > 48);
   }, [draft]);
 
-  // Close menus on outside click or Esc.
+  // Close the + menu on outside click or Esc.
   useEffect(() => {
     if (!menu) return;
     const onPointer = (e) => {
@@ -95,7 +87,7 @@ const Composer = forwardRef(function Composer(
     };
     const onKey = (e) => {
       if (e.key !== "Escape") return;
-      (menu === "add" ? addBtnRef : modeBtnRef).current?.focus();
+      addBtnRef.current?.focus();
       setMenu(null);
     };
     document.addEventListener("pointerdown", onPointer);
@@ -117,7 +109,7 @@ const Composer = forwardRef(function Composer(
   const submit = () => {
     if (!canSend) return;
     if (speech.listening) speech.abort();
-    onSend(pending, files, mode);
+    onSend(pending, files);
     setDraft("");
     setFiles([]);
     setFileError("");
@@ -140,7 +132,6 @@ const Composer = forwardRef(function Composer(
     e.target.value = "";
   };
 
-  const current = MODES.find((m) => m.id === mode);
   const micLabel = !speech.supported
     ? "Voice input isn't supported in this browser"
     : speech.listening
@@ -218,7 +209,7 @@ const Composer = forwardRef(function Composer(
                   <FileIcon />
                   <span>
                     Upload files
-                    <small>PDF, Word, text or CSV</small>
+                    <small>PDF, Word, text or CSV, up to 10 MB each</small>
                   </span>
                 </button>
                 <button type="button" role="menuitem" onClick={() => pick(photoRef)}>
@@ -229,7 +220,7 @@ const Composer = forwardRef(function Composer(
                   </svg>
                   <span>
                     Upload photo
-                    <small>Pill bottles, lab results, rashes</small>
+                    <small>Pill bottles, lab results, rashes, up to 10 MB</small>
                   </span>
                 </button>
               </div>
@@ -257,54 +248,6 @@ const Composer = forwardRef(function Composer(
           {/* Its own caret is hidden while the box is focused, so there's only the real one. */}
           {typing && <TypewriterHint phrases={hints} showCaret={!focused} />}
         </div>
-
-        {showMode && (
-        <div className="composer-menu-wrap">
-          <button
-            ref={modeBtnRef}
-            type="button"
-            className="mode-btn"
-            aria-label={`Response mode: ${current.label}`}
-            aria-haspopup="menu"
-            aria-expanded={menu === "mode"}
-            onClick={() => setMenu(menu === "mode" ? null : "mode")}
-          >
-            <span className="mode-brand">CareSync</span>
-            <span className="mode-name">{current.label}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-          {menu === "mode" && (
-            <div className="composer-menu right" role="menu" aria-label="Response mode">
-              {MODES.map((m, i) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={m.id === mode}
-                  autoFocus={i === 0}
-                  onClick={() => {
-                    setMode(m.id);
-                    setMenu(null);
-                    modeBtnRef.current?.focus();
-                  }}
-                >
-                  <span>
-                    {m.label}
-                    <small>{m.hint}</small>
-                  </span>
-                  {m.id === mode && (
-                    <svg className="check" viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M5 12l5 5L19 7" />
-                    </svg>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
 
         <button
           type="button"

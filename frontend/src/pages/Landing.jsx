@@ -246,6 +246,15 @@ export default function Landing() {
                 <li><a href="#privacy">Privacy</a></li>
               </ul>
             </div>
+            <div className="footer-note">
+              <h2>Why CareSync</h2>
+              <ul>
+                <li>Spots changes early, before they become problems.</li>
+                <li>Readings, medications and visits in one place.</li>
+                <li>Plain-language answers based on your history.</li>
+                <li>Finds and books the right visit near you.</li>
+              </ul>
+            </div>
             <div>
               <h2>Account</h2>
               <ul>

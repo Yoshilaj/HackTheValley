@@ -34,7 +34,6 @@ export const navItems = [
 
 export const notifications = [
   { id: 2, kind: "medication", title: "Omega-3 is out of refills", body: "Ask Dr. Patel for a new prescription.", time: "3h ago", to: "/medications", unread: true },
-  { id: 4, kind: "lab", title: "Lab results ready", body: "Your May blood panel results are available.", time: "Yesterday", to: "/appointments", unread: false },
 ];
 
 // Overall risk index 0-100, higher = more risk. It combines the condition

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { sendChat } from "../api/client.js";
 
 // Conversations: { id, title, createdAt, updatedAt, messages: [{ id, role, text, sources?, attachments? }] }
-// sendMessage(id, text, files?, mode?) - mode is the composer's response mode.
+// sendMessage(id, text, files?)
 // Stored in localStorage so history survives a refresh. Swap for an API later.
 // Attachments are saved as { name, size, type } only; file contents are sent
 // to the backend but never written to storage.
@@ -46,15 +46,15 @@ export function ChatHistoryProvider({ children }) {
   }, []);
 
   const ask = useCallback(
-    async (id, text, files, mode) => {
+    async (id, text, files) => {
       busy.current.add(id);
       setPending((p) => ({ ...p, [id]: true }));
       setErrors((e) => without(e, id));
       try {
-        const res = await sendChat(text, files, mode);
+        const res = await sendChat(text, files);
         addMessage(id, { id: makeId(), role: "assistant", text: res.answer, sources: res.sources ?? [] });
       } catch {
-        setErrors((e) => ({ ...e, [id]: { text, files, mode } }));
+        setErrors((e) => ({ ...e, [id]: { text, files } }));
       } finally {
         busy.current.delete(id);
         setPending((p) => without(p, id));
@@ -65,7 +65,7 @@ export function ChatHistoryProvider({ children }) {
 
   // Sends a message; pass id = null to start a new conversation. Returns the conversation id.
   const sendMessage = useCallback(
-    (id, raw, files = [], mode = "auto") => {
+    (id, raw, files = []) => {
       const text = raw.trim();
       if ((!text && files.length === 0) || (id && busy.current.has(id))) return id;
 
@@ -80,7 +80,7 @@ export function ChatHistoryProvider({ children }) {
         const created = { id: chatId, title: titleFrom(text || files[0].name), createdAt: now, updatedAt: now, messages: [message] };
         setChats((cs) => [created, ...cs]);
       }
-      ask(chatId, text, files, mode);
+      ask(chatId, text, files);
       return chatId;
     },
     [addMessage, ask]
@@ -89,7 +89,7 @@ export function ChatHistoryProvider({ children }) {
   const retry = useCallback(
     (id) => {
       const failed = errors[id];
-      if (failed && !busy.current.has(id)) ask(id, failed.text, failed.files, failed.mode);
+      if (failed && !busy.current.has(id)) ask(id, failed.text, failed.files);
     },
     [ask, errors]
   );

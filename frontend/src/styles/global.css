@@ -23,7 +23,9 @@
   --warn-ink: #8a4b00;
   --danger: #d70015;
 
-  --radius: 21px;
+  /* corners: boxes, and smaller boxes nested inside them (pills and circles keep 999px / 50%) */
+  --radius: 12px;
+  --radius-sm: 8px;
   --focus-ring: 2px solid var(--primary);
 
   /* Liquid glass: navigation and controls only, never content */

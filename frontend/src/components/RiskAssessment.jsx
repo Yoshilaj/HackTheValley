@@ -3,8 +3,8 @@ import { basisText, changeSince } from "../utils/risk.js";
 import { relativeDay } from "../utils/dates.js";
 
 // Card colour follows risk: green when low, through yellow, to red, then black
-// from 90 up. Colours blend smoothly between the stops. Each stop is a deep
-// shade so the white text keeps at least 4.5:1 contrast at every score.
+// from 90 up, as one flat fill. Colours blend smoothly between the stops. Each
+// stop is a deep shade so the white text keeps at least 4.5:1 contrast at every score.
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // [score, hue, saturation %, lightness %]
@@ -28,8 +28,7 @@ function colourAt(score) {
 
 export function riskColors(score) {
   const [h, s, l] = colourAt(score);
-  // The gradient's second colour is the same shade, a little lighter.
-  return { "--r-from": `hsl(${h}, ${s}%, ${l}%)`, "--r-to": `hsl(${h}, ${s}%, ${l + 4}%)` };
+  return { "--r-bg": `hsl(${h}, ${s}%, ${l}%)` };
 }
 
 // The overall risk index (0-100), with what it combines, what it's based on,
@@ -46,8 +45,10 @@ export default function RiskAssessment({ score, level, previous, updatedAt, basi
         <span className="sr-only">How your overall risk is worked out</span>
       </button>
       <div className="risk-top">
-        <p className="label">Overall risk</p>
-        <span className="risk-chip">{level}</span>
+        {/* The card colour shows the level; screen readers hear it here */}
+        <p className="label">
+          Overall risk<span className="sr-only">, {level}</span>
+        </p>
       </div>
       <p className="big">
         {score}

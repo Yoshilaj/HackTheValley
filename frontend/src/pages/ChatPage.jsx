@@ -4,22 +4,44 @@ import { useChatHistory } from "../context/ChatHistoryContext.jsx";
 import Composer, { ASSISTANT_HINTS, FileIcon, formatSize } from "../components/Composer.jsx";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
-import { patient } from "../data/placeholder.js";
+import { medicationList, patient } from "../data/placeholder.js";
+import useVitals from "../hooks/useVitals.js";
 import { slotLabel } from "../utils/slots.js";
+import { conditionLevel } from "../utils/risk.js";
 import "../styles/chat-flat.css";
 
-const suggestions = [
-  "When is my next appointment?",
-  "Which medications are due today?",
-  "Explain my blood pressure reading",
+// Guests have no record to draw on, so they get general starters.
+const GENERAL_SUGGESTIONS = [
+  "What should a healthy blood pressure be?",
+  "How can I sleep better?",
+  "When should I see a doctor about a headache?",
 ];
+
+// Signed-in starters come from the user's own record: their highest condition
+// risk, a medication that's out of refills, and their latest blood pressure.
+// Falls back to the general ones for anything missing.
+function personalSuggestions(conditions, vitals) {
+  const out = [];
+  const raised = (conditions ?? [])
+    .map((c) => ({ c, level: conditionLevel(c) }))
+    .filter(({ level }) => level !== "Low")
+    .sort((a, b) => b.c.risk - a.c.risk)[0];
+  if (raised) out.push(`Why is my ${raised.c.name.replace(" / ", " and ").toLowerCase()} risk ${raised.level.toLowerCase()}?`);
+  const empty = medicationList.find((m) => m.refills === 0);
+  if (empty) out.push(`${empty.name} is out of refills. What should I do?`);
+  const bp = vitals.find((v) => v.id === "bp");
+  if (bp) out.push(`Is ${bp.value} ${bp.unit} too high for me?`);
+  return [...out, ...GENERAL_SUGGESTIONS].slice(0, 3);
+}
 
 export default function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { chats, pending, errors, sendMessage, retry } = useChatHistory();
-  const { alert, openPrompt } = useCareAlert();
+  const { alert, openPrompt, risk } = useCareAlert();
   const { signedIn } = useSession();
+  const { vitals } = useVitals();
+  const suggestions = signedIn ? personalSuggestions(risk?.conditions, vitals) : GENERAL_SUGGESTIONS;
   const [dragging, setDragging] = useState(false);
   const logRef = useRef(null);
   const composerRef = useRef(null);
@@ -36,9 +58,9 @@ export default function ChatPage() {
 
   if (id && !chat) return <Navigate to="/chat" replace />;
 
-  const send = (text, files = [], mode = "auto") => {
+  const send = (text, files = []) => {
     if ((!text.trim() && files.length === 0) || loading) return;
-    const chatId = sendMessage(id ?? null, text, files, mode);
+    const chatId = sendMessage(id ?? null, text, files);
     if (!id && chatId) navigate(`/chat/${chatId}`);
   };
 
@@ -171,7 +193,7 @@ export default function ChatPage() {
           </div>
         )}
         <p className="chat-note">
-          Attach PDF, Word, text, CSV or images up to 10 MB each. Not medical advice. In an emergency, call your local emergency number.
+          Not medical advice. In an emergency, call your local emergency number.
         </p>
       </section>
     </main>

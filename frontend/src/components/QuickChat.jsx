@@ -11,9 +11,9 @@ export default function QuickChat() {
   const navigate = useNavigate();
   const { sendMessage } = useChatHistory();
 
-  const send = (text, mode = "auto") => {
+  const send = (text) => {
     if (!text.trim()) return;
-    const chatId = sendMessage(null, text, [], mode);
+    const chatId = sendMessage(null, text, []);
     if (chatId) navigate(`/chat/${chatId}`);
   };
 
@@ -27,7 +27,6 @@ export default function QuickChat() {
       <Composer
         id="quick"
         allowFiles={false}
-        showMode={false}
         placeholder="Type a message…"
         hints={ASSISTANT_HINTS}
         onSend={(text) => send(text)}

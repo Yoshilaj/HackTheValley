@@ -120,19 +120,17 @@ export function bookAppointment(providerId, slot) {
   });
 }
 
-// With attachments this sends multipart/form-data: "message" and "mode" fields
-// plus one "files" field per file. Without, it stays JSON { message, mode }.
-// mode is "auto" | "quick" | "detailed".
-export function sendChat(message, files = [], mode = "auto") {
+// With attachments this sends multipart/form-data: a "message" field plus one
+// "files" field per file. Without, it stays JSON { message }.
+export function sendChat(message, files = []) {
   if (files.length === 0) {
     return request("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ message, mode }),
+      body: JSON.stringify({ message }),
     });
   }
   const form = new FormData();
   form.append("message", message);
-  form.append("mode", mode);
   files.forEach((f) => form.append("files", f));
   // Empty headers so the browser sets the multipart boundary itself.
   return request("/api/chat", { method: "POST", headers: {}, body: form });
