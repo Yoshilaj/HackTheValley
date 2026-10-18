@@ -313,9 +313,6 @@ export default function AppointmentsPage() {
           <h1 tabIndex={-1}>Appointments</h1>
           <p className="subtitle">Your doctor visits and lab bookings in one place.</p>
         </div>
-        <button className="btn-primary" onClick={() => setBookOpen(true)} aria-haspopup="dialog">
-          Let CareSync book a visit
-        </button>
       </header>
 
       <BookVisitSheet
@@ -345,9 +342,6 @@ export default function AppointmentsPage() {
               <div className="card empty-state">
                 <p>No upcoming appointments.</p>
                 <p className="appt-meta">Visits CareSync books for you show up here.</p>
-                <button className="btn-secondary" onClick={() => setBookOpen(true)} aria-haspopup="dialog">
-                  Find a time
-                </button>
               </div>
             ) : (
               <ul className="appt-list">

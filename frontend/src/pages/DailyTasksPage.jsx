@@ -11,14 +11,30 @@ import useVitals from "../hooks/useVitals.js";
 import useSeries from "../hooks/useSeries.js";
 import { getTaskHistory } from "../api/client.js";
 import { capitalize, relativeDay } from "../utils/dates.js";
+import { lastTask, taskSummary } from "../utils/tasks.js";
 import { reassessNow } from "../utils/riskEvents.js";
 
 // Everything CareSync asks for in a day, as large cards that run the task in
 // place: a blood pressure reading, the keyboard tapping test, the sustained
-// vowel and the story recall. Each card says whether it's done today;
-// every result feeds the next risk assessment.
+// vowel and the story recall. Each card says whether it's done today and when
+// it was last done; every result feeds the next risk assessment.
 const todayIso = () => new Date().toLocaleDateString("en-CA");
 const isToday = (iso) => new Date(iso).toLocaleDateString("en-CA") === todayIso();
+
+const TASKS = [
+  { id: "bp", type: null },
+  { id: "tapping", type: "finger_tap" },
+  { id: "vowel", type: "sustained_vowel" },
+  { id: "story", type: "story_recall" },
+];
+
+// "Oct 12 · 142 / 138 taps" for a task's last valid run.
+function lastLine(items, type) {
+  const t = lastTask(items, type);
+  if (!t) return null;
+  const chip = taskSummary(t);
+  return `${capitalize(relativeDay(new Date(t.created_at).getTime()))}${chip ? ` · ${chip}` : ""}`;
+}
 
 export default function DailyTasksPage() {
   const { isGuest, signedIn } = useSession();
@@ -62,10 +78,15 @@ export default function DailyTasksPage() {
     );
   }
 
-  const doneToday = (type) => (tasks.data?.items ?? []).some((t) => t.task_type === type && t.valid && isToday(t.created_at));
+  const items = tasks.data?.items ?? [];
+  const doneToday = (type) => items.some((t) => t.task_type === type && t.valid && isToday(t.created_at));
   const todayBp = (bp?.summary?.per_day ?? []).find((d) => d.date === todayIso());
   const sessionsDone = ["morning", "evening"].filter((s) => todayBp?.[s]);
-  const readings = (bp?.readings ?? []).filter((r) => r.valid).slice(-3).reverse();
+  const readings = (bp?.readings ?? [])
+    .filter((r) => r.valid)
+    .sort((a, b) => new Date(b.measured_at) - new Date(a.measured_at))
+    .slice(0, 3);
+  const lastBp = readings[0];
 
   const done = {
     bp: sessionsDone.length === 2,
@@ -73,7 +94,14 @@ export default function DailyTasksPage() {
     vowel: doneToday("sustained_vowel"),
     story: doneToday("story_recall"),
   };
-  const doneCount = Object.values(done).filter(Boolean).length;
+  const doneCount = TASKS.filter((t) => done[t.id]).length;
+  const last = {
+    bp: lastBp ? `${capitalize(relativeDay(new Date(lastBp.measured_at).getTime()))} · ${lastBp.systolic}/${lastBp.diastolic} mmHg` : null,
+    tapping: lastLine(items, "finger_tap"),
+    vowel: lastLine(items, "sustained_vowel"),
+    story: lastLine(items, "story_recall"),
+  };
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   return (
     <main className="page">
@@ -82,17 +110,27 @@ export default function DailyTasksPage() {
           <h1 tabIndex={-1}>Daily tasks</h1>
           <p className="subtitle">Four short checks. Each one is read by your next assessment, which runs every night.</p>
         </div>
-        <span className="task-progress" role="status">
-          <i style={{ width: `${(doneCount / 4) * 100}%` }} aria-hidden="true" />
-          <span>{doneCount} of 4 done today</span>
-        </span>
       </header>
+
+      <div className="task-progress" role="status" aria-label={`${doneCount} of ${TASKS.length} tasks done today`}>
+        <div className="task-progress-text">
+          <b>
+            {doneCount === TASKS.length ? "All done for today" : `${doneCount} of ${TASKS.length} done today`}
+          </b>
+          <span>{today}</span>
+        </div>
+        <div className="task-progress-segments" aria-hidden="true">
+          {TASKS.map((t) => (
+            <i key={t.id} className={done[t.id] ? "on" : ""} />
+          ))}
+        </div>
+      </div>
 
       <LogReadingSheet open={bpForm} initial={bpForm ? { vitalId: "bp", lock: true } : null} onClose={() => setBpForm(false)} onSave={saveBp} />
 
       <div className="task-grid">
         <div id="task-bp">
-          <TaskCard id="bp" title="Blood pressure" sub="Two readings in the morning and two in the evening" time="1 min" done={done.bp}>
+          <TaskCard id="bp" title="Blood pressure" sub="Two readings in the morning and two in the evening" time="1 min" done={done.bp} last={last.bp}>
             <div className="task-body">
               <div className="bp-sessions" aria-label="Today's sessions">
                 {["morning", "evening"].map((s) => (
@@ -102,12 +140,12 @@ export default function DailyTasksPage() {
                   </span>
                 ))}
               </div>
-              <p className="field-hint">
-                Seated, after a minute of rest: morning within an hour of waking, before breakfast; evening before bed.
-                The assessment needs readings on 5 of the last 7 days.
+              <p className="task-hint">
+                Seated, after a minute of rest. Morning within an hour of waking, before breakfast; evening before bed. The assessment needs readings on 5 of
+                the last 7 days.
               </p>
               {bpSaved && (
-                <p className="field-hint" role="status">
+                <p className="task-result" role="status">
                   Saved {bpSaved.readings.map((r) => `${r.sys}/${r.dia}`).join(" and ")} mmHg
                   {bpSaved.session && bpSaved.session !== "other" ? ` (${bpSaved.session})` : ""}.
                 </p>
@@ -139,19 +177,19 @@ export default function DailyTasksPage() {
         </div>
 
         <div id="task-tapping">
-          <TaskCard id="tapping" title="Finger tapping" sub="Alternate S and ; for 30 seconds, each hand" time="1 min" done={done.tapping}>
+          <TaskCard id="tapping" title="Finger tapping" sub="Alternate S and ; for 30 seconds, each hand" time="1 min" done={done.tapping} last={last.tapping}>
             <TappingTask onSubmitted={onSubmitted} embedded />
           </TaskCard>
         </div>
 
         <div id="task-vowel">
-          <TaskCard id="vowel" title="Sustained vowel" sub='Three steady "ahh" sounds, about five seconds each' time="1 min" done={done.vowel}>
+          <TaskCard id="vowel" title="Sustained vowel" sub='Three steady "ahh" sounds, about five seconds each' time="1 min" done={done.vowel} last={last.vowel}>
             <VowelTask onSubmitted={onSubmitted} embedded />
           </TaskCard>
         </div>
 
         <div id="task-story">
-          <TaskCard id="story" title="Story recall" sub="Hear two short stories, retell them, then retell the first again" time="8 min" done={done.story}>
+          <TaskCard id="story" title="Story recall" sub="Hear two short stories, retell them, then retell the first again" time="8 min" done={done.story} last={last.story}>
             <StoryRecallTask onSubmitted={onSubmitted} embedded />
           </TaskCard>
         </div>

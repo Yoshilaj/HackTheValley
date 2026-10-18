@@ -204,6 +204,13 @@ export default function StoryRecallTask({ onSubmitted, embedded = false }) {
       {!status && (
         <div className="tapping-intro">
           <p>Hear two short stories and retell them, name animals for a minute, then retell the first story again. About eight minutes.</p>
+          <div className="task-preview" aria-hidden="true">
+            <ol className="task-steps preview">
+              {["Listen", "Retell", "Listen", "Retell", "Name animals", "Break", "Retell story 1"].map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ol>
+          </div>
           {error && (
             <p className="field-error" role="alert">
               {error}

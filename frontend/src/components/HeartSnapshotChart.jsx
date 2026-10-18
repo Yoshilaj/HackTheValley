@@ -3,6 +3,7 @@ import ChartFrame from "./charts/ChartFrame.jsx";
 import TrendLineChart from "./charts/TrendLineChart.jsx";
 import { PRIMARY, SECONDARY } from "./charts/theme.js";
 import useVitals from "../hooks/useVitals.js";
+import { domainFor } from "./VitalsCharts.jsx";
 
 // The heart card: resting heart rate and home blood pressure side by side,
 // each with its 7-day average in the panel heading and the recent weeks
@@ -54,6 +55,10 @@ export default function HeartSnapshotChart({ showLink = false, height = 150 }) {
               series={[{ key: "hr", name: "Resting heart rate", color: SECONDARY }]}
               unit="bpm"
               band={[60, 100]}
+              yDomain={domainFor(
+                hrData.map((d) => d.hr),
+                [60, 100]
+              )}
               height={height}
               valueFormat={(v) => Math.round(v)}
               label="Resting heart rate per day over the last 30 days"

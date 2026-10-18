@@ -590,25 +590,6 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .chart-link { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--primary); }
 .chart-head .chart-tag + .chart-link { margin-left: 0; }
 
-/* ---- Daily tasks ---- */
-.task-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.task-grid > * { min-width: 0; scroll-margin-top: 16px; }
-.key-sequence { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; color: var(--muted); }
-.key-sequence kbd { padding: 6px 12px; border-radius: 8px; background: rgba(120, 120, 128, 0.12); font-family: inherit; font-weight: 700; color: var(--text); }
-.key-sequence kbd:nth-child(4n+1) { background: var(--primary-soft); color: var(--primary); }
-.tapping-key { position: relative; }
-.tapping-key.next { box-shadow: 0 0 0 3px var(--primary), 0 2px 6px rgba(0, 0, 0, 0.08); }
-.tapping-key small { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: 0.04em; }
-.tapping-keys { margin-bottom: 16px; }
-
-/* ---- Data page ---- */
-.data-section { display: flex; flex-direction: column; gap: 12px; }
-.data-section-head h2 { font-size: 20px; font-weight: 700; margin: 0; }
-.data-section-head .subtitle { margin-top: 2px; }
-.data-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.data-grid > * { min-width: 0; }
-.data-grid .span-2 { grid-column: 1 / -1; }
-
 /* ---- Appointments: clean rows ---- */
 .appt-card { grid-template-columns: minmax(0, 1fr) auto 44px; }
 .appt-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
@@ -621,50 +602,6 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .appt-when { display: flex; flex-direction: column; gap: 1px; }
 .appt-when span { display: block; }
 
-@media (max-width: 900px) {
-  .task-grid, .data-grid { grid-template-columns: 1fr; }
-  .data-grid .span-2 { grid-column: auto; }
-}
-
-/* ---- Daily tasks: large task cards ---- */
-.task-tile-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: var(--primary-soft); color: var(--primary); flex: none; }
-.task-tile-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.task-progress { display: inline-flex; flex-direction: column; gap: 6px; min-width: 180px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.task-progress i { display: block; height: 6px; border-radius: 999px; background: var(--primary); transition: width 0.3s ease-out; }
-.task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
-.task-grid > * { display: flex; }
-.task-grid > * > .task-card { flex: 1; }
-.task-grid .span-2 { grid-column: 1 / -1; }
-.task-card { display: flex; flex-direction: column; gap: 16px; padding: 22px 24px; min-height: 320px; }
-.task-card.done { box-shadow: 0 0 0 1px var(--ok-ink), 0 2px 12px rgba(0, 0, 0, 0.04); }
-.task-card-head { display: flex; align-items: center; gap: 14px; }
-.task-card-head .task-tile-icon { width: 44px; height: 44px; }
-.task-card.done .task-tile-icon { background: var(--ok-bg); color: var(--ok-ink); }
-.task-card-text { flex: 1; min-width: 0; }
-.task-card-text h2 { margin: 0; font-size: 18px; font-weight: 700; }
-.task-card-text p { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
-.task-status { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(120, 120, 128, 0.12); font-size: 12px; font-weight: 600; color: var(--muted); }
-.task-status.done { background: var(--ok-bg); color: var(--ok-ink); }
-.task-status svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-.task-card-body { flex: 1; display: flex; flex-direction: column; }
-.task-body { display: flex; flex-direction: column; gap: 16px; flex: 1; }
-.task-badge-row { display: flex; justify-content: flex-end; }
-.task-body .tapping-intro, .task-body .tapping-run, .task-body .tapping-result { flex: 1; }
-.task-body .book-actions { margin-top: auto; }
-.task-result { padding: 12px 14px; border-radius: var(--radius-sm); background: var(--ok-bg); color: var(--ok-ink); font-size: 14px; }
-.bp-sessions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.bp-session { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--radius-sm); background: rgba(120, 120, 128, 0.08); }
-.bp-session.done { background: var(--ok-bg); }
-.bp-session b { font-size: 14px; }
-.bp-session small { font-size: 13px; color: var(--muted); }
-.bp-session.done small { color: var(--ok-ink); font-weight: 600; }
-.readings.compact li { padding: 6px 0; }
-.checkin-task { display: flex; flex-direction: column; gap: 16px; }
-.checkin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
-.checkin-grid .span-2 { grid-column: 1 / -1; }
-.checkin-prompts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--muted); }
-.checkin-prompts li { display: inline-flex; align-items: center; gap: 8px; }
-.checkin-prompts a { font-weight: 600; color: var(--primary); }
 
 /* ---- Heart card: two panels side by side ---- */
 .heart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
@@ -672,43 +609,6 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
 .panel-head b { font-size: 22px; font-weight: 700; color: var(--text); }
 .panel-head b small { margin-left: 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
-
-/* ---- Data page ---- */
-.data-section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
-.vitals-grid.six { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
-.vitals-grid.six .vital-tile { padding: 14px 16px; gap: 6px; }
-.vitals-grid.six .tile-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
-.vitals-grid.six .amt { font-size: 22px; margin: 0; }
-.vitals-grid.six .amt sup { font-size: 11px; }
-.vitals-grid.six .sparkline { width: 100%; max-width: none; height: 32px; align-self: stretch; }
-.vital-tile.empty { opacity: 0.7; }
-
-@media (max-width: 1100px) { .vitals-grid.six { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 900px) {
-  .heart-grid, .checkin-grid, .task-grid { grid-template-columns: 1fr; }
-  .vitals-grid.six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-/* ---- Apple Watch card ---- */
-.watch-card { display: flex; flex-direction: column; gap: 14px; }
-.watch-card .card-head { margin-bottom: 0; }
-.watch-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 14px; font-size: 14px; color: var(--muted); }
-.watch-steps li { padding-left: 4px; }
-.watch-steps b { color: var(--text); }
-.watch-steps code { padding: 1px 6px; border-radius: 6px; background: rgba(120, 120, 128, 0.12); font-size: 13px; color: var(--text); }
-.watch-actions { margin-top: 10px; justify-content: flex-start; }
-.watch-token { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.copy-field { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.copy-field code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 12px; border-radius: var(--radius-sm); background: rgba(120, 120, 128, 0.1); font-size: 13px; }
-.copy-field .btn-secondary { flex: none; min-height: 36px; padding: 0 14px; font-size: 14px; }
-.watch-devices { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
-.watch-devices li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--separator); font-size: 14px; }
-.watch-devices li > div { flex: 1; min-width: 0; }
-.watch-devices b { display: block; font-weight: 600; }
-.watch-devices small { color: var(--muted); font-size: 13px; }
-.apple-embedded { display: flex; flex-direction: column; gap: 8px; }
-.apple-embedded .apple-actions { align-items: center; justify-content: flex-start; margin-top: 0; }
-.vitals-grid.six { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 
 /* ---- Log a reading: blood pressure protocol ---- */
 .reading-sheet .sheet-body { gap: 18px; }
@@ -725,3 +625,180 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .when-value { font-size: 15px; color: var(--text); }
 .link-btn { font-size: 14px; font-weight: 600; color: var(--primary); padding: 4px 6px; border-radius: 6px; }
 .link-btn:hover { background: var(--primary-soft); }
+
+/* ====================================================================
+   Daily tasks
+   ==================================================================== */
+/* Today's progress: one segment per task, filled as each is done */
+.task-progress {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+  padding: 16px 20px; border-radius: var(--radius); background: var(--surface);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+.task-progress-text { display: flex; flex-direction: column; gap: 2px; }
+.task-progress-text b { font-size: 17px; font-weight: 600; }
+.task-progress-text span { font-size: 14px; color: var(--muted); }
+.task-progress-segments { flex: 1 1 280px; max-width: 420px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.task-progress-segments i { display: block; height: 8px; border-radius: 999px; background: rgba(120, 120, 128, 0.16); transition: background-color 0.3s ease-out; }
+.task-progress-segments i.on { background: var(--ok-ink); }
+
+.task-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+.task-grid > * { display: flex; min-width: 0; scroll-margin-top: 16px; }
+.task-grid > * > .task-card { flex: 1; }
+.task-grid .span-2 { grid-column: 1 / -1; }
+
+.task-card { display: flex; flex-direction: column; gap: 14px; padding: 22px 24px 24px; }
+.task-card.done { box-shadow: 0 0 0 1.5px var(--ok-ink), 0 2px 12px rgba(0, 0, 0, 0.04); }
+.task-card-head { display: flex; align-items: flex-start; gap: 14px; }
+.task-tile-icon { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--primary-soft); color: var(--primary); }
+.task-tile-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.task-card.done .task-tile-icon { background: var(--ok-bg); color: var(--ok-ink); }
+.task-card-text { flex: 1; min-width: 0; }
+.task-card-text h2 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.25; }
+.task-card-text p { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
+.task-status { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; padding: 4px 10px; border-radius: 999px; background: rgba(120, 120, 128, 0.12); font-size: 12px; font-weight: 600; color: var(--muted); }
+.task-status.done { background: var(--ok-bg); color: var(--ok-ink); }
+.task-status svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* "Last done Oct 12 · 142 / 138 taps" under the heading, as a thin key line */
+.task-last { display: flex; align-items: center; gap: 8px; margin: -2px 0 0; padding-bottom: 14px; border-bottom: 1px solid var(--separator); font-size: 13px; font-weight: 500; color: var(--text); }
+.task-last span { color: var(--muted); font-weight: 400; }
+.task-last.none { color: var(--muted); font-weight: 400; }
+.task-card-body { flex: 1; display: flex; flex-direction: column; }
+.task-body { display: flex; flex-direction: column; gap: 16px; flex: 1; }
+.task-badge-row { display: flex; justify-content: flex-end; }
+.task-body .tapping-intro, .task-body .tapping-run, .task-body .tapping-result { flex: 1; }
+.task-body .book-actions { margin-top: auto; }
+.task-hint { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.task-result { padding: 12px 14px; border-radius: var(--radius-sm); background: var(--ok-bg); color: var(--ok-ink); font-size: 14px; }
+
+/* The intro's picture of the task: fills the card's free space so cards in a row match */
+.task-preview {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  min-height: 112px; padding: 20px; border-radius: var(--radius); background: var(--surface-soft);
+}
+.task-preview-caption { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); }
+.task-preview-arrow { display: grid; place-items: center; width: 24px; height: 24px; color: var(--muted); }
+.task-preview-arrow svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tapping-keys.preview { margin: 0; gap: 12px; align-items: center; }
+.tapping-keys.preview .tapping-key { width: 56px; height: 56px; font-size: 22px; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 2px 0 rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.06); }
+.tapping-keys.preview .tapping-key:first-child { color: var(--primary); }
+.vowel-preview { flex-direction: row; gap: 12px; }
+.vowel-rep { flex: 1; max-width: 140px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 10px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06); }
+.vowel-rep b { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-size: 12px; font-weight: 700; }
+.vowel-rep svg { width: 100%; height: 20px; fill: none; stroke: var(--primary); stroke-width: 2; stroke-linecap: round; opacity: 0.8; }
+.vowel-rep small { font-size: 12px; color: var(--muted); }
+.task-steps.preview { justify-content: center; gap: 6px; }
+.task-steps.preview li { background: var(--surface); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06); color: var(--text); font-weight: 500; }
+
+.key-sequence { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; color: var(--muted); }
+.key-sequence kbd { padding: 6px 12px; border-radius: 8px; background: rgba(120, 120, 128, 0.12); font-family: inherit; font-weight: 700; color: var(--text); }
+.tapping-key { position: relative; }
+.tapping-key.next { box-shadow: 0 0 0 3px var(--primary), 0 2px 6px rgba(0, 0, 0, 0.08); }
+.tapping-key small { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: 0.04em; }
+.tapping-keys { margin-bottom: 16px; }
+
+.bp-sessions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bp-session { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--surface-soft); }
+.bp-session.done { background: var(--ok-bg); }
+.bp-session b { font-size: 14px; }
+.bp-session small { font-size: 13px; color: var(--muted); }
+.bp-session.done small { color: var(--ok-ink); font-weight: 600; }
+.readings.compact li { padding: 7px 0; }
+
+/* ====================================================================
+   Data page
+   ==================================================================== */
+/* This week at a glance */
+.stat-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.stat-strip .stat-tile { padding: 14px 16px; background: var(--surface); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 2px 12px rgba(0, 0, 0, 0.04); border-radius: var(--radius); }
+.stat-strip .stat-value { font-size: 26px; font-variant-numeric: normal; letter-spacing: -0.01em; }
+.stat-strip .stat-tile.empty .stat-value { color: var(--muted); }
+.stat-strip .stat-tile.watch { background: #fffaf0; box-shadow: 0 0 0 1px #f5dcae, 0 2px 12px rgba(0, 0, 0, 0.04); }
+.stat-strip .stat-sub { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+.data-section { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+.data-section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.data-section-head h2 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.data-section-head .subtitle { margin: 2px 0 0; font-size: 15px; }
+.data-section-head .btn-secondary { display: inline-flex; align-items: center; }
+/* Cards in a row share a height; a chart grows to fill its card */
+.data-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.data-grid > * { min-width: 0; display: flex; flex-direction: column; }
+.data-grid > * > .card { flex: 1; }
+.data-grid .span-2 { grid-column: 1 / -1; }
+.data-grid .card { display: flex; flex-direction: column; }
+.data-grid .chart-card { padding: 18px 22px 20px; gap: 12px; }
+.chart-card .chart-box { position: relative; flex: 1 1 auto; }
+.chart-card .chart-box .recharts-responsive-container { position: absolute; inset: 0; }
+.chart-card .chart-note { margin-top: 0; }
+/* An empty chart: centred message and a way to start the data */
+.chart-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 160px; padding: 20px; text-align: center; }
+.chart-empty svg { width: 32px; height: 32px; margin-bottom: 4px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; }
+.chart-empty p { max-width: 320px; font-size: 14px; color: var(--muted); }
+.chart-empty-action { margin-top: 8px; display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; font-size: 14px; }
+.list-card .card-head { margin-bottom: 8px; }
+.list-card .readings { flex: 1; }
+.list-empty { margin: 0; flex: 1; display: flex; align-items: center; padding: 20px 0; }
+.chart-card .recharts-wrapper { font-family: inherit; }
+
+/* Heart rhythm results: list first, the hand-entry form behind a disclosure */
+.rhythm-card { gap: 0; }
+.rhythm-card .readings { flex: none; margin-bottom: 16px; }
+.rhythm-about { margin: 0; }
+.rhythm-add { margin-top: auto; padding-top: 12px; padding-top: 12px; border-top: 1px solid var(--separator); }
+.rhythm-add summary { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px 0 6px; margin-left: -6px; border-radius: var(--radius-sm); cursor: pointer; list-style: none; font-size: 14px; font-weight: 600; color: var(--primary); }
+.rhythm-add summary::-webkit-details-marker { display: none; }
+.rhythm-add summary:hover { background: var(--primary-soft); }
+.rhythm-add summary svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; transition: transform 0.2s ease-out; }
+.rhythm-add[open] summary svg { transform: rotate(45deg); }
+.rhythm-form { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 0; }
+.rhythm-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.rhythm-form select.text-input { appearance: auto; }
+.rhythm-form .text-input { min-height: 40px; font-size: 14px; }
+.rhythm-form .form-field > label { font-size: 13px; color: var(--muted); }
+
+/* Apple Watch: three steps side by side */
+.watch-card { display: flex; flex-direction: column; gap: 20px; padding: 22px 24px 24px; }
+.watch-head { display: flex; align-items: flex-start; gap: 14px; }
+.watch-icon { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--primary-soft); color: var(--primary); }
+.watch-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.watch-head-text { flex: 1; min-width: 0; }
+.watch-head-text h3 { font-size: 19px; font-weight: 700; }
+.watch-head-text p { margin-top: 2px; max-width: 72ch; font-size: 14px; color: var(--muted); }
+.watch-head .badge { flex: none; margin-top: 2px; }
+.watch-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.watch-steps li { display: flex; gap: 12px; min-width: 0; padding: 16px; border-radius: var(--radius); background: var(--surface-soft); }
+.watch-step-no { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; }
+.watch-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--muted); }
+.watch-step-body b { font-size: 15px; color: var(--text); }
+.watch-step-body code { padding: 1px 6px; border-radius: 6px; background: rgba(120, 120, 128, 0.14); font-size: 13px; color: var(--text); }
+.watch-step-body .btn-primary, .watch-step-body .btn-secondary { align-self: flex-start; min-height: 40px; padding: 0 16px; font-size: 14px; }
+.watch-note { font-size: 12px; line-height: 1.4; }
+.watch-token { display: flex; flex-direction: column; gap: 6px; }
+.copy-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.copy-field code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); font-size: 13px; }
+.copy-field .btn-secondary { flex: none; min-height: 36px; padding: 0 14px; font-size: 14px; }
+.watch-devices { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.watch-devices li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--separator); font-size: 14px; }
+.watch-devices li > div { flex: 1; min-width: 0; }
+.watch-devices b { display: block; font-weight: 600; }
+.watch-devices small { color: var(--muted); font-size: 13px; }
+.apple-embedded { display: flex; flex-direction: column; gap: 8px; }
+.apple-embedded .apple-actions { align-items: center; justify-content: flex-start; margin-top: 0; }
+.apple-embedded .field-hint { margin: 0; }
+
+@media (max-width: 1000px) {
+  .stat-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .task-grid, .data-grid, .heart-grid, .checkin-grid { grid-template-columns: 1fr; }
+  .data-grid .span-2 { grid-column: auto; }
+  .watch-steps { grid-template-columns: 1fr; }
+  .rhythm-fields { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-strip > :last-child { grid-column: span 2; }
+  .task-progress-segments { grid-template-columns: repeat(4, 1fr); width: 100%; }
+  .vowel-preview { flex-wrap: wrap; }
+}

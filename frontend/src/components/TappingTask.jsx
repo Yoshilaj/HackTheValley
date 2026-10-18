@@ -148,17 +148,18 @@ export default function TappingTask({ onSubmitted, embedded = false }) {
             One index finger, <b>alternating</b> between <kbd>S</kbd> and <kbd>;</kbd> as fast and evenly as you can for 30 seconds.
             Left hand first, then right. The timer starts on your first press.
           </p>
-          <p className="key-sequence" aria-label="Press S, then semicolon, then S, then semicolon, and so on">
-            <kbd>S</kbd>
-            <span aria-hidden="true">→</span>
-            <kbd>;</kbd>
-            <span aria-hidden="true">→</span>
-            <kbd>S</kbd>
-            <span aria-hidden="true">→</span>
-            <kbd>;</kbd>
-            <span aria-hidden="true">→</span>
-            <small>…</small>
-          </p>
+          <div className="task-preview" aria-label="Press S, then semicolon, then S, then semicolon, and so on">
+            <div className="tapping-keys preview" aria-hidden="true">
+              <span className="tapping-key">S</span>
+              <span className="task-preview-arrow">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 12h14M13 7l5 5-5 5" />
+                </svg>
+              </span>
+              <span className="tapping-key">;</span>
+            </div>
+            <p className="task-preview-caption">Left hand, then right · 30 s each</p>
+          </div>
           {error && (
             <p className="field-error" role="alert">
               {error}

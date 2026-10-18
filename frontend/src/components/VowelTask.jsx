@@ -160,6 +160,17 @@ export default function VowelTask({ onSubmitted, embedded = false }) {
           <p>
             Say a steady <b>"ahh"</b> for about five seconds, three times. Quiet room, microphone 10-15 cm away.
           </p>
+          <div className="task-preview vowel-preview" aria-hidden="true">
+            {[1, 2, 3].map((n) => (
+              <span key={n} className="vowel-rep">
+                <b>{n}</b>
+                <svg viewBox="0 0 64 20" preserveAspectRatio="none">
+                  <path d="M0 10c4-8 8-8 12 0s8 8 12 0 8-8 12 0 8 8 12 0 8-8 12 0 8 8 12 0" />
+                </svg>
+                <small>ahh · 5 s</small>
+              </span>
+            ))}
+          </div>
           {rec.state === "unsupported" && (
             <p className="field-error" role="alert">
               This browser can't record audio. Try Chrome, Edge, Firefox or Safari.

@@ -22,6 +22,7 @@ export function TappingHistoryChart({ items }) {
       title="Finger tapping over time"
       tag={`${data.length} session${data.length === 1 ? "" : "s"}`}
       empty={data.length ? null : "Do the tapping task to start this chart."}
+      emptyAction={data.length ? null : { to: "/tasks#task-tapping", label: "Do the tapping task" }}
       note="Taps in 30 seconds per hand, and how uneven the rhythm was (lower is steadier). The assessment compares each run with your own earlier ones."
     >
       <p className="chart-sub">Taps per 30 s</p>
@@ -67,6 +68,7 @@ export function VowelHistoryChart({ items }) {
       title='Sustained "ahh" over time'
       tag="Experimental"
       empty={data.length ? null : 'Record a sustained "ahh" to start this chart.'}
+      emptyAction={data.length ? null : { to: "/tasks#task-vowel", label: "Do the voice task" }}
       note="The research model's score is shown for interest; it is not calibrated for this microphone and does not drive your assessment. The assessment watches your own voice features for change."
     >
       {hasModel && (
@@ -120,6 +122,7 @@ export function StoryHistoryChart({ items }) {
       title="Story recall over time"
       tag="Experimental"
       empty={data.length ? null : "Do the story task to start this chart."}
+      emptyAction={data.length ? null : { to: "/tasks#task-story", label: "Do the story task" }}
       note="How much of each story your retelling kept (0-100): straight after hearing it, and again after the break."
     >
       <TrendLineChart
@@ -129,7 +132,7 @@ export function StoryHistoryChart({ items }) {
           { key: "immediate", name: "Straight after", color: SECONDARY, dashed: true },
           { key: "delayed", name: "After the break", color: SECONDARY },
         ]}
-        height={170}
+        height={200}
         yDomain={full ? [0, 100] : [0, "auto"]}
         yTicks={full ? [0, 25, 50, 75, 100] : undefined}
         valueFormat={(v) => Math.round(v)}

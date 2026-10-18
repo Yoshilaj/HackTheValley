@@ -53,60 +53,77 @@ export default function RhythmResultCard() {
   };
 
   const current = SOURCES.find((s) => s.id === source);
+  const list = rows.slice(0, 5);
   return (
-    <section className="card" aria-labelledby="rhythm-title">
+    <section className="card rhythm-card" aria-labelledby="rhythm-title">
       <div className="card-head">
-        <h2 id="rhythm-title">Heart rhythm results</h2>
+        <h3 id="rhythm-title">Heart rhythm results</h3>
+        {rows.length > 0 && <span className="chart-tag">{rows.length} result{rows.length === 1 ? "" : "s"}</span>}
       </div>
-      <form className="rhythm-form" onSubmit={save} noValidate>
-        <div className="form-field">
-          <label htmlFor="rhythm-source">Where from</label>
-          <select id="rhythm-source" className="text-input" value={source} onChange={(e) => pickSource(e.target.value)}>
-            {SOURCES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-field">
-          <label htmlFor="rhythm-label">Result</label>
-          <select id="rhythm-label" className="text-input" value={label} onChange={(e) => setLabel(e.target.value)}>
-            {current.labels.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-field">
-          <label htmlFor="rhythm-when">When</label>
-          <input id="rhythm-when" className="text-input" type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={(e) => setWhen(e.target.value)} />
-        </div>
-        {error && (
-          <p className="field-error" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="book-actions">
-          <button type="submit" className="btn-secondary" disabled={saving}>
-            {saving ? "Saving…" : "Add result"}
-          </button>
-        </div>
-      </form>
-      {rows.length > 0 && (
+      {list.length ? (
         <ul className="readings">
-          {rows.slice(0, 5).map((r) => (
+          {list.map((r) => (
             <li key={r.id}>
               <div>
                 <b>{r.raw_label ?? r.label}</b>
-                <small>{capitalize(relativeDay(new Date(r.recorded_at).getTime()))} · {SOURCES.find((s) => s.id === r.source)?.label ?? r.source}</small>
+                <small>
+                  {capitalize(relativeDay(new Date(r.recorded_at).getTime()))} · {SOURCES.find((s) => s.id === r.source)?.label ?? r.source}
+                </small>
               </div>
-              <em className={`badge ${r.label === "sinus_rhythm" || r.label === "normal" ? "normal" : "watch"}`}>{r.label.replace(/_/g, " ")}</em>
+              <em className={`badge ${r.label === "sinus_rhythm" || r.label === "normal" ? "normal" : "watch"}`}>{capitalize(r.label.replace(/_/g, " "))}</em>
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
+      <p className="field-hint rhythm-about">
+        ECG and irregular-rhythm results from your watch or cuff. An Apple Health import brings them in by itself; you can also add one by hand.
+      </p>
+      <details className="rhythm-add">
+        <summary>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add a result by hand
+        </summary>
+        <form className="rhythm-form" onSubmit={save} noValidate>
+          <div className="rhythm-fields">
+            <div className="form-field">
+              <label htmlFor="rhythm-source">Where from</label>
+              <select id="rhythm-source" className="text-input" value={source} onChange={(e) => pickSource(e.target.value)}>
+                {SOURCES.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-field">
+              <label htmlFor="rhythm-label">Result</label>
+              <select id="rhythm-label" className="text-input" value={label} onChange={(e) => setLabel(e.target.value)}>
+                {current.labels.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-field">
+              <label htmlFor="rhythm-when">When</label>
+              <input id="rhythm-when" className="text-input" type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={(e) => setWhen(e.target.value)} />
+            </div>
+          </div>
+          {error && (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="book-actions">
+            <button type="submit" className="btn-secondary" disabled={saving}>
+              {saving ? "Saving…" : "Add result"}
+            </button>
+          </div>
+        </form>
+      </details>
     </section>
   );
 }

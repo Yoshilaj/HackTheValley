@@ -72,47 +72,69 @@ export default function AppleWatchCard({ onImported }) {
 
   return (
     <section className="card watch-card" aria-labelledby="watch-title">
-      <div className="card-head">
-        <h3 id="watch-title">Apple Watch</h3>
-        {synced.length > 0 && <em className="badge normal">Syncing</em>}
+      <div className="watch-head">
+        <span className="watch-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <rect x="7" y="6" width="10" height="12" rx="3" />
+            <path d="M9 6l.6-3h4.8l.6 3M9 18l.6 3h4.8l.6-3M17 10h1.5v4H17" />
+          </svg>
+        </span>
+        <div className="watch-head-text">
+          <h3 id="watch-title">Apple Watch</h3>
+          <p>
+            Steps, resting heart rate, sleep, walking speed and rhythm results feed your assessment. A watch can't talk to a website, so your iPhone
+            sends today's Health data here once a day.
+          </p>
+        </div>
+        {synced.length > 0 ? <em className="badge normal">Syncing</em> : list.length > 0 ? <em className="badge watch">Not synced yet</em> : null}
       </div>
-      <p className="field-hint">
-        Your watch's steps, resting heart rate, sleep, walking speed and more feed the assessment. The watch itself
-        can't talk to a website, so your iPhone does it: once a day a Shortcut sends today's Health data here.
-      </p>
 
       <ol className="watch-steps">
         <li>
-          <b>Connect your iPhone.</b> Create a device token and keep it somewhere safe; it's shown once.
-          {fresh ? (
-            <div className="watch-token">
-              <CopyField value={fresh.token} label="device token" />
-              <p className="field-hint">This is the only time the token is shown. Paste it into the Shortcut as the X-Device-Token header.</p>
-            </div>
-          ) : (
-            <div className="book-actions watch-actions">
-              <button type="button" className="btn-primary" onClick={connect} disabled={busy}>
+          <span className="watch-step-no" aria-hidden="true">
+            1
+          </span>
+          <div className="watch-step-body">
+            <b>Connect your iPhone</b>
+            <p>Create a device token and keep it somewhere safe; it's shown once.</p>
+            {fresh ? (
+              <div className="watch-token">
+                <CopyField value={fresh.token} label="device token" />
+                <p className="watch-note">This is the only time the token is shown. Paste it into the Shortcut as the X-Device-Token header.</p>
+              </div>
+            ) : (
+              <button type="button" className="btn-primary watch-connect" onClick={connect} disabled={busy}>
                 {busy ? "Creating…" : list.length ? "Create another token" : "Create a device token"}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </li>
         <li>
-          <b>Add the Shortcut.</b> In the Shortcuts app, make an automation that runs each morning: read today's Health
-          samples, then "Get contents of URL" with a POST to the address below, header <code>X-Device-Token</code> and
-          a JSON body of samples. The exact body is in the project's <code>docs/shortcut.md</code>.
-          <CopyField value={API_URL} label="API address" />
-          {LOCAL && (
-            <p className="field-hint">
-              This address is this computer only. Use your deployed site's address on the phone; the Shortcut can't
-              reach localhost.
+          <span className="watch-step-no" aria-hidden="true">
+            2
+          </span>
+          <div className="watch-step-body">
+            <b>Add the Shortcut</b>
+            <p>
+              In the Shortcuts app, make an automation that runs each morning: read today's Health samples, then "Get contents of URL" with a POST to
+              this address, header <code>X-Device-Token</code> and a JSON body of samples. The exact body is in <code>docs/shortcut.md</code>.
             </p>
-          )}
+            <CopyField value={API_URL} label="API address" />
+            {LOCAL && <p className="watch-note">This address is this computer only. On the phone, use your deployed site's address.</p>}
+          </div>
         </li>
         <li>
-          <b>Bring in your history (optional).</b> On the iPhone: Health → your picture → Export All Health Data, then
-          upload the export.zip here. Walking, sleep, heart rate and any irregular-rhythm results from the last months
-          are imported in the background.
+          <span className="watch-step-no" aria-hidden="true">
+            3
+          </span>
+          <div className="watch-step-body">
+            <b>Bring in your history</b>
+            <p>
+              Optional. On the iPhone: Health → your picture → Export All Health Data, then upload the export.zip here. The last months of walking,
+              sleep, heart rate and rhythm results are imported in the background.
+            </p>
+            <AppleHealthImport onImported={onImported} embedded />
+          </div>
         </li>
       </ol>
 
@@ -139,8 +161,6 @@ export default function AppleWatchCard({ onImported }) {
           {error}
         </p>
       )}
-
-      <AppleHealthImport onImported={onImported} embedded />
     </section>
   );
 }

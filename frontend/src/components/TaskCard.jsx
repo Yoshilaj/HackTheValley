@@ -1,5 +1,6 @@
 // A large card on the Daily tasks page: icon, title, one line of what it is,
-// how long it takes (or "Done today"), and the task itself underneath.
+// how long it takes (or "Done today"), when it was last done, and the task
+// itself underneath.
 export const TASK_ICONS = {
   checkin: (
     <>
@@ -33,7 +34,8 @@ export const TASK_ICONS = {
   ),
 };
 
-export default function TaskCard({ id, title, sub, time, done, wide = false, children }) {
+// last: a short line about the previous result ("Oct 12 · 142 / 138 taps"), or null when never done.
+export default function TaskCard({ id, title, sub, time, done, last, wide = false, children }) {
   return (
     <section className={`card task-card ${done ? "done" : ""} ${wide ? "span-2" : ""}`} aria-labelledby={`task-${id}-title`}>
       <header className="task-card-head">
@@ -53,10 +55,25 @@ export default function TaskCard({ id, title, sub, time, done, wide = false, chi
               Done today
             </>
           ) : (
-            time
+            <>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.5" />
+                <path d="M12 7.5V12l3 2" />
+              </svg>
+              {time}
+            </>
           )}
         </span>
       </header>
+      <p className={`task-last ${last ? "" : "none"}`}>
+        {last ? (
+          <>
+            <span>Last done</span> {last}
+          </>
+        ) : (
+          "Not done yet"
+        )}
+      </p>
       <div className="task-card-body">{children}</div>
     </section>
   );
