@@ -22,7 +22,9 @@ import { describeSlot } from "../utils/slots.js";
 //   - appointments the backend's booking agent arranged after a follow-up
 //     finding (GET /api/appointments) with their real status; cancel and
 //     approve (approveVisit) go to the backend.
-// Past visits have no backend source, so that list starts empty.
+// "Past" (backend on) is the same data once its time has gone by: your bookings
+// whose time has passed, and the agent's confirmed appointments whose chosen
+// time has passed. Appointments still being arranged stay under Upcoming.
 const STORAGE_KEY = "caresync-appointments";
 
 // Agent appointment statuses that are still upcoming, and how each reads in the app.
@@ -107,6 +109,7 @@ function fromAgent(a) {
     id: a.id,
     remote: true,
     backendStatus: a.status,
+    chosen: Boolean(a.chosen_slot), // false while the agent is still proposing times
     providerId: clinic.id ?? null,
     name: clinic.name ?? "Clinic to be confirmed",
     specialty: capitalize(clinic.specialty),
@@ -146,7 +149,6 @@ export function AppointmentsProvider({ children }) {
   const [booked, setBooked] = useState([]); // backend on: /api/bookings
   const [agent, setAgent] = useState([]); // backend on: /api/appointments
   const [loaded, setLoaded] = useState(!USE_BACKEND);
-  const past = USE_BACKEND ? [] : appointmentList.past;
 
   useEffect(() => {
     if (USE_BACKEND) return;
@@ -181,7 +183,17 @@ export function AppointmentsProvider({ children }) {
     };
   }, [account]);
 
-  const upcoming = (USE_BACKEND ? [...agent, ...booked] : local).slice().sort(bySlot);
+  // Backend on: anything with a settled time that has passed moves to "Past", newest first.
+  const now = Date.now();
+  const hasPassed = (a) => a.slot && new Date(a.slot).getTime() < now && (a.booking || (a.backendStatus === "confirmed" && a.chosen));
+  const all = USE_BACKEND ? [...agent, ...booked] : local;
+  const upcoming = all.filter((a) => !(USE_BACKEND && hasPassed(a))).sort(bySlot);
+  const past = USE_BACKEND
+    ? all
+        .filter(hasPassed)
+        .map((a) => ({ ...a, status: "Past visit" }))
+        .sort((a, b) => bySlot(b, a))
+    : appointmentList.past;
 
   // Books with a provider the user picked. Throws if the backend refuses.
   const bookVisit = async (provider, slot = null, note) => {

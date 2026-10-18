@@ -1,5 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { USE_BACKEND, deleteConversation, getConversationMessages, getConversations, sendChat } from "../api/client.js";
+import {
+  USE_BACKEND,
+  deleteConversation,
+  getConversationMessages,
+  getConversations,
+  sendChat,
+  uploadDocument,
+} from "../api/client.js";
 import { useSession } from "./SessionContext.jsx";
 
 // Conversations: { id, remoteId?, title, createdAt, updatedAt, loaded,
@@ -13,8 +20,11 @@ import { useSession } from "./SessionContext.jsx";
 // A new chat gets a local id at once (so the page can open it) and its server
 // id (remoteId) from the first reply. Guests have no account, so their chats
 // stay in memory and the assistant asks them to sign in.
-// Attachments are saved as { name, size, type } only; the backend's chat takes
-// text, so attached files are named in the message rather than uploaded.
+// Attachments: with the backend on, each file is uploaded to the user's record
+// (/api/uploads/document, stored in the database) before the message is sent,
+// and the message tells the assistant what was attached, with the summary the
+// backend read from it. Without the backend they're only named. Messages keep
+// { name, size, type } per file for display.
 const STORAGE_KEY = "caresync-chats";
 const ChatHistoryContext = createContext(null);
 
@@ -35,6 +45,33 @@ const without = (obj, key) => {
   return rest;
 };
 const time = (iso) => new Date(iso).getTime();
+
+// File types the backend's upload accepts (PDF, images, plain text, audio).
+const UPLOADABLE = /^(application\/pdf|image\/(jpeg|png|gif|webp)|text\/plain|audio\/)/;
+const kindFor = (file) => (file.type.startsWith("audio/") ? "audio" : "doctor_note");
+
+// Upload each attachment; returns the lines to add to the message for the assistant.
+async function uploadAttachments(files) {
+  const lines = [];
+  for (const file of files) {
+    if (!UPLOADABLE.test(file.type)) {
+      lines.push(`(Couldn't attach ${file.name}: only PDF, image, text or audio files can be saved.)`);
+      continue;
+    }
+    try {
+      const doc = await uploadDocument(file, kindFor(file));
+      const summary = doc.extracted?.data?.summary;
+      lines.push(
+        summary
+          ? `(Attached ${file.name}, saved to my record. What it says: ${String(summary).slice(0, 600)})`
+          : `(Attached ${file.name}, saved to my record.)`
+      );
+    } catch {
+      lines.push(`(Couldn't attach ${file.name}. It wasn't saved.)`);
+    }
+  }
+  return lines;
+}
 
 // Backend source { n, title, url } -> the short label shown under a reply.
 const sourceLabel = (s) => (typeof s === "string" ? s : s?.title ?? "");
@@ -129,8 +166,10 @@ export function ChatHistoryProvider({ children }) {
     [patchChat]
   );
 
+  // attachNote: lines from an earlier upload, so a retry doesn't upload the files twice.
   const ask = useCallback(
-    async (id, text, files) => {
+    async (id, text, files, attachNote = null) => {
+      let note = attachNote;
       busy.current.add(id);
       setPending((p) => ({ ...p, [id]: true }));
       setErrors((e) => without(e, id));
@@ -140,7 +179,13 @@ export function ChatHistoryProvider({ children }) {
           err.signIn = true;
           throw err;
         }
-        const named = files.length ? `${text}\n\n(Attached: ${files.map((f) => f.name).join(", ")})`.trim() : text;
+        if (note == null && files.length) {
+          note = USE_BACKEND
+            ? (await uploadAttachments(files)).join("\n")
+            : `(Attached: ${files.map((f) => f.name).join(", ")})`;
+        }
+        // The backend takes at most 4000 characters per message.
+        const named = (note ? `${text}\n\n${note}`.trim() : text).slice(0, 4000);
         const remoteId = chatsRef.current.find((c) => c.id === id)?.remoteId;
         const res = await sendChat(named, { conversationId: remoteId, newConversation: USE_BACKEND && !remoteId });
         if (res.conversation_id && !remoteId) patchChat(id, (c) => ({ ...c, remoteId: res.conversation_id }));
@@ -151,7 +196,7 @@ export function ChatHistoryProvider({ children }) {
           sources: (res.sources ?? []).map(sourceLabel).filter(Boolean),
         });
       } catch (err) {
-        setErrors((e) => ({ ...e, [id]: { text, files, signIn: Boolean(err?.signIn) } }));
+        setErrors((e) => ({ ...e, [id]: { text, files, signIn: Boolean(err?.signIn), note } }));
       } finally {
         busy.current.delete(id);
         setPending((p) => without(p, id));
@@ -193,7 +238,7 @@ export function ChatHistoryProvider({ children }) {
   const retry = useCallback(
     (id) => {
       const failed = errors[id];
-      if (failed && !busy.current.has(id)) ask(id, failed.text, failed.files);
+      if (failed && !busy.current.has(id)) ask(id, failed.text, failed.files, failed.note);
     },
     [ask, errors]
   );

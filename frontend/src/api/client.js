@@ -124,6 +124,16 @@ export function getConversationMessages(id) {
   return request(`/api/chat/conversations/${encodeURIComponent(id)}/messages`);
 }
 
+// Upload a file to the user's record. kind: doctor_note | prescription | lab |
+// bp_photo | ecg_pdf | audio. Accepts PDF, JPEG, PNG, GIF, WebP, plain text and
+// audio (up to 20 MB). Returns { id, kind, status, extracted: { data: { summary, ... } } }.
+export function uploadDocument(file, kind) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", kind);
+  return request("/api/uploads/document", { method: "POST", body: form });
+}
+
 export function deleteConversation(id) {
   return request(`/api/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

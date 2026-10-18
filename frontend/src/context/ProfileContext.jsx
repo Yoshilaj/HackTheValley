@@ -11,14 +11,16 @@ import useStoredState from "../hooks/useStoredState.js";
 // shows in the greeting and avatar too.
 //
 // Backend off: everything is kept in this browser, starting from the demo patient.
-// Backend on: name, date of birth and emergency contact come from and save to
-// /api/profile. The backend has no allergy or condition lists and deliberately
-// no health-card field (the card is brought to the visit), so those three stay
-// in this browser and are merged in.
+// Backend on: name, date of birth, emergency contact, allergies and conditions
+// come from and save to /api/profile. The backend deliberately has no
+// health-card field (the card is brought to the visit), so that stays in this
+// browser and is merged in. Allergy/condition lists saved in this browser
+// before the backend had them are shown until the first save moves them over.
 const ProfileContext = createContext(null);
 
 const EMPTY = { fullName: "", dateOfBirth: "", healthCardLast4: "", allergies: [], conditions: [], emergencyContact: null };
 const LOCAL_ONLY = ({ healthCardLast4, allergies, conditions }) => ({ healthCardLast4, allergies, conditions });
+const list = (v) => (Array.isArray(v) ? v : undefined); // undefined: the backend has none saved yet
 
 const editable = ({ fullName, dateOfBirth, healthCardLast4, allergies, conditions, emergencyContact }) => ({
   fullName,
@@ -44,6 +46,9 @@ function fromBackend(p, email) {
     fullName,
     dateOfBirth: p.date_of_birth ?? "",
     emergencyContact: c?.name ? { name: c.name, relation: c.relation ?? "", phone: c.phone ?? "" } : null,
+    // Left out when the backend has never stored them, so the browser's lists show instead.
+    ...(list(p.allergies) && { allergies: p.allergies }),
+    ...(list(p.conditions) && { conditions: p.conditions }),
   };
 }
 
@@ -57,6 +62,8 @@ function toBackend(p, previousContact) {
     date_of_birth: p.dateOfBirth || null,
     // Keep any contact fields the sheet doesn't edit (e.g. the contact's email).
     emergency_contact: p.emergencyContact ? { ...previousContact, ...p.emergencyContact } : null,
+    allergies: p.allergies,
+    conditions: p.conditions,
   };
 }
 
