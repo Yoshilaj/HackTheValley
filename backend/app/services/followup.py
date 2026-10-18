@@ -72,6 +72,47 @@ def handle_followup(db: Session, user: User, assessment: RiskAssessment, *, llm:
     return report, appointment
 
 
+class NoAssessment(LookupError):
+    """The user has no risk assessment for the pathway yet."""
+
+
+class ConsentMissing(PermissionError):
+    """share_with_clinic is not active: the agent may not plan a clinic contact."""
+
+
+def start_for_pathway(db: Session, user: User, pathway: str, *, llm: Any = None, calendar: Any = None,
+                      places: Any = None, email: Any = None) -> Appointment:
+    """The app's high-risk pop-up (one pathway's score reached the auto-booking threshold): the
+    active request for `pathway` if there is one, else the booking agent run on the latest
+    assessment of that pathway (any level but emergency) -> an approval card listing which of
+    web / e-mail / phone can reach the clinic. Nothing is sent until the user approves.
+    Raises NoAssessment, ConsentMissing, or ValueError for an emergency assessment."""
+    from app.providers.llm import get_llm_provider
+    from app.services import llm_audit_hook
+    from app.services.booking_agent import run_booking_agent
+    from app.services.report_service import generate_report
+
+    existing = active_appointment_for_pathway(db, user.id, pathway)
+    if existing is not None:
+        return existing
+    assessment = db.scalar(select(RiskAssessment).where(RiskAssessment.user_id == user.id,
+                                                        RiskAssessment.pathway == pathway)
+                           .order_by(RiskAssessment.created_at.desc()).limit(1))
+    if assessment is None:
+        raise NoAssessment(pathway)
+    if assessment.level == "emergency":
+        raise ValueError("emergency assessments get emergency guidance, never a booking")
+    if not has_consent(db, user.id, "share_with_clinic"):
+        raise ConsentMissing("share_with_clinic consent is not active")
+    llm = llm or get_llm_provider(audit_hook=llm_audit_hook(db, user.id, f"risk_assessment:{assessment.id}"))
+    report = generate_report(db, user, assessment, llm, None, commit=False)
+    appt = run_booking_agent(db, user, assessment, llm, calendar, places, email, report=report, commit=False)
+    audit(db, user.id, "booking.started_from_app", f"risk_assessment:{assessment.id}",
+          {"pathway": pathway, "appointment_id": appt.id if appt else None})
+    db.commit()
+    return appt
+
+
 def followup_hook(db: Session, user: User, assessment: RiskAssessment) -> None:
     """FOLLOWUP_HOOKS entry. Commits so the approval card (and, with approval off, the record of
     the clinic contact) persists even if a later step of the caller fails."""

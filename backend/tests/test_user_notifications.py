@@ -295,3 +295,19 @@ def test_legacy_automatic_calendar_mode(db, fakes, monkeypatch):
     assert appt.approval["calendar"]["status"] == "added" and appt.approval["calendar"]["by"] == "auto"
     msg = user_mail(email.outbox, "appointment_confirmed")[0]
     assert "is in your Google Calendar" in msg.text and len(msg.attachments) == 1
+
+
+def test_profile_edit_updates_what_the_pending_card_says_the_clinic_receives(client, db, planned):
+    user, appt = planned
+    before = dict(appt.approval["shared_fields"])
+    res = client.put("/api/profile", json={"first_name": "Alexandra", "phone": "+1 647-555-0111",
+                                           "postal_code": "m4w1a8", "street": None},
+                     headers=headers_for(user))
+    assert res.status_code == 200, res.text
+    db.expire_all()
+    shared = db.get(type(appt), appt.id).approval["shared_fields"]
+    assert shared["first_name"] == "Alexandra" and shared["name"].startswith("Alexandra")
+    assert shared["phone"] == "+1 647-555-0111" and shared["postal_code"] == "M4W 1A8"
+    assert "street" not in shared  # cleared in the profile → no longer sent
+    for k in ("reason_category", "preferred_slots", "report_url"):  # per-request parts are kept
+        assert shared.get(k) == before.get(k)

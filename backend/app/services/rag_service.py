@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from sqlalchemy.orm import Session
 
@@ -101,15 +101,8 @@ def answer_with_citations(db: Session, llm: LlmProvider, question: str, hits: li
     (numbered) and ``cited`` the numbers actually used in the answer. On ``LlmError`` the
     answer is a short apology in the user's language (sources still returned).
     """
-    lang = "ja" if (language or "").lower().startswith("ja") else "en"
-    messages: list[dict[str, Any]] = [{"role": m["role"], "content": m["content"]} for m in (history or [])
-                                      if m.get("role") in ("user", "assistant") and m.get("content")]
-    # Anthropic requires alternating roles starting with user.
-    while messages and messages[0]["role"] != "user":
-        messages.pop(0)
-    if messages and messages[-1]["role"] == "user":
-        messages.pop()
-    messages.append({"role": "user", "content": build_user_turn(question, format_excerpts(hits), user_context_block)})
+    lang = _lang(language)
+    messages = _answer_messages(question, hits, user_context_block, history)
     sources = sources_for(hits)
     try:
         resp = llm.complete(system_prompt(lang), messages, max_tokens=max_tokens, purpose="chat_answer",
@@ -119,7 +112,54 @@ def answer_with_citations(db: Session, llm: LlmProvider, question: str, hits: li
         raise  # misconfiguration (missing key) → 503 via app.main handler, not a silent fallback
     except LlmError as exc:
         log.warning("chat LLM call failed: %s", exc)
-        answer = ("申し訳ありません。現在回答を生成できません。しばらくしてからもう一度お試しください。" if lang == "ja" else
-                  "Sorry — I can't generate an answer right now. Please try again in a moment.")
-        model = None
+        answer, model = _apology(lang), None
     return {"answer": answer, "sources": sources, "cited": cited_numbers(answer, len(hits)), "model": model}
+
+
+def stream_answer_with_citations(db: Session, llm: LlmProvider, question: str, hits: list[Hit],
+                                 user_context_block: str, language: str,
+                                 history: list[dict[str, str]] | None = None,
+                                 audit_hook: Callable[[dict[str, Any]], None] | None = None,
+                                 max_tokens: int = 1024) -> Iterator[tuple[str, Any]]:
+    """`answer_with_citations`, streamed: yields ("thought", text) and ("text", chunk) while the LLM
+    writes, then ("result", {answer, sources, cited, model}) last. On ``LlmError`` the result's
+    answer is the apology, even if some text was already yielded."""
+    lang = _lang(language)
+    messages = _answer_messages(question, hits, user_context_block, history)
+    sources = sources_for(hits)
+    parts: list[str] = []
+    try:
+        for kind, chunk in llm.stream(system_prompt(lang), messages, max_tokens=max_tokens, purpose="chat_answer",
+                                      audit_hook=audit_hook):
+            if kind == "text":
+                parts.append(chunk)
+            yield kind, chunk
+        answer, model = "".join(parts).strip(), llm.model_default
+    except LlmConfigError:
+        raise
+    except LlmError as exc:
+        log.warning("chat LLM stream failed: %s", exc)
+        answer, model = _apology(lang), None
+    yield "result", {"answer": answer, "sources": sources, "cited": cited_numbers(answer, len(hits)), "model": model}
+
+
+def _lang(language: str | None) -> str:
+    return "ja" if (language or "").lower().startswith("ja") else "en"
+
+
+def _apology(lang: str) -> str:
+    return ("申し訳ありません。現在回答を生成できません。しばらくしてからもう一度お試しください。" if lang == "ja" else
+            "Sorry — I can't generate an answer right now. Please try again in a moment.")
+
+
+def _answer_messages(question: str, hits: list[Hit], user_context_block: str,
+                     history: list[dict[str, str]] | None) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = [{"role": m["role"], "content": m["content"]} for m in (history or [])
+                                      if m.get("role") in ("user", "assistant") and m.get("content")]
+    # Anthropic requires alternating roles starting with user.
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+    if messages and messages[-1]["role"] == "user":
+        messages.pop()
+    messages.append({"role": "user", "content": build_user_turn(question, format_excerpts(hits), user_context_block)})
+    return messages

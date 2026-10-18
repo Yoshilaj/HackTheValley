@@ -24,6 +24,9 @@ class ProviderOut(BaseModel):
     slots: list[str] = Field(default_factory=list)   # local ISO times, e.g. "2026-10-21T10:00"
     next_slot: str                  # e.g. "Tue, Oct 21 · 10:00 AM"
     fictional: bool = False
+    # What distance_km is measured from, in a straight line: "device" (the location the app sent) |
+    # "home" (the profile address) | None (no distance)
+    distance_from: str | None = None
 
 
 class RecommendationOut(ProviderOut):

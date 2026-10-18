@@ -59,7 +59,7 @@ import json
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -132,6 +132,10 @@ class LlmProvider(Protocol):
     def complete(self, system: str, messages: list[dict[str, Any]], max_tokens: int = 1024,
                  temperature: float | None = None, *, model: str | None = None,
                  purpose: str = "complete", audit_hook: AuditHook | None = None) -> LlmResponse: ...
+
+    def stream(self, system: str, messages: list[dict[str, Any]], max_tokens: int = 1024,
+               temperature: float | None = None, *, model: str | None = None,
+               purpose: str = "stream", audit_hook: AuditHook | None = None) -> Iterator[tuple[str, str]]: ...
 
     def extract(self, system: str, user_content: str | list[dict[str, Any]], schema: dict[str, Any],
                 model: str | None = None, *, tool_name: str = "record", purpose: str = "extract",
@@ -217,6 +221,15 @@ class _Base:
             })
         except Exception:  # auditing must never break the call
             log.exception("llm audit hook failed")
+
+    def stream(self, system, messages, max_tokens=1024, temperature=None, *, model=None,
+               purpose="stream", audit_hook=None) -> Iterator[tuple[str, str]]:
+        """Yield ("thought", summary) / ("text", chunk) as the answer is written. Default: the whole
+        `complete` answer as one chunk; providers that can stream override it."""
+        resp = self.complete(system, messages, max_tokens, temperature, model=model, purpose=purpose,
+                             audit_hook=audit_hook)
+        if resp.text:
+            yield "text", resp.text
 
     def transcribe_document(self, data: bytes | str) -> str:
         return transcribe_document(data)
@@ -605,10 +618,9 @@ class GeminiLlm(_Base):
             return "end_turn"
         return name.lower()
 
-    def _generate(self, *, model: str, system: str, contents: list[Any], max_tokens: int,
-                  temperature: float | None = None, tools: list[Any] | None = None,
-                  json_schema: dict[str, Any] | None = None, json_mode: bool = False,
-                  purpose: str, audit_hook: AuditHook | None):
+    def _config(self, *, model: str, system: str, max_tokens: int, temperature: float | None = None,
+                tools: list[Any] | None = None, json_schema: dict[str, Any] | None = None,
+                json_mode: bool = False, include_thoughts: bool = False):
         types = self._types()
         # Thinking models (Gemini 2.5 / 3.x) count thought tokens against max_output_tokens; without an
         # allowance a 1024-token chat answer was cut mid-sentence (stop_reason=max_tokens, live 2026-10-17).
@@ -624,15 +636,38 @@ class GeminiLlm(_Base):
             cfg["response_mime_type"] = "application/json"
         if json_schema is not None:
             cfg["response_json_schema"] = json_schema
-        client = self.client
+        if include_thoughts and thinking:  # short summaries of the thinking, streamed before the answer
+            cfg["thinking_config"] = types.ThinkingConfig(include_thoughts=True)
+        return types.GenerateContentConfig(**cfg)
+
+    @staticmethod
+    def _genai_errors():
         try:
             from google.genai import errors as genai_errors
         except ImportError:  # pragma: no cover
-            genai_errors = None
+            return None
+        return genai_errors
+
+    @staticmethod
+    def _usage(resp) -> LlmUsage:
+        u = getattr(resp, "usage_metadata", None)
+        return LlmUsage(
+            input_tokens=getattr(u, "prompt_token_count", 0) or 0,
+            output_tokens=(getattr(u, "candidates_token_count", 0) or 0) + (getattr(u, "thoughts_token_count", 0) or 0),
+            cache_read_input_tokens=getattr(u, "cached_content_token_count", 0) or 0,
+        )
+
+    def _generate(self, *, model: str, system: str, contents: list[Any], max_tokens: int,
+                  temperature: float | None = None, tools: list[Any] | None = None,
+                  json_schema: dict[str, Any] | None = None, json_mode: bool = False,
+                  purpose: str, audit_hook: AuditHook | None):
+        config = self._config(model=model, system=system, max_tokens=max_tokens, temperature=temperature,
+                              tools=tools, json_schema=json_schema, json_mode=json_mode)
+        client = self.client
+        genai_errors = self._genai_errors()
         for attempt in range(self.TRANSIENT_RETRIES + 1):
             try:
-                resp = client.models.generate_content(model=model, contents=contents,
-                                                      config=types.GenerateContentConfig(**cfg))
+                resp = client.models.generate_content(model=model, contents=contents, config=config)
                 break
             except Exception as e:
                 # SDK errors (429 RESOURCE_EXHAUSTED on the free tier, 5xx, 400) become LlmError so callers
@@ -645,12 +680,7 @@ class GeminiLlm(_Base):
                     time.sleep(self.TRANSIENT_RETRY_DELAY_S)
                     continue
                 raise LlmApiError(f"gemini API error {code} ({purpose}): {str(e)[:500]}", code=code) from e
-        u = getattr(resp, "usage_metadata", None)
-        usage = LlmUsage(
-            input_tokens=getattr(u, "prompt_token_count", 0) or 0,
-            output_tokens=(getattr(u, "candidates_token_count", 0) or 0) + (getattr(u, "thoughts_token_count", 0) or 0),
-            cache_read_input_tokens=getattr(u, "cached_content_token_count", 0) or 0,
-        )
+        usage = self._usage(resp)
         stop = self._stop_reason(resp)
         self._audit(audit_hook, getattr(resp, "model_version", None) or model, usage, purpose, stop)
         return resp, usage, stop
@@ -664,6 +694,38 @@ class GeminiLlm(_Base):
                                            audit_hook=audit_hook)
         return LlmResponse(text=self._text(resp), model=getattr(resp, "model_version", None) or model,
                            usage=usage, stop_reason=stop)
+
+    def stream(self, system, messages, max_tokens=1024, temperature=None, *, model=None,
+               purpose="stream", audit_hook=None) -> Iterator[tuple[str, str]]:
+        """`complete`, streamed: thought summaries ("thought") while the model thinks, then the answer
+        ("text") as it's written. A transient 5xx is retried only before anything was yielded."""
+        model = self.resolve_model(model)
+        config = self._config(model=model, system=system, max_tokens=max_tokens, temperature=temperature,
+                              include_thoughts=True)
+        contents = self.to_contents(messages)
+        client = self.client
+        genai_errors = self._genai_errors()
+        last, started = None, False
+        for attempt in range(self.TRANSIENT_RETRIES + 1):
+            try:
+                for chunk in client.models.generate_content_stream(model=model, contents=contents, config=config):
+                    last = chunk
+                    for p in self._parts(chunk):
+                        if getattr(p, "text", None):
+                            started = True
+                            yield ("thought" if getattr(p, "thought", False) else "text"), p.text
+                break
+            except Exception as e:
+                if genai_errors is None or not isinstance(e, genai_errors.APIError):
+                    raise
+                code = getattr(e, "code", None)
+                if code in (500, 502, 503, 504) and attempt < self.TRANSIENT_RETRIES and not started:
+                    log.warning("gemini %s (%s), retrying once in %.1fs", code, purpose, self.TRANSIENT_RETRY_DELAY_S)
+                    time.sleep(self.TRANSIENT_RETRY_DELAY_S)
+                    continue
+                raise LlmApiError(f"gemini API error {code} ({purpose}): {str(e)[:500]}", code=code) from e
+        self._audit(audit_hook, getattr(last, "model_version", None) or model, self._usage(last), purpose,
+                    self._stop_reason(last) if last is not None else "refusal")
 
     @staticmethod
     def _is_schema_error(exc: Exception) -> bool:
@@ -847,6 +909,15 @@ class FakeLlm(_Base):
         self.calls.append({"method": "complete", "purpose": purpose})
         self._audit(audit_hook, model, usage, purpose, "end_turn")
         return LlmResponse(text=text, model=model, usage=usage, stop_reason="end_turn")
+
+    def stream(self, system, messages, max_tokens=1024, temperature=None, *, model=None,
+               purpose="stream", audit_hook=None) -> Iterator[tuple[str, str]]:
+        """The `complete` answer word by word, after one placeholder thought."""
+        text = self.complete(system, messages, max_tokens, temperature, model=model, purpose=purpose,
+                             audit_hook=audit_hook).text
+        yield "thought", "(fake LLM) thinking"
+        for word in re.findall(r"\S+\s*", text):
+            yield "text", word
 
     def derive(self, text: str, schema: dict[str, Any]) -> dict[str, Any]:
         """Regex-derive values for every top-level property of `schema` from `text`."""

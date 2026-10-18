@@ -87,7 +87,7 @@ def test_plan_stops_at_awaiting_approval_without_contacting_anyone(db, setup):
     assert any(e["type"] == "discovery" for e in appt.agent_log)
     n = notes(db, user, "appointment_approval_needed")
     assert len(n) == 1 and n[0].payload["appointment_id"] == appt.id and "Nothing is sent" in n[0].body
-    assert "we will try Queen West Cardiology Associates (demo)" in n[0].body
+    assert "we will try Queen West Cardiology Associates" in n[0].body
     assert [c["rank"] for c in n[0].payload["candidates"]] == [1, 2, 3]
 
 
@@ -364,3 +364,61 @@ def test_register_followup_hooks_idempotent():
     assert followup.register_followup_hooks() is True
     assert followup.register_followup_hooks() is True
     assert FOLLOWUP_HOOKS.count(followup.followup_hook) == 1
+
+
+# ---------------------------------------------------------------- the app's 85+ pop-up
+
+def test_user_picks_one_channel_and_only_that_one_runs(db, setup):
+    user, assessment, report = setup
+    web = ScriptedChannel("web", result=ChannelResult(status="requested", reason="form sent"))
+    email = ScriptedChannel("email", result=ChannelResult(status="requested", reason="sent"))
+    phone = ScriptedChannel("phone", result=ChannelResult(status="requested", reason="call placed",
+                                                          external_ref="conv_9"))
+    chans = {"web": web, "email": email, "phone": phone}
+    appt = plan(db, user, assessment, report, channels=chans)
+    out = ba.approve_appointment(db, user, appt.id, calendar=FakeCalendar(), email=FakeEmail(), channels=chans,
+                                 channel="phone")
+    assert out.status == "requested" and out.channel == "phone" and out.approval["chosen_channel"] == "phone"
+    assert web.calls == email.calls == [] and phone.calls == [BLOOR]
+    assert [a["channel"] for a in out.channel_attempts] == ["phone"]
+
+
+def test_an_unavailable_channel_cannot_be_chosen(db, setup):
+    user, assessment, report = setup
+    chans = {"web": ScriptedChannel("web", reason="captcha"), "email": ScriptedChannel("email"),
+             "phone": ScriptedChannel("phone", reason="not configured")}
+    appt = plan(db, user, assessment, report, channels=chans)
+    with pytest.raises(ValueError, match="web is not an available way"):
+        ba.approve_appointment(db, user, appt.id, channels=chans, channel="web")
+    db.refresh(appt)
+    assert appt.status == "awaiting_approval"  # nothing claimed, nothing sent
+
+
+def test_auto_endpoint_plans_once_per_pathway_and_lists_the_channels(client, db):
+    from tests.test_report import headers_for
+
+    user = toronto_user(db)
+    make_assessment(db, user)
+    res = client.post("/api/appointments/auto", json={"pathway": "cardio"}, headers=headers_for(user))
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status"] == "awaiting_approval"
+    assert [p["channel"] for p in body["approval"]["channel_plan"]] == ["web", "email", "phone"]
+    assert all("available" in p and "reason" in p for p in body["approval"]["channel_plan"])
+    again = client.post("/api/appointments/auto", json={"pathway": "cardio"}, headers=headers_for(user)).json()
+    assert again["id"] == body["id"]  # the active request, not a second one
+    assert client.post("/api/appointments/auto", json={"pathway": "cognitive"},
+                       headers=headers_for(user)).status_code == 404  # no assessment for it yet
+
+
+def test_auto_endpoint_needs_consent_and_never_books_emergencies(client, db):
+    from tests.test_report import headers_for
+
+    no_consent = toronto_user(db, consents=("data_processing",))
+    make_assessment(db, no_consent)
+    res = client.post("/api/appointments/auto", json={"pathway": "cardio"}, headers=headers_for(no_consent))
+    assert res.status_code == 403
+    urgent = toronto_user(db)
+    make_assessment(db, urgent, level="emergency")
+    assert client.post("/api/appointments/auto", json={"pathway": "cardio"},
+                       headers=headers_for(urgent)).status_code == 409

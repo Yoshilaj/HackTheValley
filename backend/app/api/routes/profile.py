@@ -112,9 +112,14 @@ def read_profile(user: User = Depends(get_current_user), db: Session = Depends(g
 
 @router.put("/profile", response_model=ProfileOut)
 def update_profile(req: ProfileUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.services.booking.orchestrator import refresh_pending_approvals
+
     profile = get_or_create_profile(db, user)
     apply_profile_update(profile, req)
     audit(db, user.id, "update", "profile", {"fields": sorted(req.model_dump(exclude_unset=True))})
+    db.flush()
+    db.refresh(user)  # user.profile now has the new values
+    refresh_pending_approvals(db, user)  # approval cards show the details the clinic will get
     db.commit()
     db.refresh(profile)
     return profile

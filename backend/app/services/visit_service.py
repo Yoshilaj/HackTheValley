@@ -36,6 +36,12 @@ FLAGGED = {"watch", "followup_recommended", "emergency"}
 SLOT_STEP = timedelta(minutes=90)  # spread the offered times through each day
 SLOTS_PER_CLINIC = 6
 SLOT_DAYS = 10
+FIRST_SLOT, LAST_SLOT_END = time(8, 0), time(20, 0)
+
+#: The directory (no specialty asked): where people go first in Canada, then the specialists the
+#: risk pathways refer to. One Places search each (cached), merged and sorted by distance.
+DIRECTORY_SPECIALTIES = ("family_medicine", "walk_in", "hospital", "cardiology", "neurology", "memory_clinic")
+DIRECTORY_LIMIT = 40
 
 
 class BookingNotFound(LookupError):
@@ -48,6 +54,13 @@ class ProviderNotFound(LookupError):
 
 # ---------------------------------------------------------------- directory
 
+def _at(day, hhmm: str) -> datetime:
+    """``day`` at "HH:MM"; Google gives "24:00" for midnight at the end of the day."""
+    if hhmm == "24:00":
+        return datetime.combine(day + timedelta(days=1), time(0))
+    return datetime.combine(day, time.fromisoformat(hhmm))
+
+
 def open_slots(clinic: Clinic, now: datetime | None = None, count: int = SLOTS_PER_CLINIC,
                days: int = SLOT_DAYS) -> list[str]:
     """The next ``count`` bookable times inside the clinic's opening hours, starting tomorrow."""
@@ -58,8 +71,9 @@ def open_slots(clinic: Clinic, now: datetime | None = None, count: int = SLOTS_P
     for offset in range(1, days + 1):
         day = (now + timedelta(days=offset)).date()
         for opens, closes in hours.get(WEEKDAYS[day.weekday()], []):
-            start = datetime.combine(day, time.fromisoformat(opens))
-            end = datetime.combine(day, time.fromisoformat(closes)) - timedelta(minutes=30)
+            # Appointments only in office hours, also at places open late or around the clock.
+            start = max(_at(day, opens), datetime.combine(day, FIRST_SLOT))
+            end = min(_at(day, closes), datetime.combine(day, LAST_SLOT_END)) - timedelta(minutes=30)
             t = start + timedelta(minutes=30)  # not the first minute the doors open
             while t <= end and len(out) < count:
                 out.append(t.strftime("%Y-%m-%dT%H:%M"))
@@ -82,8 +96,13 @@ def hours_summary(opening_hours: dict[str, list[list[str]]] | None) -> str | Non
     if not opening_hours:
         return None
     days = [d for d in WEEKDAYS if opening_hours.get(d)]
+    if not days:
+        return None
     first = opening_hours[days[0]]
-    fmt = lambda hhmm: datetime.strptime(hhmm, "%H:%M").strftime("%I:%M %p").lstrip("0").replace(":00", "")
+    if len(days) == 7 and all(opening_hours[d] == [["00:00", "24:00"]] for d in days):
+        return "Open 24 hours"
+    fmt = lambda hhmm: datetime.strptime("00:00" if hhmm == "24:00" else hhmm, "%H:%M").strftime(
+        "%I:%M %p").lstrip("0").replace(":00", "")
     span = ", ".join(f"{fmt(a)}-{fmt(b)}" for a, b in first)
     same = all(opening_hours[d] == first for d in days)
     label = f"{days[0].title()}-{days[-1].title()}" if len(days) > 1 else days[0].title()
@@ -95,7 +114,7 @@ def initials(name: str) -> str:
     return "".join(w[0] for w in words[:2]).upper() or "?"
 
 
-def provider_out(c: Clinic, now: datetime | None = None) -> dict[str, Any]:
+def provider_out(c: Clinic, now: datetime | None = None, distance_from: str | None = None) -> dict[str, Any]:
     slots = open_slots(c, now)
     km = round(c.distance_km, 1) if c.distance_km is not None else None
     return {
@@ -116,14 +135,31 @@ def provider_out(c: Clinic, now: datetime | None = None) -> dict[str, Any]:
         "slots": slots,
         "next_slot": slot_label(slots[0] if slots else None),
         "fictional": c.fictional,
+        "distance_from": distance_from if km is not None else None,
     }
 
 
-def _origin(db: Session, user: User, lat: float | None, lng: float | None) -> tuple[float | None, float | None]:
+def _origin(db: Session, user: User, lat: float | None, lng: float | None) -> tuple[float | None, float | None, str | None]:
+    """Where distances are measured from: ``device`` (the location the app sent), else ``home``
+    (the profile address / postal code, geocoded once and kept on the profile; editing the address
+    clears it), else nowhere."""
     if lat is not None and lng is not None:
-        return lat, lng
+        return lat, lng, "device"
     profile = db.scalar(select(Profile).where(Profile.user_id == user.id))
-    return (profile.lat, profile.lng) if profile else (None, None)
+    if profile is None:
+        return None, None, None
+    if profile.lat is None or profile.lng is None:
+        from app.integrations.google_places import places_configured
+        from app.services.booking.discovery import resolve_origin
+
+        if not places_configured():  # the offline geocoder only knows "somewhere in Toronto"
+            return None, None, None
+        origin, _, _ = resolve_origin(profile)
+        if origin is None:
+            return None, None, None
+        profile.lat, profile.lng = origin
+        db.commit()
+    return profile.lat, profile.lng, "home"
 
 
 def _reason(card: dict[str, Any]) -> str:
@@ -141,13 +177,23 @@ class _Origin:
 
 def list_providers(db: Session, user: User, lat: float | None = None, lng: float | None = None,
                    specialty: str | None = None, now: datetime | None = None) -> list[dict[str, Any]]:
-    """Clinics nearest first (all specialties, or one)."""
-    lat, lng = _origin(db, user, lat, lng)
+    """Clinics, doctors and hospitals nearest first (the directory's specialties, or one). Real
+    Google Places results when a Maps key is set (none until there is a location), else the
+    fictional seed list."""
+    from app.integrations.google_places import places_configured
+
+    lat, lng, source = _origin(db, user, lat, lng)
     if specialty:
         found = clinic_directory.find_clinics(_Origin(lat, lng), specialty)
+    elif places_configured():
+        merged: dict[str, Clinic] = {}
+        for s in DIRECTORY_SPECIALTIES:
+            for c in clinic_directory.find_clinics(_Origin(lat, lng), s):
+                merged.setdefault(c.place_id or c.id, c)  # a place found by two searches keeps the first
+        found = clinic_directory.rank_by_distance(list(merged.values()), lat, lng)[:DIRECTORY_LIMIT]
     else:
         found = clinic_directory.rank_by_distance(clinic_directory.load_seed_clinics(), lat, lng)
-    return [provider_out(c, now) for c in found]
+    return [provider_out(c, now, source) for c in found]
 
 
 def recommendations(db: Session, user: User, lat: float | None = None, lng: float | None = None,
@@ -155,7 +201,7 @@ def recommendations(db: Session, user: User, lat: float | None = None, lng: floa
     """The nearest clinic for each pathway with a finding, highest priority first, with the reason."""
     from app.services.dashboard_service import latest_cards
 
-    lat, lng = _origin(db, user, lat, lng)
+    lat, lng, source = _origin(db, user, lat, lng)
     cards = sorted((c for c in latest_cards(db, user) if c.get("level") in FLAGGED),
                    key=lambda c: -(c.get("priority_score") or 0))
     wanted = [(clinic_directory.specialty_for_pathway(c["pathway"]), _reason(c)) for c in cards]
@@ -167,7 +213,7 @@ def recommendations(db: Session, user: User, lat: float | None = None, lng: floa
             if clinic.id in seen:
                 continue
             seen.add(clinic.id)
-            out.append({**provider_out(clinic, now), "reason": reason})
+            out.append({**provider_out(clinic, now, source), "reason": reason})
     return out
 
 

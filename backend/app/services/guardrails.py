@@ -266,13 +266,17 @@ _JA_REWRITES: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
-def output_guard(answer: str, language: str | None = None) -> str:
-    """Rewrite diagnostic / treatment-instruction phrasing (simple regex list) and append the
-    disclaimer in ``language`` if no disclaimer is already present."""
-    text = (answer or "").strip()
+def rewrite_phrasing(text: str) -> str:
+    """Rewrite diagnostic / treatment-instruction phrasing (simple regex list). No pattern crosses a
+    sentence end, so streamed text can be rewritten one complete sentence at a time."""
     for pat, repl in _EN_REWRITES + _JA_REWRITES:
         text = pat.sub(repl, text)
-    text = re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), text)
+    return re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), text)
+
+
+def output_guard(answer: str, language: str | None = None) -> str:
+    """`rewrite_phrasing` and append the disclaimer in ``language`` if no disclaimer is already present."""
+    text = rewrite_phrasing((answer or "").strip())
     disc = disclaimer_for(language)
     if DISCLAIMER_EN not in text and DISCLAIMER_JA not in text:
         text = f"{text}\n\n{disc}" if text else disc

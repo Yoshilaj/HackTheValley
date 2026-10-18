@@ -15,7 +15,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Iterator
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -28,7 +28,7 @@ from app.providers.embeddings import EmbeddingProvider
 from app.providers.llm import LlmConfigError, LlmError, LlmProvider
 from app.rag.ingest import detect_language
 from app.services import llm_audit_hook, rag_service
-from app.services.guardrails import RED_FLAG_LABELS, detect_red_flags, output_guard
+from app.services.guardrails import RED_FLAG_LABELS, detect_red_flags, output_guard, rewrite_phrasing
 
 log = logging.getLogger(__name__)
 
@@ -232,6 +232,89 @@ def handle_message(db: Session, user: User, text: str, llm: LlmProvider, embeddi
     ``conversation_id`` continues one of the user's conversations (``ConversationNotFound`` if it
     isn't theirs); ``new_conversation`` starts one titled from this message. With neither the turn
     joins the user's unthreaded messages (iOS Shortcut, older clients)."""
+    text, lang, history, msg = _begin_turn(db, user, text, language, audio_meta, conversation_id, new_conversation)
+    red_flags = detect_red_flags(text, lang)
+    if red_flags:
+        return _emergency_turn(db, user, msg, red_flags, lang)
+
+    hook = llm_audit_hook(db, user.id, resource=f"chat_message:{msg.id}")
+    context = build_context_block(db, user)
+    pathway = rag_service.infer_pathway(text)
+    hits = _retrieve(db, text, k, pathway, embedding_provider)
+    result = rag_service.answer_with_citations(db, llm, text, hits, context, lang, history=history, audit_hook=hook)
+    return _finish_turn(db, user, llm, msg, output_guard(result["answer"], lang), result, hits, pathway, lang,
+                        audio_meta, hook)
+
+
+def stream_message(db: Session, user: User, text: str, llm: LlmProvider,
+                   embedding_provider: EmbeddingProvider | None, language: str | None = None, k: int = 6,
+                   conversation_id: str | None = None, new_conversation: bool = False) -> Iterator[dict[str, Any]]:
+    """`handle_message`, streamed. The message is checked and the conversation opened now, so
+    ``ValueError`` / ``ConversationNotFound`` raise before any output. Returns the events:
+    ``status`` (stage "searching", then "thinking"), ``thought`` (the model's thinking summaries),
+    ``delta`` (answer text, already through the output guard's rewrites, a sentence at a time),
+    ``answer`` (the final guarded answer + sources, sent before observation extraction) and
+    ``done`` (``turn``: the ChatTurn). A red flag gives only ``done``. Commits."""
+    text, lang, history, msg = _begin_turn(db, user, text, language, None, conversation_id, new_conversation)
+    red_flags = detect_red_flags(text, lang)
+    if red_flags:
+        return iter([{"type": "done", "turn": _emergency_turn(db, user, msg, red_flags, lang)}])
+    return _stream_turn(db, user, llm, embedding_provider, msg, text, lang, history, k)
+
+
+def _stream_turn(db: Session, user: User, llm: LlmProvider, embedding_provider: EmbeddingProvider | None,
+                 msg: ChatMessage, text: str, lang: str, history: list[dict[str, str]],
+                 k: int) -> Iterator[dict[str, Any]]:
+    yield {"type": "status", "stage": "searching"}
+    hook = llm_audit_hook(db, user.id, resource=f"chat_message:{msg.id}")
+    context = build_context_block(db, user)
+    pathway = rag_service.infer_pathway(text)
+    hits = _retrieve(db, text, k, pathway, embedding_provider)
+    yield {"type": "status", "stage": "thinking"}
+    guarded = _GuardedStream()
+    result: dict[str, Any] = {}
+    for kind, value in rag_service.stream_answer_with_citations(db, llm, text, hits, context, lang, history=history,
+                                                                audit_hook=hook):
+        if kind == "thought":
+            yield {"type": "thought", "text": value}
+        elif kind == "text":
+            delta = guarded.feed(value)
+            if delta:
+                yield {"type": "delta", "text": delta}
+        else:
+            result = value
+    answer = output_guard(result["answer"], lang)
+    yield {"type": "answer", "answer": answer, "sources": result["sources"]}
+    yield {"type": "done", "turn": _finish_turn(db, user, llm, msg, answer, result, hits, pathway, lang, None, hook)}
+
+
+# Where streamed text can be cut: a sentence end (the guard's rewrites never cross one) or a line break.
+_SAFE_CUT = re.compile(r"[.!?](?=\s)|[\n。！？]")
+
+
+class _GuardedStream:
+    """Turns raw streamed answer text into deltas that have been through `rewrite_phrasing`, a
+    complete sentence at a time, so unguarded phrasing never reaches the client."""
+
+    def __init__(self) -> None:
+        self.raw = ""
+        self.sent = ""
+
+    def feed(self, chunk: str) -> str:
+        self.raw += chunk
+        text = self.raw.lstrip()
+        cut = max((m.end() for m in _SAFE_CUT.finditer(text)), default=0)
+        guarded = rewrite_phrasing(text[:cut])
+        if not guarded.startswith(self.sent):  # a rewrite changed earlier text: the final answer event fixes it
+            return ""
+        delta, self.sent = guarded[len(self.sent):], guarded
+        return delta
+
+
+def _begin_turn(db: Session, user: User, text: str, language: str | None, audio_meta: dict[str, Any] | None,
+                conversation_id: str | None,
+                new_conversation: bool) -> tuple[str, str, list[dict[str, str]], ChatMessage]:
+    """Validate the message, open the conversation and save the user's message (not committed)."""
     text = (text or "").strip()
     if not text:
         raise ValueError("empty message")
@@ -245,27 +328,28 @@ def handle_message(db: Session, user: User, text: str, llm: LlmProvider, embeddi
                       audio_url=(audio_meta or {}).get("audio_url"))
     db.add(msg)
     db.flush()
+    return text, lang, history, msg
 
-    red_flags = detect_red_flags(text, lang)
-    if red_flags:
-        return _emergency_turn(db, user, msg, red_flags, lang)
 
-    hook = llm_audit_hook(db, user.id, resource=f"chat_message:{msg.id}")
-    context = build_context_block(db, user)
-    pathway = rag_service.infer_pathway(text)
+def _retrieve(db: Session, text: str, k: int, pathway: str | None,
+              embedding_provider: EmbeddingProvider | None) -> list[Any]:
     try:
-        hits = rag_service.retrieve(db, text, k=k, pathway=pathway, embedding_provider=embedding_provider)
+        return rag_service.retrieve(db, text, k=k, pathway=pathway, embedding_provider=embedding_provider)
     except Exception:  # embedding provider down → answer without excerpts
         log.exception("retrieval failed")
-        hits = []
-    result = rag_service.answer_with_citations(db, llm, text, hits, context, lang, history=history, audit_hook=hook)
-    answer = output_guard(result["answer"], lang)
+        return []
+
+
+def _finish_turn(db: Session, user: User, llm: LlmProvider, msg: ChatMessage, answer: str, result: dict[str, Any],
+                 hits: list[Any], pathway: str | None, lang: str, audio_meta: dict[str, Any] | None,
+                 hook) -> ChatTurn:
+    """Save the (guarded) answer, extract observations, audit and commit."""
     reply = ChatMessage(user_id=user.id, conversation_id=msg.conversation_id, role="assistant", content=answer,
                         sources=result["sources"])
     db.add(reply)
     db.flush()
 
-    obs = extract_observations(db, user, llm, text, msg.id, audit_hook=hook)
+    obs = extract_observations(db, user, llm, msg.content, msg.id, audit_hook=hook)
     audit(db, user.id, "chat.message", f"chat_message:{msg.id}",
           {"pathway": pathway, "n_hits": len(hits), "cited": result["cited"],
            "observations": [o.label for o in obs], "voice": bool(audio_meta)})

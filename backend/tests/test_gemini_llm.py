@@ -33,6 +33,17 @@ class FakeModels:
             raise r
         return r
 
+    def generate_content_stream(self, *, model, contents, config):
+        """Each response is an exception or a list of chunks (an exception in the list is raised mid-stream)."""
+        self.calls.append({"model": model, "contents": list(contents), "config": config, "stream": True})
+        r = self.responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        for chunk in r:
+            if isinstance(chunk, Exception):
+                raise chunk
+            yield chunk
+
 
 class FakeClient:
     def __init__(self, responses):
@@ -277,3 +288,34 @@ def test_thinking_models_get_output_allowance():
     llm, models = _llm([_resp([types.Part(text="ok")])])
     llm.complete("s", [{"role": "user", "content": "hi"}], max_tokens=1024, model="gemini-3.5-flash")
     assert models.calls[0]["config"].max_output_tokens == 1024 + GeminiLlm.THINKING_ALLOWANCE
+
+
+def test_stream_yields_thoughts_then_text_and_audits():
+    audits = []
+    llm, models = _llm([[_resp([types.Part(text="Planning the answer", thought=True)], finish=None),
+                         _resp([types.Part(text="Hi ")], finish=None),
+                         _resp([types.Part(text="there")], prompt=42, out=7, thoughts=3)]], audit_hook=audits.append)
+    events = list(llm.stream("be nice", [{"role": "user", "content": "hi"}], model="gemini-3.5-flash", purpose="chat"))
+    assert events == [("thought", "Planning the answer"), ("text", "Hi "), ("text", "there")]
+    assert models.calls[0]["stream"] and models.calls[0]["config"].thinking_config.include_thoughts
+    assert audits == [{"model": "gemini-test-001", "purpose": "chat", "stop_reason": "end_turn",
+                       "input_tokens": 42, "output_tokens": 10, "cache_read_input_tokens": 0}]
+
+    llm, models = _llm([[_resp([types.Part(text="ok")])]])
+    assert list(llm.stream("s", [{"role": "user", "content": "hi"}])) == [("text", "ok")]
+    assert models.calls[0]["config"].thinking_config is None  # not a thinking model
+
+
+def test_stream_retries_5xx_only_before_output(monkeypatch):
+    busy = errors.ServerError(503, {"error": {"code": 503, "message": "overloaded", "status": "UNAVAILABLE"}})
+    monkeypatch.setattr(GeminiLlm, "TRANSIENT_RETRY_DELAY_S", 0.0)
+    llm, models = _llm([busy, [_resp([types.Part(text="ok after retry")])]])
+    assert list(llm.stream("s", [{"role": "user", "content": "hi"}])) == [("text", "ok after retry")]
+    assert len(models.calls) == 2
+
+    llm, models = _llm([[_resp([types.Part(text="Half an ")], finish=None), busy], [_resp([types.Part(text="x")])]])
+    seen = []
+    with pytest.raises(llm_mod.LlmApiError) as ei:
+        for event in llm.stream("s", [{"role": "user", "content": "hi"}]):
+            seen.append(event)
+    assert ei.value.code == 503 and seen == [("text", "Half an ")] and len(models.calls) == 1

@@ -169,3 +169,21 @@ def test_sandbox_keeps_fictional_targets_and_live_mode(sandbox_settings):
     real = Clinic(id="r", name="R", specialty="x", email="desk@realclinic.ca")
     assert sandbox.resolve_target("email", real).value == "desk@realclinic.ca"
     assert sandbox.resolve_target("phone", real) is None
+
+
+def test_geocoding_falls_back_to_places_when_the_geocoding_api_is_not_enabled(monkeypatch):
+    def fake_get(url, params=None, timeout=None):
+        return httpx.Response(200, json={"status": "REQUEST_DENIED", "error_message": "This API is not activated"},
+                              request=httpx.Request("GET", url))
+
+    sent = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        sent.update(json=json, headers=headers)
+        return httpx.Response(200, json={"places": [{"location": {"latitude": 43.6527, "longitude": -79.3837}}]},
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
+    assert GeocodingClient(api_key="k").geocode("100 Queen St W, Toronto, ON M5H 2N2") == (43.6527, -79.3837)
+    assert sent["json"]["textQuery"].startswith("100 Queen St W") and sent["headers"]["X-Goog-FieldMask"] == "places.location"

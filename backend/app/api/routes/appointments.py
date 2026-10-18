@@ -56,11 +56,40 @@ def _act(fn, *args, **kwargs):
         raise HTTPException(422, str(exc)) from exc
 
 
+class AutoBookIn(BaseModel):
+    pathway: Literal["cardio", "cognitive", "parkinsons", "general"]
+
+
+@router.post("/auto", response_model=AppointmentDetailOut)
+def auto_book(body: AutoBookIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The app's high-risk pop-up: the active request for this pathway, or a new one planned by the
+    booking agent (awaiting_approval, with `approval.channel_plan` saying which of web / e-mail /
+    phone can reach the clinic). Nothing is sent until approve. 404 without an assessment for the
+    pathway, 403 without share_with_clinic consent, 409 for an emergency assessment."""
+    from app.services import followup
+
+    try:
+        appt = followup.start_for_pathway(db, user, body.pathway)
+    except followup.NoAssessment as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No risk assessment for this pathway yet") from exc
+    except followup.ConsentMissing as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "share_with_clinic consent is not active") from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return appt
+
+
+class ApproveIn(BaseModel):
+    channel: Literal["web", "email", "phone"] | None = None
+
+
 @router.post("/{appointment_id}/approve", response_model=AppointmentDetailOut)
-def approve(appointment_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def approve(appointment_id: str, body: ApproveIn | None = None, user: User = Depends(get_current_user),
+            db: Session = Depends(get_db)):
     """Approve the plan on the approval card (status awaiting_approval) → the agent contacts the
-    clinic (web → email → phone). 409 in any other status or without share_with_clinic consent."""
-    return _act(svc.approve_appointment, db, user, appointment_id)
+    clinic (web → email → phone, or only `channel` when given; 422 if the card doesn't list it as
+    available). 409 in any other status or without share_with_clinic consent."""
+    return _act(svc.approve_appointment, db, user, appointment_id, channel=body.channel if body else None)
 
 
 @router.post("/{appointment_id}/decline", response_model=AppointmentDetailOut)

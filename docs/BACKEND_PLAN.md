@@ -44,7 +44,7 @@ integration code exists but has never been run against the live service (no keys
 | E Consent, audit log, guardrails, export/delete | Built | `DELETE /api/me` removes rows (incl. OAuth credentials) and stored files; Google revoke endpoint not called |
 | E Rate limiting | Built | slowapi-based dependency on chat/uploads/tasks, 30/min default |
 | E Field encryption (Fernet) | Built | `FIELD_ENCRYPTION_KEY` required when `DEV_MODE=false` |
-| E Private storage bucket (Supabase Storage) | Not built | local disk (`STORAGE_DIR`); `SupabaseStorage` stub |
+| E Private storage bucket (Supabase Storage) | Not built | local disk (`STORAGE_DIR`) or Postgres (`STORAGE_BACKEND=database`) |
 | F Docker + Render blueprint | Built | `backend/Dockerfile`, `render.yaml` at repo root (`rootDir: backend`); never deployed |
 | F CI (GitHub Actions) | Not built | |
 

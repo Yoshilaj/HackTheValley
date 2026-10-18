@@ -12,14 +12,14 @@ _SLOTS = [{"start": "2026-10-20T10:00:00-04:00", "end": "2026-10-20T10:30:00-04:
           {"start": "2026-10-24T11:00:00-04:00", "end": "2026-10-24T11:30:00-04:00"}]
 _EXAMPLE = {
     "id": "a1b2…", "assessment_id": "9b1e…", "status": "awaiting_approval", "channel": None,
-    "clinic": {"id": "seed_bloor_heart", "name": "Bloor Street Heart Clinic (demo)", "specialty": "cardiology",
+    "clinic": {"id": "seed_bloor_heart", "name": "Bloor Street Heart Clinic", "specialty": "cardiology",
                "kind": "specialist", "address": "401 Bloor St W, Toronto, ON M5S 1X5 (fictional)", "distance_km": 1.2,
                "phone": "+1 416-555-0101", "email": "booking@bloorheart.example.com",
                "website": "http://localhost:8000/mock-clinic", "timezone": "America/Toronto",
                "opening_hours": {"mon": [["08:30", "16:30"]]}, "source": "seed"},
     "proposed_slots": _SLOTS, "chosen_slot": None, "calendar_event_id": None,
     "approval": {"status": "pending", "requested_at": "2026-10-17T09:00:05Z",
-                 "clinic": {"id": "seed_bloor_heart", "name": "Bloor Street Heart Clinic (demo)", "distance_km": 1.2},
+                 "clinic": {"id": "seed_bloor_heart", "name": "Bloor Street Heart Clinic", "distance_km": 1.2},
                  "channel_plan": [
                      {"channel": "web", "available": False, "reason": "not configured", "target": None,
                       "real": "http://localhost:8000/mock-clinic", "redirected": False},
@@ -80,7 +80,7 @@ class AppointmentDetailOut(AppointmentOut):
     agent_log: list[dict[str, Any]] | None = None
 
     model_config = ConfigDict(from_attributes=True, json_schema_extra={"example": _EXAMPLE | {
-        "candidates": [{"id": "seed_bloor_heart", "name": "Bloor Street Heart Clinic (demo)", "distance_km": 1.2}],
+        "candidates": [{"id": "seed_bloor_heart", "name": "Bloor Street Heart Clinic", "distance_km": 1.2}],
         "agent_log": [
             {"ts": "2026-10-17T09:00:00Z", "type": "note", "text": "booking agent started"},
             {"ts": "2026-10-17T09:00:01Z", "type": "tool", "tool": "find_clinics", "mode": "llm", "input": {},

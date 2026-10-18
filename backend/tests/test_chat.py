@@ -1,5 +1,6 @@
 """Chat routes/services with fake LLM, embeddings and STT."""
 
+import json
 import uuid
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from app.core.auth import create_access_token
 from app.db.models import AssessmentTask, AuditLog, ChatMessage, Notification, Observation, Profile, User
 from app.prompts.chat_system import build_context_block
 from app.providers.embeddings import FakeEmbeddings
-from app.providers.llm import FakeLlm
+from app.providers.llm import FakeLlm, LlmApiError
 from app.providers.storage import LocalStorage
 from app.providers.stt import FakeStt
 from app.rag.ingest import ingest_corpus
@@ -192,3 +193,72 @@ def test_plain_question_gets_no_crisis_text_from_code():
     text = "How did I do on the story recall task this week? I felt a bit sad about the story."
     assert detect_red_flags(text, "en") == []
     assert "9-8-8" not in output_guard("Your recall score was 7 of 10 [1].", "en")
+
+
+def _stream(client, headers, **body):
+    res = client.post("/api/chat/stream", json=body, headers=headers)
+    assert res.status_code == 200, res.text
+    assert res.headers["content-type"].startswith("application/x-ndjson")
+    return [json.loads(line) for line in res.text.splitlines() if line]
+
+
+def test_chat_stream_sends_progress_guarded_deltas_then_saved_turn(client, db, user, headers, fakes):
+    fakes["llm"] = FakeLlm(canned_answer="Measure twice each morning [1]. You probably have hypertension. Rest well.",
+                           extract_queue=[{"observations": [{"kind": "symptom", "label": "dizziness"}]}])
+    events = _stream(client, headers, message="How do I measure my blood pressure? I feel dizzy.",
+                     new_conversation=True)
+    types_ = [e["type"] for e in events]
+    assert types_[:3] == ["status", "status", "thought"]
+    assert [e["stage"] for e in events[:2]] == ["searching", "thinking"]
+    assert set(types_[3:-2]) == {"delta"} and types_[-2:] == ["answer", "done"]
+
+    streamed = "".join(e["text"] for e in events if e["type"] == "delta")
+    final, done = events[-2], events[-1]
+    assert "probably have" not in streamed  # the guard rewrites before anything is sent
+    assert final["answer"].startswith(streamed) and final["answer"] == done["answer"]
+    assert done["answer"].rstrip().endswith("For sudden or severe symptoms, call 911.")
+    assert final["sources"] and done["sources"][0]["n"] == 1 and done["cited"] == [1]
+    assert [o["label"] for o in done["observations_created"]] == ["dizziness"]
+    assert done["conversation_id"] and done["message_id"]
+
+    db.expire_all()
+    msgs = db.scalars(select(ChatMessage).where(ChatMessage.user_id == user.id).order_by(ChatMessage.created_at)).all()
+    assert [m.role for m in msgs] == ["user", "assistant"] and msgs[1].content == done["answer"]
+    assert msgs[1].id == done["message_id"] and msgs[1].conversation_id == done["conversation_id"]
+
+
+def test_chat_stream_red_flag_is_a_single_done_event(client, user, headers, fakes):
+    events = _stream(client, headers, message="I have crushing chest pain")
+    assert [e["type"] for e in events] == ["done"]
+    assert events[0]["red_flags"] == ["chest_pain"] and "911" in events[0]["answer"]
+    assert fakes["llm"].calls == []
+
+
+def test_chat_stream_rejects_before_streaming(client, headers, fakes):
+    res = client.post("/api/chat/stream", json={"message": "hi", "conversation_id": str(uuid.uuid4())},
+                      headers=headers)
+    assert res.status_code == 404
+    assert client.post("/api/chat/stream", json={"message": "hi"}).status_code == 401
+
+
+def test_chat_stream_llm_failure_mid_answer_ends_with_apology(client, db, user, headers, fakes):
+    class Flaky(FakeLlm):
+        def stream(self, *args, **kwargs):
+            yield "text", "Half an answer. "
+            raise LlmApiError("gemini API error 429", code=429)
+
+    fakes["llm"] = Flaky()
+    events = _stream(client, headers, message="What is a normal resting heart rate?")
+    assert events[-2]["type"] == "answer" and events[-2]["answer"].startswith("Sorry")
+    assert events[-1]["type"] == "done" and events[-1]["answer"] == events[-2]["answer"]
+
+
+def test_guarded_stream_never_sends_unfinished_or_unguarded_sentences():
+    from app.services.chat_service import _GuardedStream
+    from app.services.guardrails import rewrite_phrasing
+
+    text = "Readings vary. You should stop taking amlodipine today. Take 50 mg only if told.\nSee 2.5 ok"
+    g = _GuardedStream()
+    out = "".join(g.feed(text[i:i + 7]) for i in range(0, len(text), 7))
+    assert "should stop" not in out and "Take 50 mg" not in out
+    assert out == rewrite_phrasing(text[:text.rindex("\n") + 1])  # the unfinished last line is held back

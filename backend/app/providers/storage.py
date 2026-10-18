@@ -2,7 +2,7 @@
 
 `LocalStorage` writes to `<settings.storage_dir>/<user_id>/<kind>/<uuid>_<safe_name>` and
 returns that path as the `file_url`. `DatabaseStorage` (STORAGE_BACKEND=database) keeps the bytes in
-the `stored_files` table instead, for hosts with a temporary disk. `SupabaseStorage` is a stub.
+the `stored_files` table instead, for hosts with a temporary disk.
 """
 
 from __future__ import annotations
@@ -170,13 +170,6 @@ class DatabaseStorage:
                 n = own.execute(stmt).rowcount or 0
                 own.commit()
         return n + self.local.delete_user_files(user_id)
-
-
-class SupabaseStorage:
-    """TODO(deploy): Supabase Storage private bucket + signed URLs (BACKEND_PLAN Security)."""
-
-    def __init__(self, *_, **__):
-        raise NotImplementedError("SupabaseStorage is not implemented yet; use LocalStorage")
 
 
 def get_storage() -> Storage:

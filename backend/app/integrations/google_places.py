@@ -114,7 +114,8 @@ def to_clinic(p: dict[str, Any], specialty: str | None) -> Clinic:
         source="google_places", place_id=p.get("id"),
         extra={k: v for k, v in {"international_phone": p.get("internationalPhoneNumber"),
                                  "utc_offset_minutes": p.get("utcOffsetMinutes"),
-                                 "types": p.get("types")}.items() if v is not None},
+                                 "types": p.get("types"), "primary_type": p.get("primaryType")}.items()
+               if v is not None},
         website=p.get("websiteUri"),
         opening_hours=parse_opening_hours(roh),
         kind=_kind_for(specialty),
@@ -129,21 +130,28 @@ class PlacesClient:
 
     is_fake = False
 
-    def __init__(self, api_key: str | None = None, language: str = "en", region: str = "CA") -> None:
+    def __init__(self, api_key: str | None = None, language: str = "en", region: str = "CA",
+                 rank_preference: str | None = None, max_results: int = 10) -> None:
+        """rank_preference "DISTANCE": nearest to the location bias first (the clinic directory);
+        default: Google's relevance ranking (the booking agent)."""
         self.api_key = api_key or settings.google_maps_api_key
         if not self.api_key:
             raise RuntimeError("GOOGLE_MAPS_API_KEY not configured")
         self.language = language if language and not language.startswith("ja") else "en"
         self.region = region
+        self.rank_preference = rank_preference
+        self.max_results = max(1, min(max_results, 20))
 
     def search_text(self, query, lat, lng, radius_m=15000, specialty=None) -> list[Clinic]:
         import httpx
 
         body: dict[str, Any] = {"textQuery": query, "languageCode": self.language, "regionCode": self.region,
-                                "maxResultCount": 10}
+                                "maxResultCount": self.max_results}
         if lat is not None and lng is not None:
             body["locationBias"] = {"circle": {"center": {"latitude": lat, "longitude": lng},
                                                "radius": float(min(radius_m, 50000))}}
+            if self.rank_preference:
+                body["rankPreference"] = self.rank_preference
         headers = {"X-Goog-Api-Key": self.api_key, "X-Goog-FieldMask": FIELD_MASK}
         resp = httpx.post(SEARCH_TEXT_URL, json=body, headers=headers, timeout=15)
         resp.raise_for_status()
@@ -178,7 +186,9 @@ class FakePlaces:
 
 
 class GeocodingClient:
-    """Google Geocoding API (address / postal code -> lat, lng), restricted to Canada."""
+    """Google Geocoding API (address / postal code -> lat, lng), restricted to Canada. When the
+    key's project doesn't have the Geocoding API enabled (REQUEST_DENIED), the same key's Places
+    Text Search finds the address instead."""
 
     is_fake = False
 
@@ -197,6 +207,8 @@ class GeocodingClient:
         resp = httpx.get(GEOCODE_URL, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json()
+        if data.get("status") == "REQUEST_DENIED":
+            return self._places_geocode(address)
         results = data.get("results") or []
         if data.get("status") not in (None, "OK") or not results:
             return None
@@ -204,6 +216,18 @@ class GeocodingClient:
         if "lat" not in loc or "lng" not in loc:
             return None
         return float(loc["lat"]), float(loc["lng"])
+
+    def _places_geocode(self, address: str) -> tuple[float, float] | None:
+        import httpx
+
+        body = {"textQuery": address, "regionCode": "CA", "maxResultCount": 1}
+        headers = {"X-Goog-Api-Key": self.api_key, "X-Goog-FieldMask": "places.location"}
+        resp = httpx.post(SEARCH_TEXT_URL, json=body, headers=headers, timeout=10)
+        resp.raise_for_status()
+        loc = ((resp.json().get("places") or [{}])[0]).get("location") or {}
+        if "latitude" not in loc or "longitude" not in loc:
+            return None
+        return float(loc["latitude"]), float(loc["longitude"])
 
 
 class FakeGeocoder:

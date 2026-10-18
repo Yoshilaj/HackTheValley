@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_admin_or_dev  # noqa: F401 (re-exported)
+from app.core.logging import get_logger
 from app.core.ratelimit import rate_limit
 from app.db.models import ResearchChunk, ResearchSource, User
 from app.db.session import get_db
 from app.providers.embeddings import EmbeddingProvider, get_embedding_provider
-from app.providers.llm import LlmProvider, get_llm_provider
+from app.providers.llm import LlmConfigError, LlmProvider, get_llm_provider
 from app.providers.storage import Storage, get_storage
 from app.providers.stt import SttProvider, get_stt_provider
 from app.schemas.chat import (
@@ -21,6 +25,7 @@ from app.schemas.chat import (
 from app.services import chat_service, checkin_service
 
 router = APIRouter(tags=["chat"])
+log = get_logger(__name__)
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 AUDIO_TYPES = ("audio/", "video/webm", "application/octet-stream")
@@ -66,6 +71,41 @@ def chat(req: ChatRequest, user: User = Depends(get_current_user), db: Session =
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return _turn_response(turn)
+
+
+@router.post("/chat/stream", dependencies=[Depends(rate_limit("chat"))])
+def chat_stream(req: ChatRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+                llm: LlmProvider = Depends(get_llm), embeddings: EmbeddingProvider = Depends(get_embeddings)):
+    """`/chat`, streamed as NDJSON (one JSON event per line) so the answer shows while it's written.
+    Events as in `chat_service.stream_message`; ``done`` carries the `/chat` response body. A failure
+    once streaming has started arrives as ``{"type": "error", "status", "detail"}``."""
+    try:
+        events = chat_service.stream_message(db, user, req.message, llm, embeddings, language=req.language,
+                                             conversation_id=req.conversation_id,
+                                             new_conversation=req.new_conversation)
+    except chat_service.ConversationNotFound as exc:
+        raise _no_conversation() from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    def lines():
+        try:
+            for event in events:
+                if event["type"] == "done":
+                    body = ChatResponse.model_validate(_turn_response(event["turn"]), from_attributes=True)
+                    event = {"type": "done", **body.model_dump(mode="json")}
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except LlmConfigError as exc:
+            db.rollback()
+            yield json.dumps({"type": "error", "status": 503, "detail": str(exc)}) + "\n"
+        except Exception:
+            log.exception("chat stream failed")
+            db.rollback()
+            yield json.dumps({"type": "error", "status": 500, "detail": "Chat failed"}) + "\n"
+
+    # X-Accel-Buffering: proxies (nginx-style) pass each line on instead of buffering the whole reply.
+    return StreamingResponse(lines(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.post("/chat/voice", response_model=VoiceChatResponse, dependencies=[Depends(rate_limit("chat"))])

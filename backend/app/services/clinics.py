@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -94,25 +95,66 @@ def rank_by_distance(clinics: list[Clinic], lat: float | None, lng: float | None
     return ranked
 
 
+#: Nearest-first text search also matches things that only mention the words ("Suite near
+#: Toronto General Hospital" is lodging, a bus stop by a hospital): keep places Google tags as
+#: health-related, real hospitals for the hospital search, and drop places that are mainly
+#: something other than a doctor or clinic.
+NOT_A_DOCTOR = {"spa", "skin_care_clinic", "beauty_salon", "massage", "chiropractor", "physiotherapist",
+                "dental_clinic", "dentist", "pharmacy", "drugstore", "store", "lodging"}
+HOSPITAL_TYPES = {"hospital", "general_hospital"}
+
+
+def is_medical(c: Clinic, specialty: str) -> bool:
+    types = set(c.extra.get("types") or ())
+    if not types:  # no type data (older cache entries, other sources): keep
+        return True
+    if "health" not in types or c.extra.get("primary_type") in NOT_A_DOCTOR:
+        return False
+    return specialty != "hospital" or bool(types & HOSPITAL_TYPES)
+
+
+#: Real Places results per (query, ~100 m origin cell): the directory re-asks on every page load,
+#: and each Text Search call is billed.
+PLACES_CACHE_S = 30 * 60
+_places_cache: dict[tuple[str, str, float, float, int], tuple[float, list[dict[str, Any]]]] = {}
+
+
+def _search_places(places: Any, specialty: str, lat: float, lng: float, radius_km: float) -> list[Clinic]:
+    from app.services.booking.discovery import query_for_specialty
+
+    query = query_for_specialty(specialty)
+    key = (query, specialty, round(lat, 3), round(lng, 3), int(radius_km))
+    hit = _places_cache.get(key)
+    if hit is None or time.monotonic() - hit[0] > PLACES_CACHE_S:
+        found = places.search_text(query, lat, lng, int(radius_km * 1000), specialty)
+        hit = (time.monotonic(), [c.as_dict() for c in found])
+        _places_cache[key] = hit
+    return [Clinic.from_dict(d) for d in hit[1]]  # fresh objects: callers set distance_km
+
+
 def find_clinics(profile: Any, specialty: str, radius_km: float = 15.0, places: Any = None,
                  language: str = "en") -> list[Clinic]:
-    """Clinics of `specialty` near the profile, nearest first (pre-v2 API; seed fallback)."""
+    """Clinics of `specialty` near the profile's lat/lng, nearest first (straight-line km).
+
+    With a Maps key these are real Google Places results only: none without a location to search
+    around, none if Places fails. The fictional seed list is used only when no key is configured
+    (offline development and tests)."""
     specialty = _LEGACY_SPECIALTY.get(specialty, specialty)
     lat = getattr(profile, "lat", None) if profile is not None else None
     lng = getattr(profile, "lng", None) if profile is not None else None
     if places is None:
         from app.integrations.google_places import PlacesClient, places_configured
 
-        places = PlacesClient() if places_configured() else None
-    if places is not None and lat is not None and lng is not None:
-        from app.services.booking.discovery import query_for_specialty
-
+        places = PlacesClient(rank_preference="DISTANCE", max_results=20) if places_configured() else None
+    if places is not None:
+        if lat is None or lng is None:
+            return []
         try:
-            found = places.search_text(query_for_specialty(specialty), lat, lng, int(radius_km * 1000), specialty)
-        except Exception as exc:  # network / quota: fall back to the seed list
-            log.warning("places lookup failed; using seed clinics", extra={"error": str(exc)})
-            found = []
-        if found:
-            return rank_by_distance(found, lat, lng, radius_km)
+            found = _search_places(places, specialty, lat, lng, radius_km)
+        except Exception as exc:  # network / quota: show nothing rather than made-up clinics
+            log.warning("places lookup failed", extra={"error": str(exc), "specialty": specialty})
+            return []
+        found = [c for c in found if c.business_status != "CLOSED_PERMANENTLY" and is_medical(c, specialty)]
+        return rank_by_distance(found, lat, lng, radius_km)
     seed = [c for c in load_seed_clinics() if c.specialty == specialty]
     return rank_by_distance(seed, lat, lng, radius_km)

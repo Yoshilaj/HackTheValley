@@ -391,6 +391,29 @@ def _candidate_entry(env: Env, s: PlanningSession, rank: int, clinic: Clinic, sl
             "referral_note": REFERRAL_NOTE if clinic.kind == "specialist" else None}
 
 
+#: Per-request parts of `shared_fields` (not from the profile), kept when the profile part is rebuilt.
+_REQUEST_FIELDS = ("reason_category", "preferred_slots", "report_url")
+
+
+def refresh_pending_approvals(db: Session, user: User) -> int:
+    """Rebuild the profile part of every awaiting-approval card's `shared_fields` (and
+    `missing_profile_fields`) after a profile edit. Approving builds the clinic's details from the
+    profile as it is then (`_ctx`), so the card shows what will actually be sent. Not committed."""
+    profile_part = patient_info(user, "general", [], DEFAULT_TZ, "").shared_fields()
+    n = 0
+    for appt in db.scalars(select(Appointment).where(Appointment.user_id == user.id,
+                                                      Appointment.status == "awaiting_approval")):
+        approval = dict(appt.approval or {})
+        old = approval.get("shared_fields") or {}
+        approval["shared_fields"] = json_safe(
+            {k: v for k, v in profile_part.items() if k not in _REQUEST_FIELDS}
+            | {k: old[k] for k in _REQUEST_FIELDS if k in old})
+        approval["missing_profile_fields"] = missing_profile_fields(user)
+        appt.approval = approval
+        n += 1
+    return n
+
+
 def _approval(env: Env, s: PlanningSession, clinic: Clinic, slots: list[Slot], plan: list[dict[str, Any]],
               detection: dict[str, Any] | None, user_message: str | None) -> dict[str, Any]:
     """The approval card: the chosen clinic (top-level fields, kept for compatibility) plus
@@ -808,12 +831,16 @@ def _drop_event(env: Env, appt: Appointment) -> None:
     return None
 
 
-def _approve(env: Env, appt: Appointment, by: str = "user") -> Appointment:
+def _approve(env: Env, appt: Appointment, by: str = "user", channel: str | None = None) -> Appointment:
+    """Run the approved plan: every usable channel in order, or only `channel` when the user
+    picked one. If it doesn't reach the clinic, the next candidate is planned as usual."""
     approval = dict(appt.approval or {})
     approval.update(status="approved", approved_at=utcnow().isoformat(), approved_by=by)
+    if channel:
+        approval["chosen_channel"] = channel
     appt.approval = approval
-    append_log(appt, entry("approved", by=by))
-    result = execute_plan(env, appt)
+    append_log(appt, entry("approved", by=by, channel=channel))
+    result = execute_plan(env, appt, only=[channel] if channel else None)
     if result is None:
         next_candidate(env, appt, "no channel reached the clinic")
     return appt
@@ -860,15 +887,19 @@ def _settle(appt: Appointment, expected: str) -> None:
 
 def approve_appointment(db: Session, user: User, appointment_id: str, *, calendar: Any = None, email: Any = None,
                         llm: Any = None, channels: dict[str, Any] | None = None, now: datetime | None = None,
-                        by: str = "user") -> Appointment:
+                        by: str = "user", channel: str | None = None) -> Appointment:
     """The user approves the plan on the card -> channels run (spec §1.5). 409 unless awaiting_approval
     (also for a second concurrent approve: the status is claimed atomically first). ``by`` records
-    where the approval came from ("user" = the app, "user:email_link" = the e-mail button)."""
+    where the approval came from ("user" = the app, "user:email_link" = the e-mail button).
+    ``channel`` (web | email | phone): contact the clinic only that way; it must be one the card
+    lists as available (ValueError otherwise)."""
     appt = _own(db, user, appointment_id)
     if appt.status != "awaiting_approval":
         raise AppointmentStateError(f"appointment is {appt.status}, not awaiting_approval")
     if not has_consent(db, user.id, "share_with_clinic"):
         raise AppointmentStateError("share_with_clinic consent is not active")
+    if channel is not None and channel not in (_approved_channels(appt) or set()):
+        raise ValueError(f"{channel} is not an available way to reach this clinic")
     if llm is None:
         from app.providers.llm import get_llm_provider
 
@@ -876,9 +907,10 @@ def approve_appointment(db: Session, user: User, appointment_id: str, *, calenda
     env = _env(db, user, calendar=calendar, email=email, llm=llm, channels=channels, now=now)
     _claim(db, appt, "awaiting_approval")
     try:
-        _approve(env, appt, by=by)
+        _approve(env, appt, by=by, channel=channel)
         _settle(appt, "awaiting_approval")
-        audit(db, user.id, "appointment.approve", f"appointment:{appt.id}", {"status": appt.status, "by": by})
+        audit(db, user.id, "appointment.approve", f"appointment:{appt.id}",
+              {"status": appt.status, "by": by, "channel": channel})
         db.commit()
     except Exception:
         _release(db, appt, "awaiting_approval")
