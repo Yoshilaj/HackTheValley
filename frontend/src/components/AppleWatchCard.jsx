@@ -1,17 +1,16 @@
-import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { useState } from "react";
 import { createDeviceToken, getDeviceTokens, revokeDeviceToken } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
 import useSeries from "../hooks/useSeries.js";
 import AppleHealthImport from "./AppleHealthImport.jsx";
+import WatchPairing from "./WatchPairing.jsx";
 import { timeAgo } from "../utils/dates.js";
 
 // Connecting an Apple Watch. A website can't read the watch directly, so there
 // are three routes, all into the same daily metrics (POST /api/metrics):
 //   1. Live, recommended: the companion iPhone app reads HealthKit and posts in
-//      the background with a device token (X-Device-Token). Pairing is a QR code
-//      holding pdcompanion://pair?api=…&token=…, scanned in the app or the
-//      Camera; the card waits for the token's first use and then hides it.
+//      the background with a device token (X-Device-Token), paired with a QR
+//      code (WatchPairing).
 //   2. Live, no app: an iOS Shortcuts automation posting the same body with a
 //      token copied by hand (docs/shortcut.md), tucked under "Other ways".
 //   3. History: the Health app's export.zip, uploaded below and parsed in the
@@ -19,31 +18,6 @@ import { timeAgo } from "../utils/dates.js";
 // The device-token list shows each connected phone and when it last synced.
 const API_URL = `${window.location.origin}/api/metrics`;
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
-// The app posts to {api}/api/metrics. Vercel forwards /api to the backend, so the
-// site's own origin works in production; VITE_PAIR_API_URL overrides it (e.g. a
-// tunnel or LAN address while testing a phone against a local backend).
-const PAIR_API = import.meta.env.VITE_PAIR_API_URL || window.location.origin;
-const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
-const POLL_MS = 3000;
-
-function pairUrl(token) {
-  return `pdcompanion://pair?api=${encodeURIComponent(PAIR_API)}&token=${encodeURIComponent(token)}`;
-}
-
-function PairQr({ value }) {
-  const [svg, setSvg] = useState("");
-  useEffect(() => {
-    let live = true;
-    QRCode.toString(value, { type: "svg", margin: 1, errorCorrectionLevel: "M" })
-      .then((out) => live && setSvg(out))
-      .catch(() => live && setSvg(""));
-    return () => {
-      live = false;
-    };
-  }, [value]);
-  return <div className="watch-qr" role="img" aria-label="Pairing QR code" dangerouslySetInnerHTML={{ __html: svg }} />;
-}
-
 function CopyField({ value, label }) {
   const [done, setDone] = useState(false);
   const copy = async () => {
@@ -68,39 +42,29 @@ function CopyField({ value, label }) {
 export default function AppleWatchCard({ onImported }) {
   const { signedIn } = useSession();
   const devices = useSeries(getDeviceTokens, [], { enabled: signedIn });
-  const [pairing, setPairing] = useState(null); // { id, token, label } for the app, until its first sync
   const [fresh, setFresh] = useState(null); // { id, token, label } for the Shortcut, shown once
-  const [busy, setBusy] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const issue = async (kind) => {
-    setBusy(kind);
+  const issueShortcutToken = async () => {
+    setBusy(true);
     setError("");
     try {
-      const made = await createDeviceToken(kind === "app" ? "iPhone app" : "iPhone Shortcut");
-      (kind === "app" ? setPairing : setFresh)(made);
+      setFresh(await createDeviceToken("iPhone Shortcut"));
       devices.reload();
     } catch (err) {
       setError(err?.detail ? String(err.detail) : "Couldn't create a device token. Try again in a moment.");
     } finally {
-      setBusy("");
+      setBusy(false);
     }
   };
 
-  // While the QR is up, watch for the app's first sync on that token.
   const list = devices.data ?? [];
-  const paired = pairing ? list.find((d) => d.id === pairing.id && d.last_used_at) : null;
-  useEffect(() => {
-    if (!pairing || paired) return undefined;
-    const t = setInterval(() => devices.reload(), POLL_MS);
-    return () => clearInterval(t);
-  }, [pairing, paired]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const revoke = async (id) => {
     try {
       await revokeDeviceToken(id);
       if (fresh?.id === id) setFresh(null);
-      if (pairing?.id === id) setPairing(null);
       devices.reload();
     } catch {
       setError("Couldn't disconnect that phone. Try again in a moment.");
@@ -135,32 +99,7 @@ export default function AppleWatchCard({ onImported }) {
           </span>
           <div className="watch-step-body">
             <b>Connect with the iPhone app</b>
-            {paired ? (
-              <p className="watch-paired">Connected. Your iPhone sent its first sync; it keeps syncing in the background.</p>
-            ) : pairing ? (
-              <div className="watch-pair">
-                <PairQr value={pairUrl(pairing.token)} />
-                <div className="watch-pair-text">
-                  <p>Open the companion app and tap Scan QR code, or point the iPhone Camera at the code, then allow Health access.</p>
-                  {IS_IPHONE && (
-                    <a className="btn-primary" href={pairUrl(pairing.token)}>
-                      Open in the app
-                    </a>
-                  )}
-                  <p className="watch-note">Waiting for the first sync… Anyone with this code can send data to your account, so keep it private.</p>
-                  {LOCAL && !import.meta.env.VITE_PAIR_API_URL && (
-                    <p className="watch-note">This code points the phone at this computer. Set VITE_PAIR_API_URL to a tunnel address to test locally.</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <>
-                <p>Install the companion app, then show a pairing code here and scan it. Nothing to copy or type.</p>
-                <button type="button" className="btn-primary watch-connect" onClick={() => issue("app")} disabled={!!busy}>
-                  {busy === "app" ? "Creating…" : "Show pairing code"}
-                </button>
-              </>
-            )}
+            <WatchPairing onChange={devices.reload} />
           </div>
         </li>
         <li>
@@ -193,8 +132,8 @@ export default function AppleWatchCard({ onImported }) {
               <p className="watch-note">This is the only time the token is shown. Paste it into the Shortcut as the X-Device-Token header.</p>
             </div>
           ) : (
-            <button type="button" className="btn-secondary" onClick={() => issue("shortcut")} disabled={!!busy}>
-              {busy === "shortcut" ? "Creating…" : "Create a device token"}
+            <button type="button" className="btn-secondary" onClick={issueShortcutToken} disabled={busy}>
+              {busy ? "Creating…" : "Create a device token"}
             </button>
           )}
         </div>

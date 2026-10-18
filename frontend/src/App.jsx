@@ -11,8 +11,10 @@ import AutoBookSheet from "./components/AutoBookSheet.jsx";
 import DevRiskControl from "./components/DevRiskControl.jsx";
 import Landing from "./pages/Landing.jsx";
 import SignInSplash from "./components/SignInSplash.jsx";
+import Onboarding from "./components/Onboarding.jsx";
 import usePrefersReducedMotion from "./hooks/usePrefersReducedMotion.js";
 import { useSession } from "./context/SessionContext.jsx";
+import { useProfile } from "./context/ProfileContext.jsx";
 import { navItems } from "./nav.js";
 import "./styles/dashboard.css";
 import "./styles/pages.css";
@@ -56,6 +58,44 @@ function useSidebarCollapsed() {
     });
 
   return [collapsed, toggle];
+}
+
+// First-run onboarding (Onboarding): for a signed-in account that hasn't
+// finished it and whose profile lacks the booking basics (older accounts that
+// already filled them in aren't asked again). Decided once per sign-in, so it
+// stays open while its own saves fill the profile in. "Finish later" hides it
+// for this browser session only.
+const LATER_KEY = "caresync-onboarding-later";
+
+function OnboardingGate() {
+  const { signedIn, session } = useSession();
+  const { raw } = useProfile();
+  const [show, setShow] = useState(null); // null = not decided yet
+  const userId = session?.userId;
+
+  useEffect(() => setShow(null), [userId]);
+  useEffect(() => {
+    if (show !== null || !signedIn || !raw) return;
+    let later = false;
+    try {
+      later = sessionStorage.getItem(LATER_KEY) === userId;
+    } catch {
+      /* storage blocked: ask again */
+    }
+    const hasBasics = Boolean(raw.first_name && raw.date_of_birth && raw.phone && raw.postal_code);
+    setShow(!raw.onboarded_at && !hasBasics && !later);
+  }, [show, signedIn, raw, userId]);
+
+  if (!show) return null;
+  const later = () => {
+    try {
+      sessionStorage.setItem(LATER_KEY, userId);
+    } catch {
+      /* storage blocked: it just asks again next time */
+    }
+    setShow(false);
+  };
+  return <Onboarding accountEmail={session?.email} onLater={later} onDone={() => setShow(false)} />;
 }
 
 // The landing page (with Log in / Sign up) until there is a session: signed
@@ -110,6 +150,7 @@ function Dashboard() {
         </div>
       </div>
       <AutoBookSheet />
+      <OnboardingGate />
       {import.meta.env.DEV && <DevRiskControl />}
     </div>
   );

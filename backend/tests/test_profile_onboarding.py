@@ -160,3 +160,13 @@ def test_allergies_and_conditions_are_saved_and_cleaned(client, auth_headers):
     client.put("/api/profile", json={"conditions": []}, headers=auth_headers)
     assert client.get("/api/profile", headers=auth_headers).json()["conditions"] == []
     assert client.put("/api/profile", json={"allergies": ["x" * 121]}, headers=auth_headers).status_code == 422
+
+
+def test_onboarding_complete_flag(client):
+    h = _new_user(client)
+    assert client.get("/api/profile", headers=h).json()["onboarded_at"] is None
+    first = client.post("/api/profile/onboarding-complete", headers=h)
+    assert first.status_code == 200 and first.json()["onboarded_at"]
+    again = client.post("/api/profile/onboarding-complete", headers=h).json()
+    assert again["onboarded_at"] == first.json()["onboarded_at"]  # idempotent: first time kept
+    assert client.post("/api/profile/onboarding-complete").status_code in (400, 401)

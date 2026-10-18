@@ -108,6 +108,7 @@ class Profile(IdMixin, Base):
     language: Mapped[str] = mapped_column(String(8), default="en")
     timezone: Mapped[str] = mapped_column(String(64), default="America/Toronto")
     emergency_contact: Mapped[JsonDict | None] = mapped_column(JSON)  # {"name","phone","email","relation"}
+    onboarded_at: Mapped[datetime | None]  # set when the web app's first-run onboarding is finished
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship(back_populates="profile")

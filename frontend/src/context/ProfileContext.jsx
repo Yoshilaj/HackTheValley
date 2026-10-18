@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { getProfile, saveProfile } from "../api/client.js";
+import { completeOnboarding, getProfile, saveProfile } from "../api/client.js";
 import { useSession } from "./SessionContext.jsx";
 import useStoredState from "../hooks/useStoredState.js";
 
@@ -194,8 +194,27 @@ export function ProfileProvider({ children }) {
     window.dispatchEvent(new Event(PROFILE_SAVED_EVENT));
   };
 
+  // Onboarding saves backend fields as they are (it edits some the sheet doesn't:
+  // height, weight, CKD, family doctor, referral). Throws like updateProfile.
+  const patchProfile = async (fields) => {
+    setRemote(await saveProfile(fields));
+    window.dispatchEvent(new Event(PROFILE_SAVED_EVENT));
+  };
+
+  const finishOnboarding = async () => setRemote(await completeOnboarding());
+
   return (
-    <ProfileContext.Provider value={{ profile, familyDoctor, updateProfile, loading: signedIn && !remote && !loadError }}>
+    <ProfileContext.Provider
+      value={{
+        profile,
+        raw: remote, // the backend profile as returned (null until loaded)
+        familyDoctor,
+        updateProfile,
+        patchProfile,
+        finishOnboarding,
+        loading: signedIn && !remote && !loadError,
+      }}
+    >
       {children}
     </ProfileContext.Provider>
   );

@@ -139,6 +139,11 @@ export function saveProfile(fields) {
   return request("/api/profile", { method: "PUT", body: JSON.stringify(fields) });
 }
 
+// The first-run onboarding was finished (idempotent); returns the profile with onboarded_at set.
+export function completeOnboarding() {
+  return post("/api/profile/onboarding-complete");
+}
+
 // ---- Risk: one card per pathway (cardio, cognitive, parkinsons, general),
 // each { level, priority_score 0-100, headline, drivers, probabilities, trend,
 // preventive_measures, next_action }. useRiskAssessment maps them for the UI.

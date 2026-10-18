@@ -193,6 +193,7 @@ class ProfileOut(ProfileBase, ORMModel):
     family_doctor: dict[str, Any] | None = None   # stored as-is ({"name","clinic","phone"})
     language: str = "en"
     timezone: str = "America/Toronto"
+    onboarded_at: datetime | None = None
     updated_at: datetime | None = None
 
 

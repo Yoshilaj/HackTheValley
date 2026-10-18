@@ -125,6 +125,19 @@ def update_profile(req: ProfileUpdate, user: User = Depends(get_current_user), d
     return profile
 
 
+@router.post("/profile/onboarding-complete", response_model=ProfileOut)
+def complete_onboarding(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The web app's first-run onboarding was finished (fields and consents are saved by their own
+    endpoints). Idempotent: the first completion time is kept."""
+    profile = get_or_create_profile(db, user)
+    if profile.onboarded_at is None:
+        profile.onboarded_at = datetime.now(timezone.utc)
+        audit(db, user.id, "update", "profile", {"onboarded": True})
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
 @router.get("/profile/booking-readiness", response_model=BookingReadinessOut)
 def booking_readiness(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Which onboarding fields the booking agent still lacks (it cannot answer a clinic's question

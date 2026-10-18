@@ -14,7 +14,7 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i; // Canadian, A1A 1A1
 const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local
 
-const PROVINCES = [
+export const PROVINCES = [
   ["AB", "Alberta"],
   ["BC", "British Columbia"],
   ["MB", "Manitoba"],
@@ -33,7 +33,7 @@ const PROVINCES = [
 const CONTACT_FIELDS = ["phone", "email", "street", "city", "province", "postalCode"];
 
 // "m5h2n2" -> "M5H 2N2"
-const formatPostal = (v) => {
+export const formatPostal = (v) => {
   const s = v.replace(/[\s-]/g, "").toUpperCase();
   return s.length === 6 ? `${s.slice(0, 3)} ${s.slice(3)}` : v.trim().toUpperCase();
 };
@@ -71,17 +71,17 @@ function validate(d) {
 }
 
 // Risk factors the heart-risk calculator and the rule engine read from the profile.
-const SEX_OPTIONS = [
+export const SEX_OPTIONS = [
   ["male", "Male"],
   ["female", "Female"],
   ["other", "Other"],
 ];
-const SMOKING_OPTIONS = [
+export const SMOKING_OPTIONS = [
   ["never", "Never"],
   ["former", "Former"],
   ["current", "Current"],
 ];
-const YES_NO = [
+export const YES_NO = [
   [true, "Yes"],
   [false, "No"],
   [null, "Not sure"],
@@ -104,7 +104,7 @@ const LABS = [
 ];
 
 // Three-way choice drawn as the app's segmented control.
-function Segmented({ name, value, options, onChange, label }) {
+export function Segmented({ name, value, options, onChange, label }) {
   return (
     <div className="segmented" role="radiogroup" aria-label={label}>
       {options.map(([v, text]) => (
@@ -119,7 +119,7 @@ function Segmented({ name, value, options, onChange, label }) {
 
 // Editable list (allergies, conditions): each item has a remove button, and
 // the box below adds a new one with Enter or the Add button.
-function ListEditor({ id, label, items, onChange, text, onText, placeholder }) {
+export function ListEditor({ id, label, items, onChange, text, onText, placeholder }) {
   const add = () => {
     const value = text.trim();
     if (!value) return;
