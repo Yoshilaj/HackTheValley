@@ -261,7 +261,7 @@ class AssessmentTask(IdMixin, CreatedAtMixin, Base):
 
     user_id: Mapped[str] = user_fk(index=False)
     task_type: Mapped[str] = mapped_column(String(32))  # TASK_TYPES
-    protocol_version: Mapped[str | None] = mapped_column(String(32))
+    protocol_version: Mapped[str | None] = mapped_column(String(64))  # e.g. story-recall-adni4-adapted/v1+bank-2026.10.1
     language: Mapped[str | None] = mapped_column(String(8))
     recording_quality: Mapped[JsonDict | None] = mapped_column(JSON)  # {"snr_db","duration_s","clipping"}
     raw_url: Mapped[str | None] = mapped_column(Text)

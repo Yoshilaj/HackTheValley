@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { USE_BACKEND, getRecommendations } from "../api/client.js";
+import { getRecommendations } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
-import { recommendations as placeholder } from "../data/placeholder.js";
 
-// Clinics recommended for the user. Backend off: the placeholder list. Backend
-// on (signed in): GET /api/recommendations, the nearest real clinic (Google
+// Clinics recommended for the user: GET /api/recommendations, the nearest real clinic (Google
 // Places) for each follow-up finding in the latest risk assessment, with the
 // reason; measured from the home address, and re-asked when the user shares
 // their location.
@@ -33,7 +31,7 @@ const LOCATION_ERRORS = {
 
 export default function useRecommendations() {
   const { signedIn } = useSession();
-  const [items, setItems] = useState(USE_BACKEND ? [] : placeholder);
+  const [items, setItems] = useState([]);
   const [location, setLocation] = useState(null); // { lat, lng, accuracy (metres) }
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState("");
@@ -62,7 +60,7 @@ export default function useRecommendations() {
   }, []);
 
   useEffect(() => {
-    if (!USE_BACKEND || !signedIn) return;
+    if (!signedIn) return;
     let cancelled = false;
     getRecommendations(location ?? {})
       .then((res) => {
@@ -76,11 +74,6 @@ export default function useRecommendations() {
     };
   }, [location, signedIn]);
 
-  // Placeholder data (backend off) has no origin of its own.
-  const distanceFrom = USE_BACKEND
-    ? (items.find((r) => r.distance_from)?.distance_from ?? null)
-    : location
-      ? "device"
-      : "home";
-  return { items, location, locate, locating, locError, distanceFrom, useBackend: USE_BACKEND };
+  const distanceFrom = items.find((r) => r.distance_from)?.distance_from ?? null;
+  return { items, location, locate, locating, locError, distanceFrom };
 }

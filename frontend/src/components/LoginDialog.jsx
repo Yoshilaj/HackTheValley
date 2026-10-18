@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DEMO_ACCOUNT, USE_BACKEND } from "../api/client.js";
+import { DEMO_ACCOUNT } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
 import useGoogleSignIn from "../hooks/useGoogleSignIn.js";
 import HeartDropLogo from "./HeartDropLogo.jsx";
@@ -9,10 +9,10 @@ import HeartDropLogo from "./HeartDropLogo.jsx";
 // with Google" button when the backend has Google set up (useGoogleSignIn; this
 // pop-up lives on the landing page, so it also starts Google's One Tap, which
 // signs a returning user straight in), or continue as a guest (nothing
-// tailored). Without the backend the Google and Apple buttons are stand-ins. In dev builds a "Demo login" signs straight in as
-// the demo patient. Esc, the close button or a click outside returns to the
-// landing page. Native <dialog> like DetailSheet.
-const DEMO_EMAIL = USE_BACKEND ? DEMO_ACCOUNT.email : "micky.larson@example.com";
+// tailored). In dev builds a "Demo login" signs straight in as the demo
+// patient. Esc, the close button or a click outside returns to the landing
+// page. Native <dialog> like DetailSheet.
+const DEMO_EMAIL = DEMO_ACCOUNT.email;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8; // the backend's minimum for new accounts
 
@@ -221,8 +221,8 @@ export default function LoginDialog() {
           {busy === "email" ? working : copy.submit}
         </button>
 
-        {/* Backend on: Google's own button (Apple needs a paid developer account, so it's not offered) */}
-        {USE_BACKEND && google.available && (
+        {/* Google's own button (Apple needs a paid developer account, so it's not offered) */}
+        {google.available && (
           <>
             <p className="login-or" aria-hidden="true">
               <span>or</span>
@@ -238,34 +238,6 @@ export default function LoginDialog() {
                 {google.error}
               </p>
             )}
-          </>
-        )}
-
-        {/* Backend off: stand-in buttons that just record the choice */}
-        {!USE_BACKEND && (
-          <>
-            <p className="login-or" aria-hidden="true">
-              <span>or</span>
-            </p>
-
-        <button type="button" className="login-provider" onClick={() => go("google")} disabled={busy !== null}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 01-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z" />
-            <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0012 24z" />
-            <path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 010-4.6V6.6H1.3a12 12 0 000 10.8l4-3.1z" />
-            <path fill="#EA4335" d="M12 4.8c1.8 0 3.4.6 4.6 1.8l3.4-3.4A12 12 0 001.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z" />
-          </svg>
-          {busy === "google" ? working : `${copy.provider} Google`}
-        </button>
-        <button type="button" className="login-provider" onClick={() => go("apple")} disabled={busy !== null}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M16.4 12.7c0-2.6 2.1-3.8 2.2-3.9a4.8 4.8 0 00-3.8-2c-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.3-.9a4.9 4.9 0 00-4.2 2.5c-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.5 1.3-.1 1.7-.8 3.3-.8 1.5 0 1.9.8 3.3.8 1.3 0 2.2-1.2 3-2.5a10 10 0 001.4-2.8 4.4 4.4 0 01-2.4-4zM13.9 5.1A4.4 4.4 0 0015 1.9a4.6 4.6 0 00-3 1.5 4.2 4.2 0 00-1.1 3.1 3.8 3.8 0 003-1.4z"
-            />
-          </svg>
-          {busy === "apple" ? working : `${copy.provider} Apple`}
-        </button>
           </>
         )}
 
@@ -287,7 +259,7 @@ export default function LoginDialog() {
         {import.meta.env.DEV && (
           <button type="button" className="login-dev" onClick={() => go("demo")} disabled={busy !== null}>
             <span className="login-dev-tag">Dev</span>
-            {busy === "demo" ? "Signing in…" : `Demo login · ${USE_BACKEND ? DEMO_EMAIL : "Micky Larson"}`}
+            {busy === "demo" ? "Signing in…" : `Demo login · ${DEMO_EMAIL}`}
           </button>
         )}
       </form>

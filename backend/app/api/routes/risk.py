@@ -10,11 +10,14 @@ from app.core.security import audit
 from app.db.models import RiskAssessment, User
 from app.db.session import get_db
 from app.schemas.dashboard import PathwayCard
-from app.schemas.risk import RiskAssessmentOut, RiskHistoryPoint, RiskRunOut
+from app.jobs.scheduler import scheduler_status
+from app.schemas.risk import RiskAssessmentOut, RiskHistoryPoint, RiskRunOut, RiskStatusOut
 from app.services import dashboard_service, risk_service
 from app.services.context_builder import user_zone
 
 router = APIRouter(prefix="/risk", tags=["risk"])
+
+STATUS_JOBS = ("nightly_risk_assessment", "weekly_summary_notifications")
 
 
 @router.get("/latest", response_model=list[PathwayCard])
@@ -54,6 +57,21 @@ def run(
     rows = risk_service.assess_user(db, target, trigger="manual")
     audit(db, target.id, "risk.run", f"user:{target.id}", {"by": actor}, actor=actor, commit=True)
     return RiskRunOut(user_id=target.id, trigger="manual", assessments=rows)
+
+
+@router.get("/status", response_model=RiskStatusOut)  # declared before /{assessment_id}
+def risk_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Newest assessment time + trigger, and the next scheduled nightly / weekly run (null when stopped)."""
+    rows = risk_service.latest_assessments(db, user.id).values()
+    newest = max(rows, key=lambda r: r.created_at, default=None)
+    sched = scheduler_status()
+    next_runs = {j["name"]: j["next_run"] for j in sched["jobs"] if j["name"] in STATUS_JOBS}
+    return RiskStatusOut(
+        last_assessed_at=newest.created_at if newest else None,
+        last_trigger=(newest.data_quality or {}).get("trigger") if newest else None,
+        scheduler_running=bool(sched["running"]),
+        next_runs={name: next_runs.get(name) for name in STATUS_JOBS},
+    )
 
 
 @router.get("/{assessment_id}", response_model=RiskAssessmentOut)

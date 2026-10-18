@@ -128,6 +128,8 @@ class TaskHistoryItem(BaseModel):
     language: str | None
     protocol_version: str | None
     model_scores: dict[str, Any] = Field(default_factory=dict)
+    #: Per-type numeric/bool highlights for charts (≤ 10 keys, None values omitted); see API.md §7.
+    summary: dict[str, Any] = Field(default_factory=dict)
 
 
 class TaskHistoryOut(BaseModel):

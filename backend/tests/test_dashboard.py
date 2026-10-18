@@ -126,3 +126,18 @@ def test_risk_routes(client, db, admin_headers):
     assert client.post(f"/api/risk/run?user_id={u.id}", headers=admin_headers).status_code == 200
     assert client.post("/api/risk/run").status_code == 401
     assert client.get("/api/dashboard").status_code == 401
+
+
+def test_risk_status(client, db):
+    u = make_user(db)
+    r = client.get("/api/risk/status", headers=hdr(u))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body) == {"last_assessed_at", "last_trigger", "scheduler_running", "next_runs"}
+    assert body["last_assessed_at"] is None and body["last_trigger"] is None
+    assert body["scheduler_running"] is False
+    assert body["next_runs"] == {"nightly_risk_assessment": None, "weekly_summary_notifications": None}
+    assert client.post("/api/risk/run", headers=hdr(u)).status_code == 200
+    body = client.get("/api/risk/status", headers=hdr(u)).json()
+    assert body["last_trigger"] == "manual" and body["last_assessed_at"] is not None
+    assert client.get("/api/risk/status").status_code == 401

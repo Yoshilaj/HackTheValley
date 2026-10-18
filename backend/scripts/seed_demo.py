@@ -65,6 +65,10 @@ STABLE_METRICS: dict[str, tuple[float, float, str, int]] = {
     "step_length_m": (0.66, 0.015, "m", 18),
     "double_support_pct": (28.5, 0.6, "%", 18),
     "walking_asymmetry_pct": (3.0, 0.4, "%", 18),
+    "weight_kg": (70.0, 0.4, "kg", 7),
+    "spo2_pct": (97.0, 0.8, "%", 8),
+    "body_temp_c": (36.6, 0.2, "degC", 7),
+    "blood_glucose_mmol_l": (5.8, 0.4, "mmol/L", 7),
 }
 _WOBBLE = (-1.0, 0.0, 1.0, -0.5, 0.5, 0.25, -0.25)
 SIMULATED = {"seed": MARKER_ACTION, "simulated": True, "note": "planted demo trend, not a real recording"}

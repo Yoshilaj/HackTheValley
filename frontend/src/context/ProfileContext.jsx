@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { patient as basePatient } from "../data/placeholder.js";
-import { USE_BACKEND, getProfile, saveProfile } from "../api/client.js";
+import { getProfile, saveProfile } from "../api/client.js";
 import { useSession } from "./SessionContext.jsx";
 import useStoredState from "../hooks/useStoredState.js";
 
@@ -17,8 +16,7 @@ import useStoredState from "../hooks/useStoredState.js";
 // shows in the greeting and avatar too. Name, date of birth, sex (risk.sex) and
 // the contact and address fields are what a clinic receives when booking.
 //
-// Backend off: everything is kept in this browser, starting from the demo patient.
-// Backend on: everything but the health card comes from and saves to
+// Everything but the health card comes from and saves to
 // /api/profile (email: the contact e-mail, else the account's). Saving fires
 // PROFILE_SAVED_EVENT so pending booking requests reload with the new
 // details. The backend deliberately has no
@@ -161,7 +159,7 @@ export function ProfileProvider({ children }) {
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    if (!USE_BACKEND || !signedIn) {
+    if (!signedIn) {
       setRemote(null);
       return;
     }
@@ -175,32 +173,29 @@ export function ProfileProvider({ children }) {
     };
   }, [signedIn, session?.userId]);
 
-  const profile = USE_BACKEND
-    ? withDerived({
-        ...EMPTY,
-        ...(stored ? LOCAL_ONLY({ ...EMPTY, ...stored }) : {}),
-        ...(remote
-          ? fromBackend(remote, session?.email)
-          : { fullName: (session?.email ?? "").split("@")[0], email: session?.email ?? "" }),
-      })
-    : withDerived({ ...EMPTY, ...(stored ?? editable(basePatient)) });
+  const profile = withDerived({
+    ...EMPTY,
+    ...(stored ? LOCAL_ONLY({ ...EMPTY, ...stored }) : {}),
+    ...(remote
+      ? fromBackend(remote, session?.email)
+      : { fullName: (session?.email ?? "").split("@")[0], email: session?.email ?? "" }),
+  });
+
+  // The family doctor the backend holds ({ name, clinic, phone } or null); shown as the care team.
+  const familyDoctor = remote?.family_doctor?.name ? remote.family_doctor : null;
 
   // Throws if the backend refuses (e.g. a phone number it can't read), so the
   // sheet can show the error and keep the draft.
   const updateProfile = async (next) => {
     const clean = editable(next);
-    if (USE_BACKEND) {
-      const saved = await saveProfile(toBackend(clean, remote?.emergency_contact, remote?.family_history));
-      setRemote(saved);
-      setStored(LOCAL_ONLY(clean));
-      window.dispatchEvent(new Event(PROFILE_SAVED_EVENT));
-      return;
-    }
-    setStored(clean);
+    const saved = await saveProfile(toBackend(clean, remote?.emergency_contact, remote?.family_history));
+    setRemote(saved);
+    setStored(LOCAL_ONLY(clean));
+    window.dispatchEvent(new Event(PROFILE_SAVED_EVENT));
   };
 
   return (
-    <ProfileContext.Provider value={{ profile, updateProfile, loading: USE_BACKEND && signedIn && !remote && !loadError }}>
+    <ProfileContext.Provider value={{ profile, familyDoctor, updateProfile, loading: signedIn && !remote && !loadError }}>
       {children}
     </ProfileContext.Provider>
   );

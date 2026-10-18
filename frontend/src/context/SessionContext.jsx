@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { DEMO_ACCOUNT, SIGNED_OUT_EVENT, USE_BACKEND, getToken, login, loginWithGoogle, logout, setToken, signup } from "../api/client.js";
+import { DEMO_ACCOUNT, SIGNED_OUT_EVENT, getToken, login, loginWithGoogle, logout, setToken, signup } from "../api/client.js";
 import useStoredState from "../hooks/useStoredState.js";
 
 // Who is using the app. Until there is a session the landing page shows, and
@@ -7,10 +7,9 @@ import useStoredState from "../hooks/useStoredState.js";
 // remembered in this browser. Two kinds:
 //   signed in - their own account; the app shows their personal health data
 //   guest     - anonymous; can browse, nothing is tailored to them
-// With the backend on (USE_BACKEND), signing in checks the email and password
-// with /api/auth and keeps the returned token, and Google sign-in (useGoogleSignIn)
-// sends Google's ID token to /api/auth/google; Apple isn't offered. With it off,
-// signing in just records the email or provider and the app shows the demo patient.
+// Signing in checks the email and password with /api/auth and keeps the
+// returned token; Google sign-in (useGoogleSignIn) sends Google's ID token to
+// /api/auth/google. Apple isn't offered.
 const SessionContext = createContext(null);
 
 export function SessionProvider({ children }) {
@@ -18,12 +17,10 @@ export function SessionProvider({ children }) {
   // Which pop-up the landing page shows: null | "login" | "signup". Not saved.
   const [authPrompt, setAuthPrompt] = useState(null);
 
-  // A sign-in saved before the backend was switched on has no token, so every
-  // backend call would fail and the dashboard would stay empty: sign in again.
+  // A signed-in session without a token can't load anything: sign in again.
   // The other way round, a token left behind without a signed-in session (storage
   // out of step) must not be sent on a guest's requests: drop it.
   useEffect(() => {
-    if (!USE_BACKEND) return;
     if (session && !session.guest && !getToken()) setSession(null);
     if ((!session || session.guest) && getToken()) setToken(null);
   }, []); // once, on load
@@ -38,16 +35,11 @@ export function SessionProvider({ children }) {
   // method: "email" | "google" | "apple" | "demo" (dev login). Throws if the
   // backend refuses (wrong password, email taken), with the HTTP status on the error.
   const signIn = async (method, email, password, { newAccount = false } = {}) => {
-    if (USE_BACKEND) {
-      const creds = method === "demo" ? DEMO_ACCOUNT : { email, password };
-      const res = newAccount && method !== "demo" ? await signup(creds.email, creds.password) : await login(creds.email, creds.password);
-      setToken(res.access_token);
-      setAuthPrompt(null);
-      setSession({ method, email: res.email ?? creds.email, userId: res.user_id, signedInAt: Date.now() });
-      return;
-    }
+    const creds = method === "demo" ? DEMO_ACCOUNT : { email, password };
+    const res = newAccount && method !== "demo" ? await signup(creds.email, creds.password) : await login(creds.email, creds.password);
+    setToken(res.access_token);
     setAuthPrompt(null);
-    setSession({ method, email: email ?? null, signedInAt: Date.now() });
+    setSession({ method, email: res.email ?? creds.email, userId: res.user_id, signedInAt: Date.now() });
   };
 
   // Google Identity Services handed back an ID token (useGoogleSignIn). The
@@ -71,7 +63,7 @@ export function SessionProvider({ children }) {
   // Google's One Tap stops picking the account automatically, or it would sign
   // straight back in.
   const signOut = () => {
-    if (USE_BACKEND && getToken()) logout().catch(() => {});
+    if (getToken()) logout().catch(() => {});
     window.google?.accounts?.id?.disableAutoSelect();
     setToken(null);
     setAuthPrompt(null);

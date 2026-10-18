@@ -38,3 +38,12 @@ class RiskRunOut(BaseModel):
     trigger: str
     assessments: list[RiskAssessmentOut]
 
+
+class RiskStatusOut(BaseModel):
+    """When the user was last assessed and when the scheduled re-assessments run next (API.md §9)."""
+
+    last_assessed_at: datetime | None
+    last_trigger: str | None  # manual | nightly | weekly | event
+    scheduler_running: bool
+    next_runs: dict[str, str | None]  # job name -> ISO time, None when the scheduler is stopped
+

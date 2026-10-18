@@ -41,7 +41,7 @@ function featureRows(features) {
   return rows;
 }
 
-export default function TappingTask({ onSubmitted }) {
+export default function TappingTask({ onSubmitted, embedded = false }) {
   const [step, setStep] = useState("intro"); // intro | left | right | submitting | done
   const [running, setRunning] = useState(false);
   const [remaining, setRemaining] = useState(DURATION_S);
@@ -138,19 +138,26 @@ export default function TappingTask({ onSubmitted }) {
     setStep("intro");
   };
 
-  return (
-    <section className="card" aria-labelledby="tapping-title">
-      <div className="card-head">
-        <h2 id="tapping-title">Finger tapping</h2>
-        {result && <em className={`badge ${result.valid ? "normal" : "watch"}`}>{result.valid ? "Saved" : "Check"}</em>}
-      </div>
+  const badge = result && <em className={`badge ${result.valid ? "normal" : "watch"}`}>{result.valid ? "Saved" : "Check"}</em>;
+  const body = (
+    <>
 
       {step === "intro" && (
         <div className="tapping-intro">
           <p>
-            Put one index finger on the keyboard and press <kbd>S</kbd> then <kbd>;</kbd>, back and forth, as fast
-            and as evenly as you can for 30 seconds. The timer starts on your first press. You do the left hand first,
-            then the right.
+            One index finger, <b>alternating</b> between <kbd>S</kbd> and <kbd>;</kbd> as fast and evenly as you can for 30 seconds.
+            Left hand first, then right. The timer starts on your first press.
+          </p>
+          <p className="key-sequence" aria-label="Press S, then semicolon, then S, then semicolon, and so on">
+            <kbd>S</kbd>
+            <span aria-hidden="true">→</span>
+            <kbd>;</kbd>
+            <span aria-hidden="true">→</span>
+            <kbd>S</kbd>
+            <span aria-hidden="true">→</span>
+            <kbd>;</kbd>
+            <span aria-hidden="true">→</span>
+            <small>…</small>
           </p>
           {error && (
             <p className="field-error" role="alert">
@@ -177,18 +184,23 @@ export default function TappingTask({ onSubmitted }) {
             onKeyDown={onKeyDown}
             onKeyUp={onKeyUp}
           >
+            {/* The key to press next is outlined, so the alternation is easy to follow */}
             <div className="tapping-keys" aria-hidden="true">
-              {KEYS.map((k) => (
-                <span key={k} className={`tapping-key ${lastKey === k ? "hit" : ""}`}>
-                  {k.toUpperCase()}
-                </span>
-              ))}
+              {KEYS.map((k) => {
+                const next = (lastKey ?? ";") !== k;
+                return (
+                  <span key={k} className={`tapping-key ${lastKey === k ? "hit" : ""} ${next ? "next" : ""}`}>
+                    {k.toUpperCase()}
+                    {next && <small>next</small>}
+                  </span>
+                );
+              })}
             </div>
             <p className="tapping-count">
               <b>{counts[hand]}</b> taps
             </p>
             <p className="tapping-timer" aria-live="polite">
-              {running ? `${remaining} s left` : "Click here, then press S to begin"}
+              {running ? `${remaining} s left · now press ${(lastKey ?? ";") === "s" ? ";" : "S"}` : "Click here, then press S to begin"}
             </p>
           </div>
           <div className="book-actions">
@@ -222,6 +234,24 @@ export default function TappingTask({ onSubmitted }) {
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="task-body">
+        {badge && <div className="task-badge-row">{badge}</div>}
+        {body}
+      </div>
+    );
+  }
+  return (
+    <section className="card" aria-labelledby="tapping-title">
+      <div className="card-head">
+        <h2 id="tapping-title">Finger tapping</h2>
+        {badge}
+      </div>
+      {body}
     </section>
   );
 }

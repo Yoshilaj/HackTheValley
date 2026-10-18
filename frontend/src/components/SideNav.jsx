@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { navItems } from "../data/placeholder.js";
+import { navItems } from "../nav.js";
 
 // Main navigation, shown in the sidebar. Rows can be reordered by dragging
 // (mouse), long-press then drag (touch), or Alt+Up/Down (keyboard). The order
@@ -23,23 +23,18 @@ const ICONS = {
       <path d="M8 3v4M16 3v4M4 10h16" />
     </>
   ),
-  "/medications": (
+  "/tasks": (
     <>
-      <rect x="3" y="9" width="18" height="6" rx="3" transform="rotate(-45 12 12)" />
-      <path d="M9.5 9.5l5 5" />
+      <path d="M9 4h6l1 2h2a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7a1 1 0 011-1h2z" />
+      <path d="M8.5 13l2.5 2.5 4.5-5" />
     </>
   ),
-  "/checkin": (
+  "/data": (
     <>
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-      <path d="M8 12.5l2.5 2.5L16 9.5" />
-    </>
-  ),
-  "/vitals": <path d="M3 12h4l2.5-6 3 12 2.5-8 1.5 2H21" />,
-  "/assessments": (
-    <>
-      <path d="M7 4h7l4 4v12a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z" />
-      <path d="M14 4v4h4M9 13h6M9 17h4" />
+      <path d="M4 20h16" />
+      <rect x="6" y="11" width="3" height="6" rx="1" />
+      <rect x="11" y="6" width="3" height="11" rx="1" />
+      <rect x="16" y="9" width="3" height="8" rx="1" />
     </>
   ),
 };

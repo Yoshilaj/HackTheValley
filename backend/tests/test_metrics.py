@@ -76,6 +76,18 @@ def test_metrics_requires_auth(client):
     assert client.post("/api/metrics", json={"samples": []}).status_code == 401
 
 
+def test_blood_glucose_metric_accepted_and_summarised(client, user, headers):
+    yesterday = datetime.now(TOR) - timedelta(days=1)  # never "in the future", whatever the wall-clock hour
+    res = client.post("/api/metrics", json={"source": "manual", "samples": [
+        {"type": "blood_glucose_mmol_l", "value": 5.6, "recorded_at": yesterday.isoformat()}]}, headers=headers)
+    assert res.status_code == 200, res.text
+    assert res.json()["inserted"] == 1 and res.json()["rejected"] == []
+    summary = client.get("/api/metrics/summary?days=7", headers=headers).json()
+    glucose = summary["metrics"]["blood_glucose_mmol_l"]
+    assert glucose["unit"] == "mmol/L" and glucose["aggregation"] == "mean"
+    assert glucose["last_value"]["value"] == 5.6
+
+
 # ---------------------------------------------------------------- BP
 
 def test_bp_validity_reading_no_and_irregular(db, user):

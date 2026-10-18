@@ -81,6 +81,24 @@ Onboarding (collected at sign-up, used by the booking agent): `first_name, last_
 `BpSummary` = `{ days, per_day: [{ date, morning?: {systolic, diastolic, n}, evening?: {…}, day_mean: {systolic, diastolic} }], window_7d: { start, end, day_mean, morning, evening (each {systolic, diastolic, n_days, sufficient}), method, jsh? }, n_readings, n_invalid, n_irregular_pulse_flags }`.
 Metric types and units: `METRIC_TYPES` in `backend/app/schemas/metrics.py` (steps, resting_hr, hrv_sdnn_ms, sleep_asleep_minutes, walking_speed_mps, step_length_m, double_support_pct, walking_asymmetry_pct, …). iOS Shortcut setup: [docs/shortcut.md](shortcut.md).
 
+| Type | Unit | Range | Daily aggregation |
+|---|---|---|---|
+| steps / distance_m / active_energy_kcal / exercise_minutes | count / m / kcal / min | ≥ 0 | sum |
+| resting_hr / walking_hr_avg | bpm | 20–200 / 30–220 | mean |
+| hrv_sdnn_ms | ms | 1–500 | mean |
+| vo2max | mL/kg/min | 5–100 | mean |
+| spo2_pct | % | 50–100 | mean |
+| respiratory_rate | breaths/min | 4–60 | mean |
+| sleep_asleep_minutes / sleep_inbed_minutes / sleep_core_minutes / sleep_deep_minutes / sleep_rem_minutes | min | 0–1440 | sum |
+| sleep_awake_count | count | 0–200 | sum |
+| walking_speed_mps | m/s | 0.05–3 | mean |
+| step_length_m | m | 0.05–1.5 | mean |
+| double_support_pct / walking_asymmetry_pct / walking_steadiness | % | 0–100 | mean |
+| weight_kg | kg | 20–400 | mean |
+| bmi | kg/m2 | 10–80 | mean |
+| body_temp_c | degC | 30–45 | mean |
+| blood_glucose_mmol_l | mmol/L | 1–40 | mean (fingerstick / CGM; charted only, no rule reads it) |
+
 ## 4. Uploads
 
 | Method | Path | Auth | Request | Response |
@@ -115,13 +133,14 @@ Metric types and units: `METRIC_TYPES` in `backend/app/schemas/metrics.py` (step
 | POST | /api/tasks/tapping | user | `{ input_method: "keyboard", duration_s? = 30 (5–60), keys? = ["s", ";"], left: { events: [{ key, down_ms, up_ms \| null }] }, right: { events: […] } }` (keyboard BRAIN tap test, spec §5.3: alternate `s` / `;` with the index finger, 30 s per hand; `performance.now()`-relative ms, ≤4000 events per hand) | 201 `{ task_id, valid, reason, features {left{…}, right{…}, asymmetry, iti_asymmetry, dwell_asymmetry, tap_count, kinesia_score, mean_iti_ms, iti_cv, decrement_slope_ms_per_tap, dwell_mean_ms, dwell_cv, travel_time_var_ms2, travel_time_cv, alternation_error_rate, input_method, keys, duration_s, valid, reason}, message }`; 422 `{ detail: "keyboard tapping only" }` for any other `input_method` |
 | POST | /api/tasks/word-recall/start | user | `{ language? }` (or `?language=`) | 201 `{ task_id, set_id, language, words[3], instruction, recall_prompt, presented_at }` |
 | POST | /api/tasks/word-recall/{task_id} | user | `{ response_text, latency_ms? }` | `{ task_id, score (0–3), max_score, recalled[], missed[], latency_ms, valid }`; 409 already scored |
-| GET | /api/tasks/history?task_type=&limit=50 | user | – | `{ items: [{ id, task_type, created_at, status (in_progress\|complete), score, valid, invalid_reason, language, protocol_version, model_scores }] }` |
+| GET | /api/tasks/history?task_type=&limit=50 | user | – | `{ items: [{ id, task_type, created_at, status (in_progress\|complete), score, valid, invalid_reason, language, protocol_version, model_scores, summary }] }` |
 
 `StoryStatus` = `{ task_id, session_id, language, protocol_version, steps[7], step_index, current_step (null when finished), finished, instruction, instructions {en, ja}, audio_url (listen steps), delay_remaining_s, max_recall_s (180), result }`.
 Steps: `story1_listen → story1_recall → story2_listen → story2_recall → fluency_60s → delay → story1_delayed_recall` (delay ≈ 3 min after story 1 recall).
 `result` = `{ score (experimental semantic-recall mean 0–100), score_name, valid, status, invalid_reasons[], per_recall {immediate_1, immediate_2, delayed}, content_unit_fraction_mean, story_ids, message }`.
 Tapping per-hand features (`features.left` / `features.right`): `tap_count` (KS30), `kinesia_score` (count rescaled to 30 s), `mean_iti_ms`, `iti_cv`, `decrement_slope_ms_per_tap`, `n_outliers`, `n_freezes` (intervals > 3× median, kept in the count), `dwell_mean_ms` / `dwell_cv` (AT30), `travel_time_mean_ms` / `travel_time_var_ms2` (IS30, keyup → next keydown of the other key) / `travel_time_cv` (MAD-cleaned), `alternation_error_rate`, `n_same_key_repeats`, `error_presses` (non-target keys, not taps), `n_autorepeat`, `n_unreleased`, `n_events`, `valid`, `reason`. An invalid hand still answers 201 with `valid: false` and `reason` = `left:` / `right:` + `fewer_than_10_taps` | `duration_below_20_s` | `key_autorepeat_detected` (an inter-tap interval < 30 ms) | `too_many_outlier_intervals`; the flat session features are set only when both hands are valid. The task stores `recording_quality.device = "keyboard"`; the PD-04 baseline uses only sessions on the input method of the latest session.
 `model_scores.pd_vowel` is marked `detail_only: true, label: "experimental voice-model score"`: show it only in a detail view, never on the main gauge. For PD-03 the risk engine counts one vowel session per calendar day (median of that day's repetitions).
+`summary` (history only) = chart-ready numbers/bools per task type, ≤ 10 keys, missing/None values omitted (`{}` for in-progress tasks): `finger_tap` → `{ tap_count, mean_iti_ms, iti_cv, asymmetry, left_tap_count, right_tap_count, left_iti_cv, right_iti_cv }`; `sustained_vowel` → `{ duration_s, voiced_s, snr_db, clip_frac, quality_ok, probability, threshold, above_threshold (valid recordings with a model score only), cpps }`; `story_recall` → `{ score, story1_recall, story2_recall, story1_delayed_recall (= per_recall immediate_1 / immediate_2 / delayed), content_unit_fraction_mean }`; `word_recall` → `{ score, max_score }`.
 
 ## 8. Chat & RAG (C2, C3)
 
@@ -149,6 +168,7 @@ Every answer ends with the disclaimer (`DISCLAIMER_JA/EN`, `app/services/guardra
 | GET | /api/dashboard?language= | user | – | `{ pathways: PathwayCard[4] (cardio, cognitive, parkinsons, general), metrics_summary, appointments (active), notifications: { unread, recent[5] } }` — assesses on demand when there is no assessment yet |
 | GET | /api/risk/latest?language= | user | – | `PathwayCard[]` |
 | GET | /api/risk/history?weeks=8 | user | – | `[{ week (Monday), pathway, level, priority_score, assessment_id }]` oldest first |
+| GET | /api/risk/status | user | – | `{ last_assessed_at (ISO \| null), last_trigger (manual \| nightly \| weekly \| event \| null), scheduler_running, next_runs: { nightly_risk_assessment: ISO \| null, weekly_summary_notifications: ISO \| null } }` — newest assessment across pathways; `next_runs` values are null while the scheduler is stopped |
 | POST | /api/risk/run[?user_id=] | user (or admin with `?user_id=`) | – | `{ user_id, trigger: "manual", assessments: RiskAssessment[4] }` |
 | GET | /api/risk/{assessment_id} | user | – | `RiskAssessment` |
 
@@ -309,6 +329,7 @@ User e-mails share one layout (`render_email` / `email_shell`: CareSync header, 
 
 `Job` = `{ id, name, status (pending\|running\|done\|failed), scheduled_for, started_at, finished_at, error, result, created_at }`.
 Registered jobs (APScheduler, `SCHEDULER_ENABLED=true`, timezone `SCHEDULER_TIMEZONE`): `nightly_risk_assessment` (03:00), `process_pending_uploads` (every 10 min), `appointment_followups` (09:00), `weekly_summary_notifications` (Mon 09:00), `cleanup_expired_jobs` (04:30).
+`weekly_summary_notifications` re-assesses every user (`trigger: "weekly"`), compares each pathway with its assessment of 7 days earlier and writes one `weekly_summary` notification (en/ja; one line per pathway "name: level (score/100, up/down/same vs last week)" + "This week: N check-ins, N BP days, N tapping, N voice, N story tasks") with payload `{ week (Monday ISO), levels: {pathway: level}, previous_levels: {pathway: level \| null}, scores: {pathway: 0–100 \| null}, tasks: {task_type: count}, bp_days, checkins }`; result `{ notified, assessed, failed }`. Users failing individually are counted in `failed` and never stop the rest.
 
 ## 14a. Mock clinic website (booking-v2 §3)
 

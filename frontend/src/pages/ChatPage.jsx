@@ -5,7 +5,6 @@ import AssistantReply, { SourceLinks } from "../components/AssistantReply.jsx";
 import Composer, { ASSISTANT_HINTS, FileIcon, formatSize } from "../components/Composer.jsx";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
-import useMedications from "../hooks/useMedications.js";
 import { useProfile } from "../context/ProfileContext.jsx";
 import useVitals from "../hooks/useVitals.js";
 import { conditionLevel } from "../utils/risk.js";
@@ -19,17 +18,15 @@ const GENERAL_SUGGESTIONS = [
 ];
 
 // Signed-in starters come from the user's own record: their highest condition
-// risk, a medication that's out of refills, and their latest blood pressure.
-// Falls back to the general ones for anything missing.
-function personalSuggestions(conditions, vitals, medicationList) {
+// risk and their latest blood pressure. Falls back to the general ones for
+// anything missing.
+function personalSuggestions(conditions, vitals) {
   const out = [];
   const raised = (conditions ?? [])
     .map((c) => ({ c, level: conditionLevel(c) }))
     .filter(({ level }) => level !== "Low")
     .sort((a, b) => b.c.risk - a.c.risk)[0];
   if (raised) out.push(`Why is my ${raised.c.name.replace(" / ", " and ").toLowerCase()} risk ${raised.level.toLowerCase()}?`);
-  const empty = medicationList.find((m) => m.refills === 0);
-  if (empty) out.push(`${empty.name} is out of refills. What should I do?`);
   const bp = vitals.find((v) => v.id === "bp");
   if (bp) out.push(`Is ${bp.value} ${bp.unit} too high for me?`);
   return [...out, ...GENERAL_SUGGESTIONS].slice(0, 3);
@@ -43,8 +40,7 @@ export default function ChatPage() {
   const { signedIn, requestSignIn } = useSession();
   const { profile: patient } = useProfile();
   const { vitals } = useVitals();
-  const { medications } = useMedications();
-  const suggestions = signedIn ? personalSuggestions(risk?.conditions, vitals, medications) : GENERAL_SUGGESTIONS;
+  const suggestions = signedIn ? personalSuggestions(risk?.conditions, vitals) : GENERAL_SUGGESTIONS;
   const [dragging, setDragging] = useState(false);
   const logRef = useRef(null);
   const composerRef = useRef(null);
@@ -130,7 +126,7 @@ export default function ChatPage() {
         <header className="page-head">
           <div>
             <h1 tabIndex={-1}>Care assistant</h1>
-            <p className="subtitle">Ask about your appointments, medications or readings.</p>
+            <p className="subtitle">Ask about your appointments, readings or daily tasks.</p>
           </div>
         </header>
       ) : (

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { USE_BACKEND, getGoogleConfig } from "../api/client.js";
+import { getGoogleConfig } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
 
 // Sign in with Google through Google Identity Services: the official button
 // (renderButton) and One Tap, Google's account pop-up, which signs a returning
 // user straight in (auto_select). Google hands back an ID token; SessionContext
 // sends it to /api/auth/google, which finds or creates the account.
-// Only with the backend on and GOOGLE_CLIENT_ID set on the backend
-// (/api/auth/google/config); otherwise `available` stays false.
+// Only when GOOGLE_CLIENT_ID is set on the backend (/api/auth/google/config);
+// otherwise `available` stays false.
 const SCRIPT = "https://accounts.google.com/gsi/client";
 
 let configPromise = null; // the backend's { enabled, client_id }, asked once
@@ -77,7 +77,6 @@ export default function useGoogleSignIn({ oneTap = false } = {}) {
   };
 
   useEffect(() => {
-    if (!USE_BACKEND) return;
     let cancelled = false;
     loadConfig()
       .then((cfg) => (cfg.enabled && cfg.client_id ? loadScript().then(() => cfg.client_id) : null))

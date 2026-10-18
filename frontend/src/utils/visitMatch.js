@@ -4,8 +4,8 @@ import { matchVisit } from "../api/client.js";
 // user's description. The real pick comes from the backend, which asks Gemini
 // to choose from the provider database (the API key stays on the server, never
 // in this frontend). Until POST /api/visit-match exists, a keyword matcher
-// stands in. Flip USE_BACKEND once the endpoint is live.
-const USE_BACKEND = false;
+// stands in. Flip VISIT_MATCH_API once the endpoint is live.
+const VISIT_MATCH_API = false;
 
 // Words that point to a specialty, for the stand-in matcher.
 const SPECIALTY_HINTS = [
@@ -39,7 +39,7 @@ function localMatch(description, options) {
 // soonest first, each { id, iso, rec }. Returns { option, reason } or null.
 export async function pickVisit({ description, prefs, location, options }) {
   if (!options.length) return null;
-  if (!USE_BACKEND) return localMatch(description, options);
+  if (!VISIT_MATCH_API) return localMatch(description, options);
 
   const res = await matchVisit({
     description,

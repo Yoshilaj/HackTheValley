@@ -2,13 +2,8 @@
 // Paths start with /api: Vite proxies them to the Python backend in dev
 // (vite.config.js) and Vercel rewrites them to the deployed API (vercel.json).
 
-// One switch for the whole app. Off: everything runs on placeholder data kept
-// in this browser. On: sign-in, profile, risk, chat, notifications,
-// appointments and bookings, the clinic directory and recommendations,
-// medications (with refills and dose tick-offs) and blood pressure / resting
-// heart rate use the backend. Set VITE_USE_BACKEND=true in
-// frontend/.env.local (and in Vercel's settings).
-export const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === "true";
+// Every page reads and writes through the backend: there is no offline or
+// placeholder mode. Guests (no account) only see the sign-in prompts.
 
 // The demo patient created by the backend's `python -m scripts.seed_demo`.
 export const DEMO_ACCOUNT = { email: "demo@example.com", password: "demo1234" };
@@ -37,12 +32,14 @@ export function setToken(token) {
 // SessionContext can send the user back to the landing page.
 export const SIGNED_OUT_EVENT = "caresync:signed-out";
 
-// Errors carry the HTTP status and the backend's `detail` message, if any.
+// Errors carry the HTTP status, the backend's `detail` message and the whole
+// error body (some 409s add fields, e.g. the story task's delay_remaining_s).
 export class ApiError extends Error {
-  constructor(message, status, detail) {
+  constructor(message, status, detail, body = null) {
     super(message);
     this.status = status;
     this.detail = detail;
+    this.body = body;
   }
 }
 
@@ -57,7 +54,7 @@ async function send(path, options = {}) {
       setToken(null);
       window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
     }
-    throw new ApiError(`${options.method || "GET"} ${path} failed: ${res.status}`, res.status, body?.detail);
+    throw new ApiError(`${options.method || "GET"} ${path} failed: ${res.status}`, res.status, body?.detail, body);
   }
   return res;
 }
@@ -68,6 +65,15 @@ async function request(path, options = {}) {
 }
 
 const post = (path, body) => request(path, { method: "POST", body: body == null ? undefined : JSON.stringify(body) });
+const patch = (path, body) => request(path, { method: "PATCH", body: JSON.stringify(body) });
+const del = (path) => request(path, { method: "DELETE" });
+
+// A file the backend serves only to its owner (task audio): fetched with the
+// token and returned as a Blob for an object URL.
+export async function fetchBlob(path) {
+  const res = await send(path);
+  return res.blob();
+}
 
 // ---- Auth: email + password. Returns { access_token, user_id, email }.
 export function login(email, password) {
@@ -108,6 +114,21 @@ export function getHealth() {
   return request("/api/health");
 }
 
+// ---- Device tokens: a long-lived token an iOS Shortcut sends as X-Device-Token
+// to push Apple Watch data (POST /api/metrics). The raw token is returned once.
+export function createDeviceToken(label) {
+  return post("/api/auth/device-token", { label });
+}
+
+// [{ id, label, created_at, last_used_at }] (never the tokens themselves).
+export function getDeviceTokens() {
+  return request("/api/auth/device-tokens");
+}
+
+export function revokeDeviceToken(id) {
+  return del(`/api/auth/device-tokens/${encodeURIComponent(id)}`);
+}
+
 // ---- Profile: GET returns the backend's profile (first_name, last_name,
 // date_of_birth, emergency_contact, ...); PUT changes only the fields sent.
 export function getProfile() {
@@ -123,6 +144,18 @@ export function saveProfile(fields) {
 // preventive_measures, next_action }. useRiskAssessment maps them for the UI.
 export function getRiskCards() {
   return request("/api/risk/latest");
+}
+
+// Weekly points per pathway, oldest first: [{ week (Monday, YYYY-MM-DD), pathway, level, priority_score, assessment_id }].
+export function getRiskHistory(weeks = 8) {
+  return request(`/api/risk/history?weeks=${weeks}`);
+}
+
+// When the assessment last ran and when the scheduled runs are next due:
+// { last_assessed_at, last_trigger (manual | nightly | weekly | event), scheduler_running,
+//   next_runs: { nightly_risk_assessment, weekly_summary_notifications } } (ISO times or null).
+export function getRiskStatus() {
+  return request("/api/risk/status");
 }
 
 // ---- Chat, stored per user as separate conversations.
@@ -254,35 +287,41 @@ export function decideCalendarSync(id, decision) {
   return post(`/api/appointments/${encodeURIComponent(id)}/calendar-sync`, { decision });
 }
 
-// ---- Measurements: home blood pressure ({ readings, summary }) and daily
-// metrics such as resting heart rate ({ metrics: { resting_hr: { daily, last_value } } }).
-export function getBloodPressure() {
-  return request("/api/metrics/bp");
+// ---- Measurements: home blood pressure ({ readings, summary: { per_day, window_7d } })
+// and daily metrics such as resting heart rate
+// ({ metrics: { resting_hr: { unit, daily: [{ date, value }], baseline_30d, last_value } } }).
+export function getBloodPressure(days = 30) {
+  return request(`/api/metrics/bp?days=${days}`);
 }
 
-// One cuff reading (spec §2). session: "morning" | "evening" | "other" (the
-// backend derives it from the local hour when omitted); irregularPulse is the
-// cuff's irregular-heartbeat symbol. measuredAt: ISO time with offset.
-export function logBloodPressure({ systolic, diastolic, pulse, measuredAt, session, irregularPulse = false, arm, position }) {
+// One session's cuff readings (spec §2): readings [{ systolic, diastolic, pulse? }]
+// numbered in order and stamped a minute apart from measuredAt (ISO time).
+// session: "morning" | "evening" | "other" (the backend derives it from the local
+// hour when omitted); irregularPulse is the cuff's irregular-heartbeat symbol.
+export function logBloodPressure({ readings, measuredAt, session, irregularPulse = false, arm, position }) {
+  const t0 = new Date(measuredAt).getTime();
   return post("/api/metrics/bp", {
-    readings: [{
-      systolic,
-      diastolic,
-      pulse: pulse ?? null,
-      measured_at: measuredAt,
+    readings: readings.map((r, i) => ({
+      systolic: r.systolic,
+      diastolic: r.diastolic,
+      pulse: r.pulse ?? null,
+      measured_at: new Date(t0 + i * 60_000).toISOString(),
       session: session ?? null,
+      reading_no: i + 1,
       irregular_pulse_flag: Boolean(irregularPulse),
       arm: arm ?? null,
       position: position ?? null,
       source: "manual",
-    }],
+    })),
   });
 }
 
-export function getMetricsSummary() {
-  return request("/api/metrics/summary");
+export function getMetricsSummary(days = 30) {
+  return request(`/api/metrics/summary?days=${days}`);
 }
 
+// type: a backend metric type (resting_hr, weight_kg, body_temp_c, spo2_pct,
+// blood_glucose_mmol_l, sleep_asleep_minutes, ...); recordedAt: ISO time.
 export function logMetric(type, value, recordedAt) {
   return post("/api/metrics", { source: "manual", samples: [{ type, value, recorded_at: recordedAt }] });
 }
@@ -299,7 +338,7 @@ export function getRhythmResults() {
 }
 
 // ---- Daily check-in (one row per day; a second save on the same day updates it).
-// Scales are 1-5; flags are the backend's check-in vocabulary (see CheckInPage).
+// Scales are 1-5; flags are the backend's check-in vocabulary (the backend check-in vocabulary).
 // Returns the row plus the observations it raised.
 export function getDailyLogs(days = 30) {
   return request(`/api/logs/daily?days=${days}`);
@@ -322,10 +361,51 @@ export function submitTapping({ left, right, durationS = 30, keys = ["s", ";"] }
   });
 }
 
-// Past assessment tasks, newest first: { items: [{ id, task_type, created_at, status, score, valid, invalid_reason }] }.
+// Past assessment tasks, newest first: { items: [{ id, task_type, created_at, status,
+// score, valid, invalid_reason, model_scores, summary }] }. `summary` holds a few numbers
+// per task for charts (tapping: tap_count, iti_cv per hand; vowel: snr_db, probability;
+// story: score and per-recall scores).
 export function getTaskHistory(taskType, limit = 20) {
   const q = new URLSearchParams({ limit: String(limit), ...(taskType ? { task_type: taskType } : {}) });
   return request(`/api/tasks/history?${q}`);
+}
+
+// ---- Sustained vowel (spec §5.4): one repetition of "ahh" as recorded in the
+// browser (webm/opus, mp4 or ogg; the backend decodes by file extension).
+// Returns { task_id, repetition_index, valid, status, recording_quality, reasons, message, tips, experimental_score }.
+export function submitVowel(blob, repetition, ext = "webm") {
+  const form = new FormData();
+  form.append("audio", blob, `vowel-${repetition}.${ext}`);
+  form.append("repetition", String(repetition));
+  return request("/api/tasks/vowel", { method: "POST", body: form });
+}
+
+// ---- Story recall battery (spec §1): start -> status with the current step;
+// each step is submitted with its recording (recall and fluency steps), how long
+// the story was played (listen steps) or nothing (the delay, once it has elapsed).
+// Status: { task_id, steps, step_index, current_step, finished, instruction, audio_url,
+//           delay_remaining_s, max_recall_s, result }.
+export function startStory(language) {
+  const q = language ? `?language=${encodeURIComponent(language)}` : "";
+  return post(`/api/tasks/story/start${q}`);
+}
+
+export function getStory(taskId) {
+  return request(`/api/tasks/story/${encodeURIComponent(taskId)}`);
+}
+
+// The story's audio (listen steps), as a Blob for an object URL.
+export function getStoryAudio(audioUrl) {
+  return fetchBlob(audioUrl);
+}
+
+export function submitStoryStep(taskId, { step, blob, ext = "webm", playedS, forceDelay = false }) {
+  const form = new FormData();
+  form.append("step", step);
+  if (blob) form.append("audio", blob, `${step}.${ext}`);
+  if (playedS != null) form.append("played_s", String(playedS));
+  if (forceDelay) form.append("force_delay", "true");
+  return request(`/api/tasks/story/${encodeURIComponent(taskId)}/step`, { method: "POST", body: form });
 }
 
 // ---- Apple Health export (export.zip or export.xml): parsed in the background
@@ -344,38 +424,6 @@ export function getUploadJob(jobId) {
 // Run the assessment on everything saved so far and return the fresh cards.
 export function runRiskAssessment() {
   return post("/api/risk/run");
-}
-
-// ---- Medications (the profile's list, also used by the risk assessment and chat):
-// [{ id, name, dose, frequency, purpose, prescriber, refills, times, days_left,
-//    take_with, side_effects, interactions, glyph }].
-export function getMedications() {
-  return request("/api/medications");
-}
-
-// Open refill requests: [{ id, medication_id, pharmacy_id, method, note, status, created_at }].
-export function getRefills() {
-  return request("/api/refills");
-}
-
-// Ask for refills: { medicationIds: [id], pharmacyId, method: "pickup" | "delivery", note? }.
-export function requestRefill({ medicationIds, pharmacyId, method, note }) {
-  return post("/api/refills", { medication_ids: medicationIds, pharmacy_id: pharmacyId, method, note: note || undefined });
-}
-
-// Withdraw the open refill request for one medication.
-export function cancelRefill(medicationId) {
-  return request(`/api/refills/${encodeURIComponent(medicationId)}`, { method: "DELETE" });
-}
-
-// Doses ticked off on a day ("YYYY-MM-DD"): { day, taken: ["<medication id>-<time>"] }.
-export function getDoses(day) {
-  return request(`/api/doses/${day}`);
-}
-
-// Replace the day's ticked-off doses.
-export function saveDoses(day, taken) {
-  return request(`/api/doses/${day}`, { method: "PUT", body: JSON.stringify({ taken }) });
 }
 
 // ---- Clinics and visits you book yourself. Clinics come nearest first (to the
@@ -406,7 +454,7 @@ export function bookAppointment({ providerId, slot, note, provider }) {
 }
 
 export function cancelBooking(id) {
-  return request(`/api/bookings/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return del(`/api/bookings/${encodeURIComponent(id)}`);
 }
 
 // ---------------------------------------------------------------------------

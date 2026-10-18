@@ -27,6 +27,29 @@ export function relativeDay(at) {
 
 export const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
+// "Oct 14" from "2026-10-14" (a local calendar day) or any ISO time; axis ticks and tooltips.
+export function shortDate(iso) {
+  if (!iso) return "";
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00`) : new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// "Wk of Oct 13" from a Monday ("2026-10-13"), for the weekly risk points.
+export const weekLabel = (monday) => `Wk of ${shortDate(monday)}`;
+
+// "in 6 h" / "in 2 days" / "tomorrow 3:00 AM"-style note for a scheduled time (ISO).
+export function untilText(iso) {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  const mins = Math.round((t - Date.now()) / 60000);
+  if (mins <= 0) return "any moment now";
+  if (mins < 60) return `in ${mins} min`;
+  const hours = Math.round(mins / 60);
+  if (hours < 36) return `in ${hours} h`;
+  return `in ${Math.round(hours / 24)} days`;
+}
+
 // Value for <input type="datetime-local"> in local time: "2026-10-17T21:05".
 export function toLocalInput(date) {
   const pad = (n) => String(n).padStart(2, "0");

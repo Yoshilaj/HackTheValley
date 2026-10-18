@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
-import { careTeam } from "../data/placeholder.js";
+import { useProfile } from "../context/ProfileContext.jsx";
 
 // The user's doctors with call and email actions. CareTeamList is shared with
 // the health profile; CareTeamSheet is the glass sheet behind "Contact care team".
+// The backend profile holds one family doctor ({ name, clinic, phone }).
 const digits = (phone) => phone.replace(/[^\d+]/g, "");
 const initialsOf = (name) =>
   name
@@ -13,10 +14,23 @@ const initialsOf = (name) =>
     .slice(0, 2)
     .toUpperCase();
 
-export function CareTeamList({ members = careTeam }) {
+// The care team as the profile holds it: the family doctor, when one is saved.
+export function useCareTeam() {
+  const { familyDoctor } = useProfile();
+  return familyDoctor
+    ? [{ id: "family", name: familyDoctor.name, role: "Family doctor", clinic: familyDoctor.clinic ?? "", phone: familyDoctor.phone ?? "", email: familyDoctor.email ?? "" }]
+    : [];
+}
+
+export function CareTeamList({ members }) {
+  const team = useCareTeam();
+  const list = members ?? team;
+  if (!list.length) {
+    return <p className="field-hint">No doctor saved yet. Add your family doctor's name, clinic and phone in your profile.</p>;
+  }
   return (
     <ul className="care-team">
-      {members.map((m) => (
+      {list.map((m) => (
         <li key={m.id}>
           <span className="appt-icon" aria-hidden="true">
             {initialsOf(m.name)}

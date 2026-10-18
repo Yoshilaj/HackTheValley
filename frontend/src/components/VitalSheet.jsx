@@ -79,30 +79,38 @@ export default function VitalSheet({ vital, onClose, onLog }) {
 
           {v.about && <p className="sheet-about">{v.about}</p>}
 
-          <figure className="trend-figure">
-            <TrendChart points={pts} band={v.band} label={isBp ? `${v.label}, top number` : v.label} unit={v.unit} />
-            <figcaption>
-              Last {pts.length} readings{isBp ? " (top number)" : ""}. The shaded band is the healthy range.
-            </figcaption>
-          </figure>
+          {pts.length > 1 ? (
+            <figure className="trend-figure">
+              <TrendChart points={pts} band={v.band} label={isBp ? `${v.label}, top number` : v.label} unit={v.unit} />
+              <figcaption>
+                Last {pts.length} days{isBp ? " (top number)" : ""}. {v.band ? "The shaded band is the healthy range." : ""}
+              </figcaption>
+            </figure>
+          ) : (
+            <p className="field-hint">No trend yet: log a few readings on different days to see one here.</p>
+          )}
 
           <dl className="sheet-rows">
             <div>
               <dt>Healthy range</dt>
               <dd>{v.range}</dd>
             </div>
-            <div>
-              <dt>Lowest – highest</dt>
-              <dd>
-                {fmt(Math.min(...pts))} – {fmt(Math.max(...pts))} {v.unit}
-              </dd>
-            </div>
-            <div>
-              <dt>Average</dt>
-              <dd>
-                {fmt(avg)} {v.unit}
-              </dd>
-            </div>
+            {pts.length > 0 && (
+              <>
+                <div>
+                  <dt>Lowest – highest</dt>
+                  <dd>
+                    {fmt(Math.min(...pts))} – {fmt(Math.max(...pts))} {v.unit}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Average</dt>
+                  <dd>
+                    {fmt(avg)} {v.unit}
+                  </dd>
+                </div>
+              </>
+            )}
             {v.lastLoggedAt && (
               <div>
                 <dt>Last logged by you</dt>

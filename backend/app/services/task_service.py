@@ -622,6 +622,44 @@ def _history_model_scores(task: AssessmentTask) -> dict[str, Any]:
     return ms
 
 
+#: ``per_recall`` labels (app/ml/recall.py) → history summary keys.
+_STORY_RECALL_KEYS = {"immediate_1": "story1_recall", "immediate_2": "story2_recall",
+                      "delayed": "story1_delayed_recall"}
+_SUMMARY_MAX_KEYS = 10
+
+
+def _pick(src: Any, keys: dict[str, str] | tuple[str, ...]) -> dict[str, Any]:
+    """``{out_key: src[in_key]}`` for the numeric / bool entries of a dict (None and non-numbers skipped)."""
+    if not isinstance(src, dict):
+        return {}
+    pairs = keys.items() if isinstance(keys, dict) else ((k, k) for k in keys)
+    return {out: src[k] for k, out in pairs if isinstance(src.get(k), (int, float))}  # bool is an int
+
+
+def _history_summary(task: AssessmentTask) -> dict[str, Any]:
+    """Chart-ready highlights per task type (API.md §7): plain numbers/bools only, at most 10 keys."""
+    f = task.features if isinstance(task.features, dict) else {}
+    rq = task.recording_quality if isinstance(task.recording_quality, dict) else {}
+    out: dict[str, Any] = {}
+    if task.task_type == "finger_tap":
+        out.update(_pick(f, ("tap_count", "mean_iti_ms", "iti_cv", "asymmetry")))
+        for hand in ("left", "right"):
+            out.update(_pick(f.get(hand), {"tap_count": f"{hand}_tap_count", "iti_cv": f"{hand}_iti_cv"}))
+    elif task.task_type == "sustained_vowel":
+        out.update(_pick(rq, {"duration_s": "duration_s", "voiced_s": "voiced_s", "snr_db": "snr_db",
+                              "clip_frac": "clip_frac", "ok": "quality_ok"}))
+        out.update(_pick((task.model_scores or {}).get(PD_VOWEL_KEY), ("probability", "threshold", "above_threshold")))
+        out.update(_pick(f, {"CPPS": "cpps"}))
+    elif task.task_type == "story_recall":
+        if isinstance(task.score, (int, float)):
+            out["score"] = task.score
+        out.update(_pick(f.get("per_recall"), _STORY_RECALL_KEYS))
+        out.update(_pick(f, ("content_unit_fraction_mean",)))
+    elif task.task_type == "word_recall":
+        out.update(_pick(f, ("score", "max_score")))
+    return dict(list(out.items())[:_SUMMARY_MAX_KEYS])
+
+
 def list_tasks(db: Session, user: User, task_type: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
     """Newest-first task history. The vowel model score is flagged detail-only (§11.2)."""
     if task_type is not None and task_type not in TASK_TYPES:
@@ -636,7 +674,7 @@ def list_tasks(db: Session, user: User, task_type: str | None = None, limit: int
             "status": IN_PROGRESS if t.invalid_reason == IN_PROGRESS else "complete",
             "score": t.score, "valid": bool(t.valid), "invalid_reason": t.invalid_reason,
             "language": t.language, "protocol_version": t.protocol_version,
-            "model_scores": _history_model_scores(t),
+            "model_scores": _history_model_scores(t), "summary": _history_summary(t),
         }
         for t in db.scalars(q)
     ]

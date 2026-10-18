@@ -1,16 +1,21 @@
 import { useState } from "react";
 import ConditionSheet from "./ConditionSheet.jsx";
 import RiskBar from "./RiskBar.jsx";
-import { conditionLevel, formatPct, naturalFrequency } from "../utils/risk.js";
 
-// Per-disease estimates beside the overall index, under their own heading and
-// stacked to match the big card: the % chance within the method's time frame,
-// said as "about N in 100 people like you", and a banded bar with a tick for a
-// typical healthy person the same age. Tapping opens the explanation.
-// The heading drops down a fuller "how to read these" note on hover, click or
-// tap (touch has no hover). Clicking only opens it, so a click right after
-// hovering doesn't close it again; it closes when the pointer leaves, focus
-// moves away (tab, or a tap elsewhere) or on Esc.
+// One compact card per condition beside the overall index. Every card has the
+// same shape: the name, a level chip, a bar and one line of context. The bar is
+// the follow-up priority (0-100) the rules assigned, banded at "watch" (25) and
+// "follow-up recommended" (60). Tapping a card opens the evidence behind it.
+const PRIORITY_BANDS = [25, 60];
+
+const LEVEL_CHIP = {
+  insufficient_data: "Not enough data",
+  invalid_measurement: "Check readings",
+  no_finding: "No findings",
+  watch: "Keep an eye on",
+  followup_recommended: "Follow-up recommended",
+};
+
 export default function ConditionRisks({ items, age, updatedAt, basis }) {
   const [openId, setOpenId] = useState(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -34,7 +39,7 @@ export default function ConditionRisks({ items, age, updatedAt, basis }) {
             aria-controls="condition-group-about"
             onClick={() => setAboutOpen(true)}
           >
-            Risk assessments for key conditions
+            Key conditions
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 9l6 6 6-6" />
             </svg>
@@ -42,21 +47,17 @@ export default function ConditionRisks({ items, age, updatedAt, basis }) {
         </h2>
         <div id="condition-group-about" className="cg-about" hidden={!aboutOpen}>
           <p>
-            Each card is your estimated chance of developing that condition within the years shown, worked out from
-            your chats, your doctors' diagnoses and clinical risk models.
+            Each bar is how much follow-up your recent data calls for in that area (0-100), from your readings,
+            check-ins and daily tasks checked against clinical rules.
           </p>
           <ul className="cg-legend">
             <li>
               <i className="cg-fill" aria-hidden="true" />
-              The filled part of the bar is your risk.
-            </li>
-            <li>
-              <i className="legend-tick" aria-hidden="true" />
-              The tick marks a typical healthy person your age.
+              The filled part of the bar is your follow-up priority.
             </li>
             <li>
               <i className="cg-bands" aria-hidden="true" />
-              The track runs from low (green) through moderate (amber) to high (red).
+              The track runs from low (green) through watch (amber) to high (red).
             </li>
           </ul>
           <p>Tap a card to see the evidence behind it. These are estimates, not a diagnosis.</p>
@@ -64,11 +65,10 @@ export default function ConditionRisks({ items, age, updatedAt, basis }) {
       </div>
       <ul className="condition-risks">
         {items.map((c) => {
-          const level = conditionLevel(c);
-          // Backend pathways without a % (cognitive, Parkinson's) show their finding instead.
-          const hasPct = c.risk != null;
-          const freq = hasPct ? naturalFrequency(c.risk) : null;
-          const typical = c.typical != null ? ` Typical for your age: ${formatPct(c.typical)}.` : "";
+          const level = c.tone ?? "Low";
+          const chip = LEVEL_CHIP[c.level] ?? c.finding;
+          const barItem = { risk: c.priority ?? 0, bands: PRIORITY_BANDS, typical: null };
+          const foot = c.headline || "Nothing in your recent data points to this.";
           return (
             <li key={c.id}>
               <button
@@ -76,30 +76,16 @@ export default function ConditionRisks({ items, age, updatedAt, basis }) {
                 className={`card tappable condition-risk risk-tone ${level.toLowerCase()}`}
                 onClick={() => setOpenId(c.id)}
                 aria-haspopup="dialog"
-                aria-label={
-                  hasPct
-                    ? `${c.name}: ${formatPct(c.risk)} chance in ${c.horizon} years, ${level.toLowerCase()} risk.${typical} Show why`
-                    : `${c.name}: ${c.finding}. ${c.headline ?? ""} Show why`
-                }
+                aria-label={`${c.name}: ${chip}. ${foot} Show why`}
               >
                 <span className="condition-head">
                   <span className="condition-name">{c.name}</span>
-                  <span className={`condition-score ${hasPct ? "" : "condition-finding"}`}>
-                    {hasPct ? formatPct(c.risk) : c.finding}
+                  <span className="condition-right">
+                    <span className="condition-chip">{chip}</span>
                   </span>
                 </span>
-                {hasPct && <RiskBar c={c} />}
-                <span className="condition-foot">
-                  {hasPct ? (
-                    <>
-                      <span className="condition-level">{level} risk</span>
-                      {` · about ${freq.count} in ${freq.of.toLocaleString()} people like you within ${c.horizon} years`}
-                      {c.typical != null && ` · typical for your age ${formatPct(c.typical)}`}
-                    </>
-                  ) : (
-                    c.headline
-                  )}
-                </span>
+                <RiskBar c={barItem} />
+                <span className="condition-foot">{foot}</span>
               </button>
             </li>
           );

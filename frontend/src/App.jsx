@@ -3,11 +3,9 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import TopBar from "./components/TopBar.jsx";
 import HistorySidebar from "./components/HistorySidebar.jsx";
 import Overview from "./pages/Overview.jsx";
-import VitalsPage from "./pages/VitalsPage.jsx";
-import CheckInPage from "./pages/CheckInPage.jsx";
-import AssessmentsPage from "./pages/AssessmentsPage.jsx";
+import DailyTasksPage from "./pages/DailyTasksPage.jsx";
+import DataPage from "./pages/DataPage.jsx";
 import AppointmentsPage from "./pages/AppointmentsPage.jsx";
-import MedicationsPage from "./pages/MedicationsPage.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
 import AutoBookSheet from "./components/AutoBookSheet.jsx";
 import DevRiskControl from "./components/DevRiskControl.jsx";
@@ -15,7 +13,7 @@ import Landing from "./pages/Landing.jsx";
 import SignInSplash from "./components/SignInSplash.jsx";
 import usePrefersReducedMotion from "./hooks/usePrefersReducedMotion.js";
 import { useSession } from "./context/SessionContext.jsx";
-import { navItems } from "./data/placeholder.js";
+import { navItems } from "./nav.js";
 import "./styles/dashboard.css";
 import "./styles/pages.css";
 import "./styles/chat.css";
@@ -99,11 +97,12 @@ function Dashboard() {
         <div className="content">
           <Routes>
             <Route path="/" element={<Overview />} />
-            <Route path="/vitals" element={<VitalsPage />} />
-            <Route path="/checkin" element={<CheckInPage />} />
-            <Route path="/assessments" element={<AssessmentsPage />} />
+            <Route path="/vitals" element={<Navigate to="/data" replace />} />
+            <Route path="/checkin" element={<Navigate to="/tasks" replace />} />
+            <Route path="/tasks" element={<DailyTasksPage />} />
+            <Route path="/data" element={<DataPage />} />
+            <Route path="/assessments" element={<Navigate to="/tasks" replace />} />
             <Route path="/appointments" element={<AppointmentsPage />} />
-            <Route path="/medications" element={<MedicationsPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:id" element={<ChatPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

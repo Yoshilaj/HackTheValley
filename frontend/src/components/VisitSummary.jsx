@@ -1,15 +1,13 @@
 import { createPortal } from "react-dom";
-import useMedications from "../hooks/useMedications.js";
 import { useProfile } from "../context/ProfileContext.jsx";
 import useVitals from "../hooks/useVitals.js";
 import { ageFrom } from "../utils/dates.js";
 
 // One-page summary to print and bring to an appointment: who you are, the
-// visit, your medications, your latest readings and space for questions.
+// visit, your latest readings and space for questions.
 // Rendered into <body> only while printing; print CSS hides the app around it.
 export default function VisitSummary({ appointment: a }) {
   const { vitals } = useVitals();
-  const { medications: medicationList } = useMedications();
   const { profile: patient } = useProfile();
   const born =
     ageFrom(patient.dateOfBirth) == null
@@ -58,30 +56,6 @@ export default function VisitSummary({ appointment: a }) {
             </>
           )}
         </dl>
-      </section>
-
-      <section>
-        <h2>Current medications</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Medication</th>
-              <th>Dose</th>
-              <th>How often</th>
-              <th>For</th>
-            </tr>
-          </thead>
-          <tbody>
-            {medicationList.map((m) => (
-              <tr key={m.id}>
-                <td>{m.name}</td>
-                <td>{m.dose}</td>
-                <td>{m.frequency}</td>
-                <td>{m.purpose}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </section>
 
       <section>

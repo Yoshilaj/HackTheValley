@@ -14,7 +14,8 @@ Reserved hook names for other owners (not registered here yet):
 - `process_pending_uploads`  (C1, app/services/ingest*)    e.g. interval_minutes=60
 - `appointment_followups`    (C6, app/services/booking*)   e.g. interval_minutes=60
 
-Built-ins registered here: `cleanup_expired_jobs`, `weekly_summary_notifications`.
+Built-ins registered here: `cleanup_expired_jobs`. `nightly_risk_assessment` and
+`weekly_summary_notifications` live in app/jobs/risk_jobs.py.
 
 `run_job(name)` creates a Job row (status running -> done | failed), runs the function in
 its own session, records result / error, and audits. It refuses (JobAlreadyRunning) to start
@@ -165,21 +166,3 @@ def cleanup_expired_jobs(db: Session) -> dict[str, Any]:
     """Placeholder: report Job row counts by status (no deletion yet)."""
     rows = db.execute(select(Job.status, func.count(Job.id)).group_by(Job.status)).all()
     return {"deleted": 0, "by_status": {status: count for status, count in rows}}
-
-
-@job("weekly_summary_notifications", cron="0 9 * * 1")
-def weekly_summary_notifications(db: Session) -> dict[str, Any]:
-    """Placeholder: one in-app `weekly_summary` notification per user (no email)."""
-    from app.db.models import User
-    from app.services.notify import KIND_WEEKLY_SUMMARY, notify
-
-    users = list(db.scalars(select(User)))
-    for user in users:
-        ja = ((user.profile.language if user.profile else None) or "en").startswith("ja")
-        notify(
-            db, user.id, KIND_WEEKLY_SUMMARY,
-            "今週のまとめ" if ja else "Your weekly summary",
-            "今週の記録をダッシュボードで確認しましょう。" if ja else "Review this week's records on your dashboard.",
-            commit=False,
-        )
-    return {"notified": len(users)}

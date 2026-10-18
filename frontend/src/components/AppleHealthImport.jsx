@@ -8,7 +8,8 @@ import { getUploadJob, uploadAppleHealth } from "../api/client.js";
 // irregular-rhythm or ECG results (RHY-01).
 const POLL_MS = 1500;
 
-export default function AppleHealthImport() {
+// onImported: called once the import finishes, so the page can re-read its data.
+export default function AppleHealthImport({ onImported, embedded = false }) {
   const [job, setJob] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -19,6 +20,10 @@ export default function AppleHealthImport() {
     const t = setTimeout(() => getUploadJob(job.id).then(setJob).catch(() => {}), POLL_MS);
     return () => clearTimeout(t);
   }, [job]);
+
+  useEffect(() => {
+    if (job?.status === "done") onImported?.(job);
+  }, [job?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = async (e) => {
     const file = e.target.files?.[0];
@@ -38,21 +43,14 @@ export default function AppleHealthImport() {
   };
 
   const counts = job?.result ?? {};
-  return (
-    <section className="card" aria-labelledby="apple-title">
-      <div className="card-head">
-        <h2 id="apple-title">Apple Watch data</h2>
-        {job?.status === "done" && <em className="badge normal">Imported</em>}
-      </div>
-      <p className="field-hint">
-        On your iPhone: Health → your picture → Export All Health Data, then AirDrop or save the export.zip here.
-        Walking speed, step length, sleep and any irregular-rhythm or ECG results feed your assessment.
-      </p>
+  const body = (
+    <>
       <input ref={input} type="file" accept=".zip,.xml,application/zip,text/xml" className="sr-only" onChange={pick} />
       <div className="book-actions apple-actions">
         <button type="button" className="btn-secondary" disabled={busy} onClick={() => input.current?.click()}>
-          {busy ? "Uploading…" : "Choose export.zip"}
+          {busy ? "Uploading…" : "Upload export.zip"}
         </button>
+        {job?.status === "done" && <em className="badge normal">Imported</em>}
       </div>
       {error && (
         <p className="field-error" role="alert">
@@ -68,6 +66,19 @@ export default function AppleHealthImport() {
               : `Import failed${job.error ? `: ${job.error}` : "."}`}
         </p>
       )}
+    </>
+  );
+  if (embedded) return <div className="apple-embedded">{body}</div>;
+  return (
+    <section className="card" aria-labelledby="apple-title">
+      <div className="card-head">
+        <h2 id="apple-title">Apple Watch data</h2>
+      </div>
+      <p className="field-hint">
+        On your iPhone: Health → your picture → Export All Health Data, then AirDrop or save the export.zip here.
+        Walking speed, step length, sleep and any irregular-rhythm or ECG results feed your assessment.
+      </p>
+      {body}
     </section>
   );
 }

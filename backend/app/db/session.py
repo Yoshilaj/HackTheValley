@@ -82,6 +82,7 @@ def init_db(bind: Engine | None = None) -> None:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind)
     add_missing_columns(bind)
+    widen_string_columns(bind)
     add_missing_indexes(bind)
 
 
@@ -141,6 +142,38 @@ def add_missing_columns(bind: Engine | None = None) -> list[str]:
     if added:
         log.info("added missing columns: %s", ", ".join(added))
     return added
+
+
+def widen_string_columns(bind: Engine | None = None) -> list[str]:
+    """Second tiny migration: a VARCHAR(n) column the model has since lengthened (e.g.
+    ``assessment_tasks.protocol_version`` 32 -> 64) is widened with ``ALTER COLUMN … TYPE``.
+    Widening never loses data. Postgres only: SQLite does not enforce lengths. Returns
+    ["table.column", …] that were widened."""
+    import app.db.models  # noqa: F401
+
+    bind = bind or engine
+    if not is_postgres(bind):
+        return []
+    insp = inspect(bind)
+    existing_tables = set(insp.get_table_names())
+    widened: list[str] = []
+    prep = bind.dialect.identifier_preparer
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        have = {c["name"]: c["type"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            want = getattr(col.type, "length", None)
+            cur = getattr(have.get(col.name), "length", None)
+            if not want or not cur or cur >= want:
+                continue
+            ddl = f"ALTER TABLE {prep.quote(table.name)} ALTER COLUMN {prep.quote(col.name)} TYPE VARCHAR({want})"
+            with bind.begin() as conn:
+                conn.execute(text(ddl))
+            widened.append(f"{table.name}.{col.name}")
+    if widened:
+        log.info("widened columns: %s", ", ".join(widened))
+    return widened
 
 
 def get_db() -> Iterator[Session]:

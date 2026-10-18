@@ -1,8 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { USE_BACKEND, grantConsent } from "../api/client.js";
+import { grantConsent } from "../api/client.js";
 import useRiskAssessment, { PATHWAYS, riskLevel } from "../hooks/useRiskAssessment.js";
-import useRecommendations from "../hooks/useRecommendations.js";
-import { slotLabel } from "../utils/slots.js";
 import { useAppointments } from "./AppointmentsContext.jsx";
 import { useSession } from "./SessionContext.jsx";
 
@@ -10,20 +8,16 @@ import { useSession } from "./SessionContext.jsx";
 // highest of the condition bars) reaches AUTO_BOOK_THRESHOLD, CareSync flags it
 // for follow-up and opens the pop-up. Nothing is booked without the user's say.
 //
-// Backend on: the AI booking agent plans a request for the highest of the three
-// condition bars (POST /api/appointments/auto): a real clinic nearby, three
-// times, and which of its three booking channels (web form, e-mail, phone call)
-// can reach it. The pop-up lets the user pick one available channel and the
-// agent contacts the clinic that way only. Alert statuses: "planning" ->
-// "consent" (sharing with clinics not allowed yet) -> "choose" -> "sent";
-// "failed" when no clinic could be planned; "declined" after "Not now".
-//
-// Backend off: a visit is held with the nearest matching placeholder clinic and
-// "Confirm booking" books it in this browser (statuses "pending", "confirmed").
+// The AI booking agent plans a request for the highest of the three condition
+// bars (POST /api/appointments/auto): a real clinic nearby, three times, and
+// which of its three booking channels (web form, e-mail, phone call) can reach
+// it. The pop-up lets the user pick one available channel and the agent
+// contacts the clinic that way only. Alert statuses: "planning" -> "consent"
+// (sharing with clinics not allowed yet) -> "choose" -> "sent"; "failed" when
+// no clinic could be planned; "declined" after "Not now".
 export const AUTO_BOOK_THRESHOLD = 85;
 const ALERT_KEY = "caresync-care-alert";
 const DEV_KEY = "caresync-dev-risk";
-export const HOLD_HOURS = 24;
 const OPEN_AGENT = ["planning", "consent", "choose"]; // released if the risk drops before a choice
 
 const load = (key) => {
@@ -42,25 +36,6 @@ const store = (key, value) => {
   }
 };
 
-// Matching specialist if there is one, otherwise the nearest; earliest slot.
-function holdVisit(recs, suspected, score, note) {
-  const open = recs.filter((r) => r.slots?.length);
-  const rec =
-    open.find((r) => suspected && r.specialty === suspected.specialty) ??
-    [...open].sort((a, b) => a.distanceKm - b.distanceKm)[0];
-  if (!rec) return null;
-  const { slots, ...snapshot } = rec;
-  return {
-    status: "pending", // "pending" | "declined" | "confirmed"
-    read: false,
-    rec: snapshot,
-    slot: [...slots].sort()[0],
-    suspected: suspected ?? { condition: "Needs a check-up", why: note, bring: "Photo ID and health card" },
-    score,
-    createdAt: Date.now(),
-  };
-}
-
 // Backend appointment status -> the pop-up's step.
 function stepFor(appt) {
   if (appt.status === "awaiting_approval") return "choose";
@@ -70,11 +45,6 @@ function stepFor(appt) {
 
 // Title and one line for the notification list and the chat banner.
 function describe(alert, appt) {
-  if (alert.kind !== "agent") {
-    return alert.status === "confirmed"
-      ? { title: "Appointment confirmed", body: `${alert.rec.name}, ${slotLabel(alert.slot)}` }
-      : { title: "Flagged for follow-up", body: `Visit held with ${alert.rec.name}, ${slotLabel(alert.slot)}. Confirm to book.` };
-  }
   const clinic = appt?.clinic?.name;
   const area = PATHWAYS[alert.pathway]?.name ?? "A condition";
   const body = {
@@ -92,14 +62,13 @@ const CareAlertContext = createContext(null);
 
 export function CareAlertProvider({ children }) {
   const assessed = useRiskAssessment();
-  const { items: recs } = useRecommendations();
-  const { bookVisit, isBooked, loaded, startAutoVisit, approveVisit, declineVisit, agentById } = useAppointments();
+  const { loaded, startAutoVisit, approveVisit, declineVisit, agentById } = useAppointments();
   const { signedIn } = useSession();
   const [devScore, setDevScoreState] = useState(() => (import.meta.env.DEV ? load(DEV_KEY) : null));
-  // With the backend on, a browser-only hold saved by an older version is dropped.
+  // Only the agent's requests are remembered; a browser-only hold saved by an older version is dropped.
   const [alert, setAlertState] = useState(() => {
     const saved = load(ALERT_KEY);
-    return USE_BACKEND && saved?.kind !== "agent" ? null : saved;
+    return saved?.kind === "agent" ? saved : null;
   });
   const [appt, setAppt] = useState(null); // the agent's request, as the backend last returned it
   const [promptOpen, setPromptOpen] = useState(false);
@@ -135,9 +104,7 @@ export function CareAlertProvider({ children }) {
         setError(
           e?.status === 404
             ? "CareSync needs a risk assessment for this area before it can find a clinic."
-            : e?.status === 409
-              ? "This looks urgent. Call 911 or go to the nearest emergency department instead of booking."
-              : "Couldn't reach CareSync to arrange the visit. Try again in a moment."
+            : "Couldn't reach CareSync to arrange the visit. Try again in a moment."
         );
       }
     } finally {
@@ -148,63 +115,31 @@ export function CareAlertProvider({ children }) {
   useEffect(() => {
     if (!signedIn) return; // guests have no assessment to flag
     if (score >= AUTO_BOOK_THRESHOLD && !alert) {
-      if (USE_BACKEND) {
-        const base = { kind: "agent", status: "planning", pathway: assessed.bookingPathway, score, read: false, createdAt: Date.now() };
-        setAlert(base);
-        setPromptOpen(true);
-        startAgent(base);
-        return;
-      }
-      const held = holdVisit(recs, assessed.suspected, score, assessed.note);
-      if (held) {
-        setAlert(held);
-        setError("");
-        setPromptOpen(true);
-      }
+      const base = { kind: "agent", status: "planning", pathway: assessed.bookingPathway, score, read: false, createdAt: Date.now() };
+      setAlert(base);
+      setPromptOpen(true);
+      startAgent(base);
     } else if (score < AUTO_BOOK_THRESHOLD && alert) {
       // Risk came back down before the user decided: release the alert. A request
       // the agent planned stays under Appointments until approved or declined.
-      const undecided = alert.kind === "agent" ? OPEN_AGENT.includes(alert.status) : alert.status !== "confirmed";
-      if (undecided) {
+      if (OPEN_AGENT.includes(alert.status)) {
         setAlert(null);
         setAppt(null);
         setPromptOpen(false);
       }
     }
-  }, [signedIn, score, alert, recs, assessed.suspected, assessed.note, assessed.bookingPathway]);
+  }, [signedIn, score, alert, assessed.bookingPathway]);
 
   // After a reload: re-ask a request that was still being planned, and pick up
   // the saved request's latest state once the appointment list has it.
   useEffect(() => {
-    if (!signedIn || alert?.kind !== "agent") return;
+    if (!signedIn || !alert) return;
     if (alert.status === "planning") startAgent(alert);
     else if (alert.appointmentId && !appt) {
       const known = agentById(alert.appointmentId);
       if (known) setAppt(known.raw);
     }
-  }, [signedIn, alert?.kind, alert?.status, alert?.appointmentId, loaded]);
-
-  // Backend off: the confirmed visit was cancelled from Appointments, so offer
-  // the hold again instead of showing "confirmed" for a visit that no longer exists.
-  const confirmedGone = loaded && alert?.kind !== "agent" && alert?.status === "confirmed" && !isBooked(alert.rec.id);
-  useEffect(() => {
-    if (confirmedGone) setAlert({ ...alert, status: "declined" });
-  }, [confirmedGone]);
-
-  const confirm = async () => {
-    if (!alert) return;
-    setError("");
-    setConfirming(true);
-    try {
-      await bookVisit(alert.rec, alert.slot, `Held by CareSync: ${alert.suspected.condition}`);
-    } catch {
-      setError("Couldn't confirm with the clinic. Try again in a moment.");
-      return;
-    } finally {
-      setConfirming(false);
-    }
-    setAlert({ ...alert, status: "confirmed", read: true });
-  };
+  }, [signedIn, alert?.status, alert?.appointmentId, loaded]);
 
   // "Allow and continue": the share_with_clinic consent, then plan the request.
   const allowSharing = async () => {
@@ -244,7 +179,7 @@ export function CareAlertProvider({ children }) {
   };
 
   const decline = async () => {
-    if (alert?.kind === "agent" && alert.status === "choose" && alert.appointmentId) {
+    if (alert?.status === "choose" && alert.appointmentId) {
       try {
         await declineVisit(alert.appointmentId);
       } catch {
@@ -266,7 +201,6 @@ export function CareAlertProvider({ children }) {
     error,
     devScore,
     setDevScore,
-    confirm,
     allowSharing,
     bookBy,
     retry: () => alert && startAgent({ ...alert, status: "planning" }),

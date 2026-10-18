@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  USE_BACKEND,
   deleteConversation,
   getConversationMessages,
   getConversations,
@@ -16,30 +15,17 @@ import { useSession } from "./SessionContext.jsx";
 // stage ("searching" | "thinking") and thinking (the model's thinking so far).
 // sendMessage(id, text, files?) - id null starts a new conversation.
 //
-// Backend off: kept in this browser (localStorage), shared by whoever uses it.
-// Backend on: each signed-in user's conversations live on the server (Neon),
-// so a different login sees a different history. The list loads after sign-in;
-// a conversation's messages load the first time it's opened (loadMessages).
-// A new chat gets a local id at once (so the page can open it) and its server
-// id (remoteId) from the first reply. Guests have no account, so their chats
-// stay in memory and the assistant asks them to sign in.
-// Attachments: with the backend on, each file is uploaded to the user's record
+// Each signed-in user's conversations live on the server, so a different login
+// sees a different history. The list loads after sign-in; a conversation's
+// messages load the first time it's opened (loadMessages). A new chat gets a
+// local id at once (so the page can open it) and its server id (remoteId) from
+// the first reply. Guests have no account, so their chats stay in memory and
+// the assistant asks them to sign in.
+// Attachments: each file is uploaded to the user's record
 // (/api/uploads/document, stored in the database) before the message is sent,
 // and the message tells the assistant what was attached, with the summary the
-// backend read from it. Without the backend they're only named. Messages keep
-// { name, size, type } per file for display.
-const STORAGE_KEY = "caresync-chats";
+// backend read from it. Messages keep { name, size, type } per file for display.
 const ChatHistoryContext = createContext(null);
-
-function loadChats() {
-  if (USE_BACKEND) return [];
-  try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    return Array.isArray(data) ? data.map((c) => ({ ...c, loaded: true })) : [];
-  } catch {
-    return [];
-  }
-}
 
 const makeId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const titleFrom = (text) => (text.length > 40 ? `${text.slice(0, 40).trimEnd()}…` : text);
@@ -103,8 +89,8 @@ function fromServerMessage(m) {
 
 export function ChatHistoryProvider({ children }) {
   const { session, signedIn } = useSession();
-  const [chats, setChats] = useState(loadChats);
-  const [ready, setReady] = useState(!USE_BACKEND); // false until the user's list has loaded
+  const [chats, setChats] = useState([]);
+  const [ready, setReady] = useState(false); // false until the user's list has loaded
   const [pending, setPending] = useState({}); // chat id -> waiting for a reply
   const [errors, setErrors] = useState({}); // chat id -> { text, files, signIn? } of the question that failed
   const busy = useRef(new Set());
@@ -112,25 +98,8 @@ export function ChatHistoryProvider({ children }) {
   chatsRef.current = chats;
   const account = signedIn ? session?.userId ?? session?.email : null;
 
-  // Backend off: keep history in this browser.
+  // A new login (or sign-out) swaps in that account's conversations.
   useEffect(() => {
-    if (USE_BACKEND) return;
-    try {
-      // A reply still streaming isn't kept (after a reload it would never finish),
-      // and finished ones are shown whole next time rather than typed out again.
-      const saved = chats.map(({ loaded: _l, ...c }) => ({
-        ...c,
-        messages: c.messages.filter((m) => !m.streaming).map(({ typed: _t, thinking: _th, stage: _s, ...m }) => m),
-      }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-    } catch {
-      /* storage unavailable: history just won't persist */
-    }
-  }, [chats]);
-
-  // Backend on: a new login (or sign-out) swaps in that account's conversations.
-  useEffect(() => {
-    if (!USE_BACKEND) return;
     setChats([]);
     setPending({});
     setErrors({});
@@ -171,7 +140,7 @@ export function ChatHistoryProvider({ children }) {
   const loadMessages = useCallback(
     async (id) => {
       const chat = chatsRef.current.find((c) => c.id === id);
-      if (!USE_BACKEND || !chat || chat.loaded || !chat.remoteId) return;
+      if (!chat || chat.loaded || !chat.remoteId) return;
       patchChat(id, (c) => ({ ...c, loaded: true }));
       try {
         const msgs = await getConversationMessages(chat.remoteId);
@@ -191,20 +160,16 @@ export function ChatHistoryProvider({ children }) {
       setPending((p) => ({ ...p, [id]: true }));
       setErrors((e) => without(e, id));
       try {
-        if (USE_BACKEND && !account) {
+        if (!account) {
           const err = new Error("guest");
           err.signIn = true;
           throw err;
         }
-        if (note == null && files.length) {
-          note = USE_BACKEND
-            ? (await uploadAttachments(files)).join("\n")
-            : `(Attached: ${files.map((f) => f.name).join(", ")})`;
-        }
+        if (note == null && files.length) note = (await uploadAttachments(files)).join("\n");
         // The backend takes at most 4000 characters per message.
         const named = (note ? `${text}\n\n${note}`.trim() : text).slice(0, 4000);
         const remoteId = chatsRef.current.find((c) => c.id === id)?.remoteId;
-        const options = { conversationId: remoteId, newConversation: USE_BACKEND && !remoteId };
+        const options = { conversationId: remoteId, newConversation: !remoteId };
         // The reply appears with the first event and fills in as it streams.
         const live = { id: makeId(), role: "assistant", text: "", typed: true, streaming: true, thinking: "" };
         let started = false;
@@ -291,7 +256,7 @@ export function ChatHistoryProvider({ children }) {
     const remoteId = chatsRef.current.find((c) => c.id === id)?.remoteId;
     setChats((cs) => cs.filter((c) => c.id !== id));
     setErrors((e) => without(e, id));
-    if (USE_BACKEND && remoteId) {
+    if (remoteId) {
       deleteConversation(remoteId).catch(() => {
         /* it reappears on the next load if the server kept it */
       });

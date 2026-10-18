@@ -33,7 +33,7 @@ export function riskColors(score) {
 
 // The overall risk index (0-100), with what it combines, what it's based on,
 // when it was updated and how it moved since last month.
-export default function RiskAssessment({ score, level, previous, updatedAt, basis, conditionCount, onOpen, onContact }) {
+export default function RiskAssessment({ score, level, previous, updatedAt, basis, conditionCount, onOpen }) {
   const change = changeSince(score, previous?.score);
   const combines = conditionCount ? `Combines ${conditionCount} condition estimates, based on ` : "Based on ";
 
@@ -62,21 +62,22 @@ export default function RiskAssessment({ score, level, previous, updatedAt, basi
         {basisText(basis)}.
       </p>
       <div className="risk-actions">
-        <Link to="/appointments#book" className="btn-dark">
+        <Link to="/chat" className="btn-dark">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
             <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
           </svg>
-          Let CareSync book a visit
+          Ask CareSync anything
         </Link>
-        <button type="button" className="btn-light" onClick={onContact} aria-haspopup="dialog">
-          <span>Contact care team</span>
+        <Link to="/tasks" className="btn-light">
+          <span>Daily tasks</span>
           <i className="dial" aria-hidden="true">
             <svg viewBox="0 0 24 24">
-              <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2" />
+              <path d="M9 4h6l1 2h2a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7a1 1 0 011-1h2z" />
+              <path d="M8.5 13l2.5 2.5 4.5-5" />
             </svg>
           </i>
-        </button>
+        </Link>
       </div>
     </div>
   );

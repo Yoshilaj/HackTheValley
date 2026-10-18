@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
-import { USE_BACKEND, getNotifications, markAllNotificationsRead, markNotificationRead } from "../api/client.js";
+import { getNotifications, markAllNotificationsRead, markNotificationRead } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
-import { notifications as seed } from "../data/placeholder.js";
 import { timeAgo } from "../utils/dates.js";
 
-// The bell's notifications: [{ id, kind, icon?, title, body, time, unread, to }].
-// Backend off: the placeholder list, read state kept in memory.
-// Backend on (signed in): GET /api/notifications, re-checked every minute;
-// marking read is saved with /api/notifications/{id}/read and /read-all.
+// The bell's notifications: [{ id, kind, icon?, title, body, time, unread, to }],
+// from GET /api/notifications once signed in, re-checked every minute; marking
+// read is saved with /api/notifications/{id}/read and /read-all.
 
 const REFRESH_MS = 60_000;
 
@@ -18,8 +16,7 @@ function kindOf(kind, payload) {
     const id = payload?.appointment_id;
     return { kind: "appointment", to: id ? `/appointments?appointment=${encodeURIComponent(id)}` : "/appointments" };
   }
-  if (kind.includes("medication") || kind.includes("refill")) return { kind: "medication", to: "/medications" };
-  return { kind: "risk", icon: "alert", to: "/" }; // follow-up findings, level changes, emergencies
+  return { kind: "risk", icon: "alert", to: "/" }; // follow-up findings, level changes, weekly summaries
 }
 
 // Backend bodies can be several lines with rule ids ("[BP-02 v1]"); the bell shows one short line.
@@ -46,12 +43,11 @@ function fromBackend(n) {
 
 export default function useNotifications() {
   const { signedIn } = useSession();
-  const live = USE_BACKEND && signedIn;
-  const [items, setItems] = useState(USE_BACKEND ? [] : seed);
+  const [items, setItems] = useState([]);
 
   useEffect(() => {
-    if (!live) {
-      if (USE_BACKEND) setItems([]);
+    if (!signedIn) {
+      setItems([]);
       return;
     }
     let cancelled = false;
@@ -67,16 +63,16 @@ export default function useNotifications() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [live]);
+  }, [signedIn]);
 
   const markRead = (id) => {
     setItems((ns) => ns.map((n) => (n.id === id ? { ...n, unread: false } : n)));
-    if (live) markNotificationRead(id).catch(() => {});
+    markNotificationRead(id).catch(() => {});
   };
 
   const markAllRead = () => {
     setItems((ns) => ns.map((n) => ({ ...n, unread: false })));
-    if (live) markAllNotificationsRead().catch(() => {});
+    markAllNotificationsRead().catch(() => {});
   };
 
   return { items, markRead, markAllRead };

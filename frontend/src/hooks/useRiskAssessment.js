@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
-import { USE_BACKEND, getRiskCards } from "../api/client.js";
+import { useCallback, useEffect, useState } from "react";
+import { getRiskCards } from "../api/client.js";
 import { useChatHistory } from "../context/ChatHistoryContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
-import { riskAssessment as placeholder } from "../data/placeholder.js";
+import { RISK_UPDATED_EVENT } from "../utils/riskEvents.js";
 
-// Risk score (0-100, higher = more risk) and the per-condition estimates.
-// Backend off: the placeholder assessment. Backend on: GET /api/risk/latest,
-// re-fetched as the chat history grows. The backend scores four pathways
+// Risk score (0-100, higher = more risk) and the per-condition estimates, from
+// GET /api/risk/latest, re-fetched as the chat history grows and whenever
+// something re-ran the assessment (RISK_UPDATED_EVENT). The backend scores four pathways
 // (cardio, cognitive, parkinsons, general), each with a 0-100 follow-up
 // priority, a level and the findings behind it; only cardio has a true
 // percentage (10-year Framingham risk). toAssessment maps that onto this shape:
@@ -58,8 +58,11 @@ function toCondition(card) {
   );
   return {
     id: meta.id,
+    pathway: card.pathway,
     name: meta.name,
     outcome: meta.outcome,
+    level: card.level,
+    priority: card.priority_score ?? null, // follow-up priority 0-100 (null = not enough data)
     risk: estimate ? estimate.value_pct : null,
     horizon: estimate ? 10 : null,
     typical: null,
@@ -107,33 +110,32 @@ function toAssessment(cards, chatCount) {
   };
 }
 
-const PLACEHOLDER = {
-  score: clamp(placeholder.score),
-  previous: placeholder.previous,
-  updatedAt: placeholder.updatedAt,
-  basis: null, // counted live below
-  note: placeholder.note,
-  suspected: placeholder.suspected,
-  conditions: placeholder.conditions,
-};
-
 // Until the backend answers, a blank assessment rather than someone else's numbers.
 const LOADING = { score: 0, previous: null, updatedAt: null, basis: null, note: "", suspected: null, conditions: [] };
 
 export default function useRiskAssessment() {
   const { chats } = useChatHistory();
   const { signedIn } = useSession();
-  const [data, setData] = useState(USE_BACKEND ? LOADING : PLACEHOLDER);
+  const [data, setData] = useState(LOADING);
+  const [cards, setCards] = useState([]); // the backend's cards as returned, for the trend charts
+  const [tick, setTick] = useState(0);
+  const refresh = useCallback(() => setTick((n) => n + 1), []);
 
-  // Re-assess whenever the chat history grows.
+  // Re-read whenever the chat history grows.
   const messageCount = chats.reduce((sum, c) => sum + c.messages.length, 0);
 
   useEffect(() => {
-    if (!USE_BACKEND || !signedIn) return;
+    if (!signedIn) {
+      setData(LOADING);
+      setCards([]);
+      return;
+    }
     let cancelled = false;
     getRiskCards()
-      .then((cards) => {
-        if (!cancelled && Array.isArray(cards) && cards.length) setData(toAssessment(cards, chats.length));
+      .then((list) => {
+        if (cancelled || !Array.isArray(list) || !list.length) return;
+        setCards(list);
+        setData(toAssessment(list, chats.length));
       })
       .catch(() => {
         /* keep the last assessment if the backend is unreachable */
@@ -141,10 +143,15 @@ export default function useRiskAssessment() {
     return () => {
       cancelled = true;
     };
-  }, [messageCount, signedIn]);
+  }, [messageCount, signedIn, tick]);
 
-  // What the assessment rests on; without the backend, count the chats here.
-  const basis = data.basis ?? { chats: chats.length, diagnoses: placeholder.basis.diagnoses };
+  // Something re-ran the assessment (a reading, a task, a check-in): re-read.
+  useEffect(() => {
+    window.addEventListener(RISK_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(RISK_UPDATED_EVENT, refresh);
+  }, [refresh]);
 
-  return { ...data, basis, level: riskLevel(data.score) };
+  const basis = data.basis ?? { chats: chats.length, diagnoses: 0 };
+
+  return { ...data, basis, level: riskLevel(data.score), cards, refresh };
 }

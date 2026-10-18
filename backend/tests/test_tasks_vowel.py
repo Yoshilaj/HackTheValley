@@ -46,6 +46,11 @@ def test_vowel_valid_with_model_score(client, db, h):
     assert t.features and "MDVP:Fo(Hz)" in t.features and t.raw_url
     hist = client.get("/api/tasks/history?task_type=sustained_vowel", headers=h).json()["items"]
     assert hist[0]["model_scores"]["pd_vowel"]["detail_only"] is True
+    summary = hist[0]["summary"]
+    assert summary["probability"] == pytest.approx(exp["probability"])
+    assert summary["threshold"] == exp["threshold"] and summary["above_threshold"] == exp["above_threshold"]
+    assert "snr_db" in summary and summary["quality_ok"] is True
+    assert {"duration_s", "voiced_s", "clip_frac"} <= set(summary) and len(summary) <= 10
 
 
 @pytest.mark.parametrize("kind", ["clipped", "noisy"])

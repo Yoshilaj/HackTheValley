@@ -57,6 +57,7 @@ METRIC_TYPES: dict[str, MetricType] = {
     "weight_kg": MetricType("kg", 20, 400, "mean", "Body mass"),
     "bmi": MetricType("kg/m2", 10, 80, "mean", "Body-mass index"),
     "body_temp_c": MetricType("degC", 30, 45, "mean", "Body temperature"),
+    "blood_glucose_mmol_l": MetricType("mmol/L", 1, 40, "mean", "Blood glucose (fingerstick / CGM)"),
 }
 
 #: Series names used by app/ml/rules.py (spec §5.2, §6) → our metric types.

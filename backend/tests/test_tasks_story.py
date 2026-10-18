@@ -95,6 +95,13 @@ def test_full_session_valid(client, app, db, user_headers, overrides):
     # GET status after finish
     g = client.get(f"/api/tasks/story/{tid}", headers=h).json()
     assert g["finished"] and g["result"]["valid"]
+    # history summary mirrors the result (per_recall labels renamed to the step names)
+    hist = client.get("/api/tasks/history?task_type=story_recall", headers=h).json()["items"]
+    summary = hist[0]["summary"]
+    assert hist[0]["id"] == tid and summary["score"] == res["score"]
+    assert summary["story1_recall"] == res["per_recall"]["immediate_1"]
+    assert summary["story1_delayed_recall"] == res["per_recall"]["delayed"]
+    assert summary["content_unit_fraction_mean"] == res["content_unit_fraction_mean"]
     # submitting again → 409
     assert _step(client, h, tid, "story1_delayed_recall").status_code == 409
 

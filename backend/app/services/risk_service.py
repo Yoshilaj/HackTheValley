@@ -36,7 +36,7 @@ from app.services.preventive import preventive_measures
 
 log = get_logger(__name__)
 
-TRIGGERS = ("manual", "nightly", "event")
+TRIGGERS = ("manual", "nightly", "weekly", "event")
 DATA_NEEDED_THROTTLE = timedelta(days=7)
 
 #: Called as ``hook(db, user, assessment)`` when a pathway newly reaches

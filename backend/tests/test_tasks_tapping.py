@@ -101,5 +101,10 @@ def test_history(client, h):
     assert items[0]["status"] == "in_progress" and items[1]["status"] == "complete"
     only = client.get("/api/tasks/history?task_type=finger_tap&limit=1", headers=h).json()["items"]
     assert len(only) == 1 and only[0]["valid"]
+    summary = only[0]["summary"]
+    assert summary["left_tap_count"] == 30 and summary["right_tap_count"] == 30 and summary["tap_count"] == 30
+    assert {"mean_iti_ms", "iti_cv", "asymmetry", "left_iti_cv", "right_iti_cv"} <= set(summary)
+    assert all(v is not None for v in summary.values()) and len(summary) <= 10
+    assert items[0]["summary"] == {}  # in-progress word recall has no features yet
     assert client.get("/api/tasks/history?task_type=nope", headers=h).status_code == 422
     assert client.get("/api/tasks/history").status_code == 401

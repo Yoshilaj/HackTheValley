@@ -1,26 +1,20 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useChatHistory } from "../context/ChatHistoryContext.jsx";
-import RiskBar from "./RiskBar.jsx";
-import { basisText, changeSince, conditionLevel, formatPct, naturalFrequency } from "../utils/risk.js";
+import { basisText } from "../utils/risk.js";
 import { capitalize, relativeDay } from "../utils/dates.js";
 
-// Liquid glass sheet explaining one condition estimate: the % chance in plain
-// words and as a 100-person picture, how it compares with a typical healthy
-// person the same age, the method, and the evidence behind it - the user's
-// chats, past doctors' diagnoses, and medical sources the backend retrieved
-// (RAG). Native <dialog> like DetailSheet.
-
-// 100 dots, `count` of them filled: the standard way to show "x in 100".
-function IconArray({ count }) {
-  return (
-    <div className="icon-array" role="img" aria-label={`${count} out of 100 people`}>
-      {Array.from({ length: 100 }, (_, i) => (
-        <span key={i} className={i < count ? "on" : undefined} />
-      ))}
-    </div>
-  );
-}
+// Liquid glass sheet explaining one condition: the finding, the method, and
+// the evidence behind it - what the data shows, the user's chats, past doctors'
+// diagnoses, and medical sources the backend retrieved (RAG). Native <dialog>
+// like DetailSheet.
+const LEVEL_CHIP = {
+  insufficient_data: "Not enough data",
+  invalid_measurement: "Check readings",
+  no_finding: "No findings",
+  watch: "Keep an eye on",
+  followup_recommended: "Follow-up recommended",
+};
 
 function Section({ title, icon, empty, children, count }) {
   return (
@@ -36,7 +30,7 @@ function Section({ title, icon, empty, children, count }) {
   );
 }
 
-export default function ConditionSheet({ condition, age, updatedAt, basis, onClose }) {
+export default function ConditionSheet({ condition, updatedAt, basis, onClose }) {
   const ref = useRef(null);
   const { chats } = useChatHistory();
 
@@ -48,12 +42,9 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
 
   const c = condition;
   const d = c?.details ?? {};
-  const level = c && conditionLevel(c);
+  const level = c?.tone ?? "Low"; // colour follows the finding level
   // Backend pathways without a % show their finding and evidence only.
-  const hasPct = c?.risk != null;
-  const freq = hasPct ? naturalFrequency(c.risk) : null;
-  const change = hasPct && changeSince(c.risk, c.previous, formatPct);
-  const peer = age ? `healthy ${age}-year-old` : "healthy person your age";
+  const chip = c && (LEVEL_CHIP[c.level] ?? c.finding);
 
   return (
     <dialog
@@ -67,7 +58,7 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
         <div className={`sheet-body risk-tone ${level.toLowerCase()}`}>
           <header className="sheet-head">
             <div>
-              <p className="label">{hasPct ? `${c.horizon}-year risk` : "Follow-up check"}</p>
+              <p className="label">Follow-up check</p>
               <h2 id="condition-title" className="book-title">
                 {c.name}
               </h2>
@@ -80,55 +71,14 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
           </header>
 
           <div className="condition-summary">
-            {hasPct ? (
-              <>
             <div className="condition-head">
-              <p className="condition-big">
-                {formatPct(c.risk)} <small>chance in the next {c.horizon} years</small>
-              </p>
-              <span className="condition-chip">{level} risk</span>
+              <p className="condition-big">{c.finding}</p>
+              <span className="condition-chip">{chip}</span>
             </div>
-            <RiskBar
-              c={c}
-              label={`Your risk ${formatPct(c.risk)}${c.typical != null ? `, typical for a ${peer} ${formatPct(c.typical)}` : ""}`}
-            />
-            <p className="risk-legend" aria-hidden="true">
-              <span>
-                <i className="legend-you" /> You {formatPct(c.risk)}
-              </span>
-              {c.typical != null && (
-                <span>
-                  <i className="legend-typical" /> Typical {peer} {formatPct(c.typical)}
-                </span>
-              )}
-            </p>
-            <p className="condition-plain">
-              About {freq.count} in {freq.of.toLocaleString("en-US")} people with a profile like yours will {c.outcome ?? "develop this"} in
-              the next {c.horizon} years.
-            </p>
-            {freq.of === 100 && <IconArray count={freq.count} />}
-              </>
-            ) : (
-              <div className="condition-head">
-                <p className="condition-big">{c.finding}</p>
-              </div>
-            )}
             {d.summary && <p>{d.summary}</p>}
           </div>
 
           <dl className="sheet-rows">
-            {c.method && (
-              <div>
-                <dt>Method</dt>
-                <dd>{c.method}</dd>
-              </div>
-            )}
-            {change && (
-              <div>
-                <dt>Change</dt>
-                <dd>{change}</dd>
-              </div>
-            )}
             <div>
               <dt>Based on</dt>
               <dd>{capitalize(basisText(basis))}</dd>
