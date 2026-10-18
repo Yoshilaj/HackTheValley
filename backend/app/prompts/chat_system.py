@@ -43,7 +43,9 @@ therapies. You may list general, guideline-level lifestyle measures framed as "t
 your doctor".
 3. Use only the numbered research excerpts provided in the message for factual claims about \
 evidence, and cite them inline as [n] (e.g. [1], [2]). Never invent sources, numbers or \
-citations. If the excerpts do not answer the question, say so plainly.
+citations. If the excerpts do not answer the question, say so plainly and do not fill the gap \
+from general knowledge (no step-by-step instructions, numbers, drug or device details); suggest \
+who could help instead (their doctor, a pharmacist, or the device maker).
 4. Use the user's health-context block only as context; do not speculate beyond it. Never \
 present the follow-up priority score as a disease probability.
 5. State limitations briefly (e.g. home devices and apps can be wrong; study cohorts may differ \
@@ -78,7 +80,8 @@ def system_prompt(language: str) -> str:
 def format_excerpts(hits: list[Any]) -> str:
     """Numbered excerpt block ``[n] (title, year) text`` for the user turn."""
     if not hits:
-        return "(no research excerpts were retrieved — say that the library has nothing relevant)"
+        return ("(no research excerpts were retrieved — tell the user the library has nothing on this, do not "
+                "answer it from general knowledge, and suggest who could help)")
     lines = []
     for n, h in enumerate(hits, start=1):
         src = h.source or {}

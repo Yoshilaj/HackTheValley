@@ -30,10 +30,13 @@ SCHEDULER_TIMEZONE=America/Toronto
   cross-encoder rerank, **relevance floor** (`RAG_MIN_RERANK_SCORE=-6.0`, cross-encoder only: chat
   `sources` can now be empty), parent expansion, 3000-token packing with `[n]` citations, soft cap of
   2 passages per source. Chat `sources[]` carries `section`; the response now also has `cited`.
-  **English-only corpus** (35 sources incl. Hypertension Canada 2020 + 2025, BP-monitor and smartwatch AF studies, CCS heart failure 2025, CSEP movement/sleep, CCSA alcohol, MDS + Canadian PD guidelines, PD finger tapping, Lancet dementia 2024, CCCDTD5; lay-term query expansion in app/rag/lexicon.py; JSH 2019, Suita and the OMRON press release removed;
+  **English-only corpus** (34 sources incl. Hypertension Canada 2020, BP-monitor and smartwatch AF studies, CCS heart failure 2025, CSEP movement/sleep, CCSA alcohol, MDS + Canadian PD guidelines, PD finger tapping, Lancet dementia 2024, CCCDTD5; lay-term query expansion in app/rag/lexicon.py; JSH 2019, Suita and the OMRON press release removed;
   references/acknowledgements/consent/etc. dropped at ingest). Quality is measured by
   `scripts/eval_rag.py` on `tests/fixtures/rag_eval.json` (116 questions, per-tag report) and gated by
   `tests/test_rag_eval.py`. Retrieval needs `EMBEDDING_PROVIDER=local` to match the ingested corpus.
+  The answer step is checked by `scripts/eval_answers.py` (real Gemini answer + Gemini judge, two
+  calls per question; 2026-10-17: 90% of answers fully supported by their excerpts, 96% correct
+  citations, 18/18 unanswerable questions say the library does not cover them).
 - **Region:** Canada only, English only. 911 / Health811 (811) / 9-8-8 (`CRISIS_LINE_NUMBER`);
   Framingham (CCS) as the long-term cardio context; America/Toronto.
 - **Booking agent v2:** Places discovery near the user → slots (calendar ∩ opening hours) → channel

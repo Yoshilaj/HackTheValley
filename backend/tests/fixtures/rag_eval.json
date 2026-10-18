@@ -1049,10 +1049,9 @@
    ]
   },
   {
-   "id": "htn25_target",
+   "id": "htn_target",
    "question": "What blood pressure target does Hypertension Canada recommend for most adults on treatment?",
    "sources": [
-    "src_hypertension_canada_2025",
     "src_hypertension_canada_2020"
    ],
    "terms": [
@@ -1063,10 +1062,9 @@
    ]
   },
   {
-   "id": "htn25_first_drug",
+   "id": "htn_first_drug",
    "question": "What medication should be started first for high blood pressure in primary care?",
    "sources": [
-    "src_hypertension_canada_2025",
     "src_hypertension_canada_2020"
    ],
    "terms": [
@@ -1119,7 +1117,6 @@
    "sources": [
     "src_ccsa_alcohol_2023",
     "src_hypertension_canada_2020",
-    "src_hypertension_canada_2025",
     "src_csbpr_secondary_prevention_2020"
    ],
    "tags": [
