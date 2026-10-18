@@ -217,8 +217,10 @@ def test_e2e_demo(client, app, db, demo, fakes, outbox):
     r = client.post("/api/tasks/vowel", headers=h, data={"repetition": "1"},
                     files={"audio": ("ahh.wav", _wav(synth_vowel()), "audio/wav")})
     assert r.status_code == 201 and r.json()["valid"], r.text
-    taps = [1000.0 + i * 210 for i in range(60)]
-    r = client.post("/api/tasks/tapping", headers=h, json={"left_ms": taps, "right_ms": taps})
+    ev = [{"key": "s;"[i % 2], "down_ms": 100 + i * 480.0, "up_ms": 190 + i * 480.0} for i in range(60)]
+    r = client.post("/api/tasks/tapping", headers=h, json={"input_method": "keyboard", "duration_s": 30,
+                                                           "keys": ["s", ";"], "left": {"events": ev},
+                                                           "right": {"events": ev}})
     assert r.status_code == 201 and r.json()["valid"], r.text
     hist = client.get("/api/tasks/history", headers=h).json()["items"]
     types = {i["task_type"] for i in hist}

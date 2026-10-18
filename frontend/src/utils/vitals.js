@@ -8,6 +8,8 @@ export const VITAL_INPUTS = {
     fields: [
       { key: "sys", label: "Systolic (top number)", min: 60, max: 260 },
       { key: "dia", label: "Diastolic (bottom number)", min: 30, max: 160 },
+      // The cuff's pulse reading; the backend stores it with the reading.
+      { key: "pulse", label: "Pulse", min: 25, max: 250, unit: "bpm", optional: true },
     ],
     check: ({ sys, dia }) => (sys < 120 && dia < 80 ? "normal" : "watch"),
     text: ({ sys, dia }) => `${sys}/${dia}`,
@@ -47,6 +49,22 @@ export const VITAL_INPUTS = {
 
 // Order of the choices in the form, most often logged first.
 export const VITAL_ORDER = ["bp", "hr", "glucose", "weight", "temp", "spo2"];
+
+// Home blood pressure is read in two sessions a day (spec §2): morning
+// (04:00-11:59) and evening (17:00-23:59); anything else is "other". The form
+// suggests the session from the time taken; the user can change it.
+export const BP_SESSIONS = [
+  { id: "morning", label: "Morning", hint: "Within 1 h of waking, before breakfast" },
+  { id: "evening", label: "Evening", hint: "Before bed" },
+  { id: "other", label: "Other time" },
+];
+
+export function bpSessionFor(date) {
+  const h = new Date(date).getHours();
+  if (h >= 4 && h < 12) return "morning";
+  if (h >= 17) return "evening";
+  return "other";
+}
 
 // "128/84", "6.2", "72": a reading's value as shown on tiles and in lists.
 export function vitalText(id, values) {

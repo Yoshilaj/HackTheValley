@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useProfile } from "../context/ProfileContext.jsx";
+import { EMPTY_RISK, useProfile } from "../context/ProfileContext.jsx";
 import { ageFrom } from "../utils/dates.js";
 import { CareTeamList } from "./CareTeamSheet.jsx";
 
@@ -22,12 +22,63 @@ function validate(d) {
   if (!d.dateOfBirth) errors.dateOfBirth = "Enter your date of birth.";
   else if (d.dateOfBirth > today() || d.dateOfBirth < "1900-01-01") errors.dateOfBirth = "Enter a real date of birth.";
   if (d.healthCardLast4 && !/^\d{4}$/.test(d.healthCardLast4)) errors.healthCardLast4 = "Enter the last 4 digits of your health card.";
+  for (const [key, label, unit, min, max] of LABS) {
+    const v = d.risk?.[key];
+    if (v != null && (!Number.isFinite(v) || v < min || v > max)) errors[key] = `${label}: enter ${min}-${max} ${unit}.`;
+  }
   const c = d.emergencyContact;
   if (c) {
     if (!c.name.trim()) errors.contactName = "Enter your contact's name.";
     if (!PHONE.test(c.phone.trim())) errors.contactPhone = "Enter a phone number, like (416) 555-0187.";
   }
   return errors;
+}
+
+// Risk factors the heart-risk calculator and the rule engine read from the profile.
+const SEX_OPTIONS = [
+  ["male", "Male"],
+  ["female", "Female"],
+  ["other", "Other"],
+];
+const SMOKING_OPTIONS = [
+  ["never", "Never"],
+  ["former", "Former"],
+  ["current", "Current"],
+];
+const YES_NO = [
+  [true, "Yes"],
+  [false, "No"],
+  [null, "Not sure"],
+];
+const KNOWN = [
+  ["knownHypertension", "High blood pressure diagnosed"],
+  ["diabetes", "Diabetes"],
+  ["knownAf", "Atrial fibrillation diagnosed"],
+  ["knownChd", "Heart disease (angina, heart attack, stent)"],
+  ["knownPd", "Parkinson's disease diagnosed"],
+  ["knownDementia", "Dementia diagnosed"],
+  ["familyPrematureCvd", "A parent, brother or sister had a heart attack or stroke early (men under 55, women under 65)"],
+];
+// Labs are entered in mg/dL, the unit the backend stores (it refuses mmol/L values with a hint).
+const LABS = [
+  ["totalChol", "Total cholesterol", "mg/dL", 100, 405],
+  ["hdl", "HDL cholesterol", "mg/dL", 20, 100],
+  ["ldl", "LDL cholesterol", "mg/dL", 30, 300],
+  ["egfr", "Kidney function (eGFR)", "mL/min", 1, 200],
+];
+
+// Three-way choice drawn as the app's segmented control.
+function Segmented({ name, value, options, onChange, label }) {
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label}>
+      {options.map(([v, text]) => (
+        <label key={String(v)}>
+          <input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} />
+          <span>{text}</span>
+        </label>
+      ))}
+    </div>
+  );
 }
 
 // Editable list (allergies, conditions): each item has a remove button, and
@@ -91,6 +142,7 @@ export default function ProfileSheet({ open, onClose }) {
   const { profile, updateProfile } = useProfile();
   const [draft, setDraft] = useState(null); // null = viewing; otherwise the form's values
   const [pending, setPending] = useState({ allergies: "", conditions: "" }); // typed but not yet added
+  const [labText, setLabText] = useState({}); // lab boxes as typed; parsed into draft.risk on change
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -114,7 +166,9 @@ export default function ProfileSheet({ open, onClose }) {
       allergies: [...profile.allergies],
       conditions: [...profile.conditions],
       emergencyContact: profile.emergencyContact ? { ...profile.emergencyContact } : null,
+      risk: { ...EMPTY_RISK, ...(profile.risk ?? {}) },
     });
+    setLabText(Object.fromEntries(LABS.map(([k]) => [k, profile.risk?.[k] != null ? String(profile.risk[k]) : ""])));
     setPending({ allergies: "", conditions: "" });
     setErrors({});
     setSaveError("");
@@ -131,6 +185,15 @@ export default function ProfileSheet({ open, onClose }) {
   const set = (field, value) => {
     setDraft((d) => ({ ...d, [field]: value }));
     setErrors((e) => ({ ...e, [field]: undefined }));
+  };
+  const setRisk = (field, value) => {
+    setDraft((d) => ({ ...d, risk: { ...d.risk, [field]: value } }));
+    setErrors((e) => ({ ...e, [field]: undefined }));
+  };
+  const setLab = (field, text) => {
+    setLabText((t) => ({ ...t, [field]: text }));
+    const clean = text.trim().replace(",", ".");
+    setRisk(field, clean === "" ? null : Number(clean));
   };
   const setContact = (field, value) => {
     setDraft((d) => ({ ...d, emergencyContact: { ...d.emergencyContact, [field]: value } }));
@@ -308,6 +371,48 @@ export default function ProfileSheet({ open, onClose }) {
                 />
               </section>
 
+              <section className="profile-section profile-risk" aria-labelledby="profile-edit-risk">
+                <h3 id="profile-edit-risk" className="sheet-sub">
+                  Risk factors
+                </h3>
+                <p className="field-hint reading-hint">Used for your heart-risk estimate and the assessment. Leave anything you don't know.</p>
+                <div className="form-field">
+                  <span className="form-label">Sex</span>
+                  <Segmented name="profile-sex" label="Sex" value={draft.risk.sex} options={SEX_OPTIONS} onChange={(v) => setRisk("sex", v)} />
+                </div>
+                <div className="form-field">
+                  <span className="form-label">Smoking</span>
+                  <Segmented name="profile-smoking" label="Smoking" value={draft.risk.smokingStatus} options={SMOKING_OPTIONS} onChange={(v) => setRisk("smokingStatus", v)} />
+                </div>
+                {KNOWN.map(([key, label]) => (
+                  <div className="form-field" key={key}>
+                    <span className="form-label">{label}</span>
+                    <Segmented name={`profile-${key}`} label={label} value={draft.risk[key]} options={YES_NO} onChange={(v) => setRisk(key, v)} />
+                  </div>
+                ))}
+                <div className="profile-row">
+                  {LABS.map(([key, label, unit]) => (
+                    <div className="form-field" key={key}>
+                      <label htmlFor={`profile-${key}`}>
+                        {label} <span className="book-optional">Optional</span>
+                      </label>
+                      <div className={`input-unit ${errors[key] ? "invalid" : ""}`}>
+                        <input
+                          id={`profile-${key}`}
+                          type="text"
+                          inputMode="decimal"
+                          value={labText[key] ?? ""}
+                          onChange={(e) => setLab(key, e.target.value)}
+                          {...invalid(key)}
+                        />
+                        <span className="unit">{unit}</span>
+                      </div>
+                      {err(key)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
               <section className="profile-section" aria-labelledby="profile-edit-contact">
                 <h3 id="profile-edit-contact" className="sheet-sub">
                   Emergency contact
@@ -405,6 +510,26 @@ export default function ProfileSheet({ open, onClose }) {
                 <div>
                   <dt>Conditions</dt>
                   <dd>{profile.conditions.length ? profile.conditions.join(", ") : "None recorded"}</dd>
+                </div>
+                <div>
+                  <dt>Risk factors</dt>
+                  <dd>
+                    {[
+                      profile.risk?.sex && SEX_OPTIONS.find(([v]) => v === profile.risk.sex)?.[1],
+                      profile.risk?.smokingStatus && `${SMOKING_OPTIONS.find(([v]) => v === profile.risk.smokingStatus)?.[1]} smoker`,
+                      ...KNOWN.filter(([k]) => profile.risk?.[k] === true).map(([, label]) => label.split(" (")[0]),
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "Not added"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Labs</dt>
+                  <dd>
+                    {LABS.filter(([k]) => profile.risk?.[k] != null)
+                      .map(([k, label, unit]) => `${label.split(" ")[0]} ${profile.risk[k]} ${unit}`)
+                      .join(", ") || "Not added"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Emergency contact</dt>

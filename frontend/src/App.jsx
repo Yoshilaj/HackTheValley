@@ -4,6 +4,8 @@ import TopBar from "./components/TopBar.jsx";
 import HistorySidebar from "./components/HistorySidebar.jsx";
 import Overview from "./pages/Overview.jsx";
 import VitalsPage from "./pages/VitalsPage.jsx";
+import CheckInPage from "./pages/CheckInPage.jsx";
+import AssessmentsPage from "./pages/AssessmentsPage.jsx";
 import AppointmentsPage from "./pages/AppointmentsPage.jsx";
 import MedicationsPage from "./pages/MedicationsPage.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
@@ -98,6 +100,8 @@ function Dashboard() {
           <Routes>
             <Route path="/" element={<Overview />} />
             <Route path="/vitals" element={<VitalsPage />} />
+            <Route path="/checkin" element={<CheckInPage />} />
+            <Route path="/assessments" element={<AssessmentsPage />} />
             <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/medications" element={<MedicationsPage />} />
             <Route path="/chat" element={<ChatPage />} />

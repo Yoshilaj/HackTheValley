@@ -208,8 +208,23 @@ export function getBloodPressure() {
   return request("/api/metrics/bp");
 }
 
-export function logBloodPressure({ systolic, diastolic, pulse, measuredAt }) {
-  return post("/api/metrics/bp", { readings: [{ systolic, diastolic, pulse, measured_at: measuredAt }] });
+// One cuff reading (spec §2). session: "morning" | "evening" | "other" (the
+// backend derives it from the local hour when omitted); irregularPulse is the
+// cuff's irregular-heartbeat symbol. measuredAt: ISO time with offset.
+export function logBloodPressure({ systolic, diastolic, pulse, measuredAt, session, irregularPulse = false, arm, position }) {
+  return post("/api/metrics/bp", {
+    readings: [{
+      systolic,
+      diastolic,
+      pulse: pulse ?? null,
+      measured_at: measuredAt,
+      session: session ?? null,
+      irregular_pulse_flag: Boolean(irregularPulse),
+      arm: arm ?? null,
+      position: position ?? null,
+      source: "manual",
+    }],
+  });
 }
 
 export function getMetricsSummary() {
@@ -218,6 +233,74 @@ export function getMetricsSummary() {
 
 export function logMetric(type, value, recordedAt) {
   return post("/api/metrics", { source: "manual", samples: [{ type, value, recorded_at: recordedAt }] });
+}
+
+// A rhythm result from a watch or cuff (spec §4): source apple_irn | apple_ecg |
+// omron_connect | manual_irregular_pulse; label is the device's own wording
+// ("Atrial Fibrillation", "Sinus Rhythm", "Inconclusive", ...), normalised server-side.
+export function logRhythmResult({ source, label, recordedAt }) {
+  return post("/api/metrics/rhythm", { source, label, recorded_at: recordedAt });
+}
+
+export function getRhythmResults() {
+  return request("/api/metrics/rhythm");
+}
+
+// ---- Daily check-in (one row per day; a second save on the same day updates it).
+// Scales are 1-5; flags are the backend's check-in vocabulary (see CheckInPage).
+// Returns the row plus the observations it raised and emergency guidance for red flags.
+export function getDailyLogs(days = 30) {
+  return request(`/api/logs/daily?days=${days}`);
+}
+
+export function saveDailyLog(body) {
+  return post("/api/logs/daily", body);
+}
+
+// ---- Parkinson's screener (spec §5.1): the items (with their ids) and a yes/no answer per id.
+export function getPdScreener() {
+  return request("/api/screener/pd?language=en");
+}
+
+export function submitPdScreener(answers) {
+  return post("/api/screener/pd", { answers });
+}
+
+// ---- Finger-tapping task (spec §5.3, keyboard protocol): 30 s per hand of
+// alternating `s` / `;` presses, each press as { key, down_ms, up_ms } from performance.now().
+// Returns { task_id, valid, reason, features, message }.
+export function submitTapping({ left, right, durationS = 30, keys = ["s", ";"] }) {
+  return post("/api/tasks/tapping", {
+    input_method: "keyboard",
+    duration_s: durationS,
+    keys,
+    left: { events: left },
+    right: { events: right },
+  });
+}
+
+// Past assessment tasks, newest first: { items: [{ id, task_type, created_at, status, score, valid, invalid_reason }] }.
+export function getTaskHistory(taskType, limit = 20) {
+  const q = new URLSearchParams({ limit: String(limit), ...(taskType ? { task_type: taskType } : {}) });
+  return request(`/api/tasks/history?${q}`);
+}
+
+// ---- Apple Health export (export.zip or export.xml): parsed in the background
+// into daily metrics (walking speed, step length, sleep...). Returns { job_id, upload_id };
+// poll getUploadJob until status is "done".
+export function uploadAppleHealth(file) {
+  const form = new FormData();
+  form.append("file", file);
+  return request("/api/uploads/apple-health", { method: "POST", body: form });
+}
+
+export function getUploadJob(jobId) {
+  return request(`/api/uploads/jobs/${encodeURIComponent(jobId)}`);
+}
+
+// Run the assessment on everything saved so far and return the fresh cards.
+export function runRiskAssessment() {
+  return post("/api/risk/run");
 }
 
 // ---- Medications (the profile's list, also used by the risk assessment and chat):

@@ -154,8 +154,30 @@ Items (yes/no, last 3 months): new shaking of a hand at rest; stiffness or slown
 ### 5.2 Passive mobility (Apple Health)
 Metrics: walking speed, step length, double-support %, walking asymmetry, walking steadiness. Baseline = 30-day median/MAD, requires ≥14 days. `PD-02`: walking speed or step length ≥1.5 MAD below baseline on ≥5 of last 7 days, or double-support/asymmetry ≥1.5 MAD above → `watch`.
 
-### 5.3 Finger tapping
-15 s per hand, alternate index-finger taps on two on-screen targets; record pointer timestamps. Features: tap count, mean inter-tap interval, interval CV, decrement (linear slope of interval over time), left/right asymmetry of count. Baseline rule `PD-04` as in 5.2. No trained model unless mPower access arrives.
+### 5.3 Finger tapping — keyboard BRAIN tap test (decided 2026-10-17: keyboard only)
+**Protocol** (BRAIN = Bradykinesia Akinesia Incoordination test; Giovannoni et al. 1999, Noyce et al. 2014). Seated at a PC keyboard, the user alternately presses the **`s`** and **`;`** keys with the **index finger of one hand** as fast and as accurately as possible for **30 s**, then repeats with the other hand (either hand first). The client records every keydown / keyup of every key (`performance.now()`-relative ms; `up_ms` null for a key still held at the end) and submits both hands in one `POST /api/tasks/tapping` (`input_method: "keyboard"`, `duration_s` 5–60, default 30, ≤4000 events per hand). The paper does not prescribe the finger; "index finger" is our instruction so repeat sessions are comparable.
+
+**Keyboard only (user decision).** Mouse / trackpad targets involve wrist and arm movement and vary with pointer hardware, acceleration and DPI, so they do not measure distal bradykinesia and would not be comparable across sessions; touch was dropped because the web app runs on a PC. Any other `input_method` is refused (422 "keyboard tapping only") and never stored, so the PD-04 baseline is a single-input-method series. `device = "keyboard"` is stored with the task (`recording_quality.device`, as the voice tasks store their device for PD-03B) and `context_builder.tapping_series` keeps only sessions on the device of the latest valid session — a change of input method restarts the baseline, as in §5.5.
+
+**Metrics** (per hand, `app/ml/features/tapping.py`; paper names in brackets):
+| Feature | Definition | PD direction |
+|---|---|---|
+| `tap_count` (**KS30**, Kinesia Score) | number of presses of the two target keys in the trial; `kinesia_score` = `tap_count × 30 / duration_s` (equal to the count at 30 s) | ↓ |
+| `mean_iti_ms`, `iti_cv`, `decrement_slope_ms_per_tap` | inter-tap (keydown→keydown) interval mean, CV and linear slope, after the median/MAD (3.5 × scaled MAD) outlier rule; `n_outliers` reported | ↑ ↑ ↑ |
+| `n_freezes` | intervals > 3 × the median interval (pauses / freezes); reported, excluded from the interval statistics, **kept in `tap_count`** | ↑ |
+| `dwell_mean_ms`, `dwell_cv` (**AT30**, Akinesia Time) | keydown→keyup hold time per press, mean (ms) and CV; unreleased presses (`n_unreleased`) carry no dwell | ↑ |
+| `travel_time_var_ms2` (**IS30**, Incoordination Score) | variance (ms²) of the travelling time between alternate presses = keyup of one key → keydown of the other key, raw (pauses included, as in the paper; negative when the next key goes down before the previous one is released) | ↑ |
+| `travel_time_cv` | CV of the same travelling times after the MAD outlier rule (stable enough for a daily baseline — the raw IS30 has a high test-retest CV because pauses dominate the variance) | ↑ |
+| `alternation_error_rate` | (consecutive same-key presses `n_same_key_repeats` + presses of other keys `error_presses`) / all presses; the paper's dysmetria score (DS30) did not separate PD from controls and is not scored | ↑ |
+| `asymmetry`, `iti_asymmetry`, `dwell_asymmetry` | \|L − R\| / max(L, R) of tap count / mean interval / mean dwell across hands | — |
+
+**Validity** per hand (both hands must pass): ≥ 10 target-key presses (`fewer_than_10_taps`), `duration_s` ≥ 20 (`duration_below_20_s`), no inter-tap interval < 30 ms (`key_autorepeat_detected` — physically impossible for one finger, so the trial is rejected as held-key OS auto-repeat; `n_autorepeat` reported), and ≥ 9 clean intervals (`too_many_outlier_intervals`). The response is 201 with `valid=false` and `reason="<hand>:<code>"`; features that could be computed are still returned.
+
+**Reference values** (Noyce 2014, both hands averaged, for orientation only — never a threshold): KS30 controls 60.3 vs PD 44.2 taps; AT30 controls median 97 ms vs PD 139 ms; IS30 controls median 6758 vs PD 13813 ms²; test-retest CV in controls KS30 6 %, AT30 7 %, with a learning effect of +1.2 taps per attempt. Session features: flat `tap_count`, `mean_iti_ms`, `iti_cv`, `decrement_slope_ms_per_tap`, `dwell_mean_ms`, `dwell_cv`, `travel_time_var_ms2`, `travel_time_cv`, `kinesia_score`, `alternation_error_rate` = mean of both hands when the session is valid.
+
+**Baseline rule `PD-04`** as in 5.2 on the daily series `tap_count` ↓, `tap_interval_mean` ↑, `tap_interval_cv` ↑, `tap_dwell_mean` ↑ (AT30) and `tap_travel_cv` ↑ (`PD04_METRICS`; the §6 detector is metric-agnostic, so the two keyboard metrics needed no further change). No trained model unless mPower access arrives. Protocol version `tapping-2`; the earlier pointer-timestamp contract (`left_ms` / `right_ms`, 15 s) is removed.
+
+Sources: Giovannoni G, van Schalkwyk J, Fritz V, Lees A. Bradykinesia akinesia inco-ordination test (BRAIN TEST): an objective computerised assessment of upper limb motor function. *J Neurol Neurosurg Psychiatry* 1999;67:624–629 (PMC1736603; keystroke count, cumulative key-depression time, incoordination = variance of the inter-keystroke interval). Noyce AJ, Nagy A, Acharya S, et al. Bradykinesia-Akinesia Incoordination Test: validating an online keyboard test of upper limb function. *PLoS One* 2014;9(4):e96260 (PMC4004565; `s` / `;` keys, 30 s per hand, KS30 / AT30 / IS30 / DS30 definitions, PD vs control values above). Tests: `tests/test_tapping.py`, `tests/test_tasks_tapping.py`, `tests/test_seed_demo.py`.
 
 ### 5.4 Sustained-vowel classifier (the trained model, experimental)
 - Task: say "ahh" steadily for 5 s at comfortable pitch and loudness, 3 repetitions, phone 10–15 cm from mouth, quiet room. Matches the UCI protocol (sustained phonations).

@@ -28,6 +28,9 @@ export const pharmacies = [
 export const navItems = [
   { to: "/", label: "Overview" },
   { to: "/chat", label: "CareSync" },
+  { to: "/checkin", label: "Check-in" },
+  { to: "/vitals", label: "Vitals" },
+  { to: "/assessments", label: "Assessments" },
   { to: "/appointments", label: "Appointments" },
   { to: "/medications", label: "Medications" },
 ];

@@ -55,12 +55,29 @@ class VowelOut(BaseModel):
     experimental_score: dict[str, Any] | None = None
 
 
-class TappingIn(BaseModel):
-    """Pointer-down timestamps (ms) per hand for a 15 s alternate-tap trial (§5.3)."""
+class TapEvent(BaseModel):
+    """One key press: ``performance.now()``-relative ms; ``up_ms`` is null for a key still held at the end."""
 
-    left_ms: list[float] = Field(default_factory=list, max_length=2000)
-    right_ms: list[float] = Field(default_factory=list, max_length=2000)
-    duration_s: float = Field(default=15.0, gt=0, le=60)
+    key: str = Field(min_length=1, max_length=32)
+    down_ms: float = Field(ge=0)
+    up_ms: float | None = Field(default=None, ge=0)
+
+
+class TappingHandIn(BaseModel):
+    events: list[TapEvent] = Field(default_factory=list, max_length=4000)
+
+
+class TappingIn(BaseModel):
+    """Keyboard BRAIN tap test (§5.3): alternate ``s`` / ``;`` presses per hand, 30 s each.
+
+    ``input_method`` must be ``"keyboard"`` (the route answers 422 "keyboard tapping only" otherwise).
+    """
+
+    input_method: str = Field(max_length=32)
+    duration_s: float = Field(default=30.0, ge=5, le=60)
+    keys: list[str] = Field(default=["s", ";"], min_length=2, max_length=2)
+    left: TappingHandIn = Field(default_factory=TappingHandIn)
+    right: TappingHandIn = Field(default_factory=TappingHandIn)
 
 
 class TappingOut(BaseModel):

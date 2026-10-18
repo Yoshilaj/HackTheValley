@@ -76,7 +76,14 @@ def test_seed_rows_are_labelled_simulated(db):
     assert all(t.recording_quality["device"] == "iPhone" for t in by_type["sustained_vowel"] + by_type["story_recall"])
     assert vowel_features_for(11, True)["MDVP:Shimmer"] > 2 * vowel_features_for(1, False)["MDVP:Shimmer"]
     assert vowel_features_for(11, True)["CPPS"] < vowel_features_for(1, False)["CPPS"] - 3
-    assert tap_features_for(0)["tap_count"] < tap_features_for(20)["tap_count"]
+    # keyboard BRAIN tapping: same shape as a real submission, per-input-method device label
+    taps = by_type["finger_tap"]
+    assert all(t.valid and t.protocol_version == "tapping-2" and t.recording_quality["device"] == "keyboard"
+               and t.raw_json["input_method"] == "keyboard" and t.raw_json["keys"] == ["s", ";"] for t in taps)
+    assert all(t.raw_json["left"]["events"][0]["key"] == "s" for t in taps)
+    dropped, stable = tap_features_for(0), tap_features_for(20)
+    assert dropped["left"]["tap_count"] < stable["left"]["tap_count"] - 10
+    assert dropped["left"]["dwell_mean_ms"] > stable["left"]["dwell_mean_ms"] + 30 and dropped["left"]["n_freezes"] == 1
 
 
 def test_demo_report_shows_voice_table(db):

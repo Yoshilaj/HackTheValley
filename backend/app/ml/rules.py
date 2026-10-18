@@ -77,7 +77,8 @@ COG03_EXCLUDED_LABELS = frozenset({"memory_lapse", "confusion"})
 PD01_LOOKBACK = timedelta(days=90)                # "last 3 months"
 PD02_METRICS = (("walking_speed", "down"), ("step_length", "down"),
                 ("double_support_pct", "up"), ("walking_asymmetry_pct", "up"))
-PD04_METRICS = (("tap_count", "down"), ("tap_interval_mean", "up"), ("tap_interval_cv", "up"))
+PD04_METRICS = (("tap_count", "down"), ("tap_interval_mean", "up"), ("tap_interval_cv", "up"),
+                ("tap_dwell_mean", "up"), ("tap_travel_cv", "up"))  # keyboard BRAIN test: AT30 ↑, IS30 ↑
 PD_BASELINE = dict(baseline_days=30, recent_days=7, min_baseline_days=14, k=1.5, min_recent_hits=5)  # §5.2/§6
 PD03_MIN_SESSIONS, PD03_MIN_SPAN = 2, timedelta(days=7)  # ≥2 sessions ≥7 days apart
 PD03_LOOKBACK = timedelta(days=90)                # decision

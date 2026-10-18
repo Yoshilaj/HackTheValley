@@ -475,3 +475,50 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .appt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .appt-actions .btn-secondary { min-height: 36px; padding: 0 14px; font-size: 14px; }
 .appt-actions .btn-primary { min-height: 36px; padding: 0 14px; font-size: 14px; }
+
+/* check-in, assessments and the BP session picker */
+.reading-fields.three { grid-template-columns: 1fr 1fr 1fr; }
+.reading-hint { margin-top: 0; }
+.check-list { display: flex; flex-direction: column; gap: 4px; }
+.check-row { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: 15px; cursor: pointer; }
+.check-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); flex: none; }
+.checkin-split { align-items: start; }
+.checkin-form { display: flex; flex-direction: column; gap: 20px; }
+.checkin-form .card-head { margin-bottom: 0; }
+.checkin-date .text-input { min-height: 36px; }
+.checkin-scale .book-chip { min-width: 48px; }
+.checkin-hours { max-width: 160px; }
+.checkin-flags.urgent legend { color: #b0000f; }
+.checkin-notes { min-height: 84px; padding: 10px 14px; resize: vertical; font: inherit; }
+.checkin-urgent { padding: 12px 16px; border-radius: var(--radius-sm); background: rgba(215, 0, 21, 0.06); color: #b0000f; font-size: 15px; }
+.checkin-flagcount { font-weight: 400; color: var(--muted); }
+.assessments-split { align-items: start; }
+.screener-form { display: flex; flex-direction: column; gap: 16px; }
+.screener-items { display: flex; flex-direction: column; gap: 12px; padding: 0; list-style: none; }
+.screener-item { gap: 6px; }
+.screener-item legend { margin-bottom: 4px; font-weight: 500; }
+.screener-n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.screener-yesno { max-width: 220px; }
+.screener-result { padding: 12px 16px; border-radius: var(--radius-sm); background: var(--primary-soft); font-size: 15px; display: flex; flex-direction: column; gap: 6px; }
+.tapping-intro, .tapping-run, .tapping-result { display: flex; flex-direction: column; gap: 16px; font-size: 15px; }
+.tapping-intro kbd { padding: 2px 8px; border-radius: 6px; background: rgba(120, 120, 128, 0.12); font-family: inherit; font-weight: 600; }
+.tapping-hand { font-size: 17px; font-weight: 600; }
+.tapping-pad { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; border-radius: var(--radius); background: var(--surface-soft); border: 2px dashed var(--border); cursor: text; }
+.tapping-pad:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.tapping-pad.live { border-style: solid; border-color: var(--primary); }
+.tapping-keys { display: flex; gap: 16px; }
+.tapping-key { width: 64px; height: 64px; display: grid; place-items: center; border-radius: var(--radius-sm); background: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.08); font-size: 24px; font-weight: 700; transition: background-color 0.08s ease-out, color 0.08s ease-out; }
+.tapping-key.hit { background: var(--primary); color: #fff; }
+.tapping-count { font-size: 15px; }
+.tapping-count b { font-size: 32px; font-variant-numeric: tabular-nums; }
+.tapping-timer { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rhythm-form { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.rhythm-form select.text-input { appearance: auto; }
+.apple-actions { justify-content: flex-start; margin-top: 12px; }
+.profile-risk { display: flex; flex-direction: column; gap: 14px; }
+.form-field > .form-label { font-size: 15px; font-weight: 600; }
+.profile-risk .segmented { max-width: 360px; }
+.profile-risk .check-list { gap: 0; }
+@media (max-width: 720px) {
+  .reading-fields.three { grid-template-columns: 1fr 1fr; }
+}

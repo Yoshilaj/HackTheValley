@@ -22,7 +22,7 @@ import math
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,7 +56,11 @@ from app.providers.tts import DEFAULT_VOICE, TtsProvider
 log = get_logger(__name__)
 
 VOWEL_PROTOCOL_VERSION = "vowel-1"
-TAPPING_PROTOCOL_VERSION = "tapping-1"
+TAPPING_PROTOCOL_VERSION = "tapping-2"  # keyboard BRAIN tap test (s / ; keys, 30 s per hand)
+TAPPING_DEVICE = "keyboard"               # PD-04 baseline is per input method (context_builder.tapping_series)
+#: flat session-level feature keys read by the PD-04 series (mean of both hands when valid)
+TAPPING_FLAT_KEYS = ("tap_count", "kinesia_score", "mean_iti_ms", "iti_cv", "decrement_slope_ms_per_tap",
+                     "dwell_mean_ms", "dwell_cv", "travel_time_var_ms2", "travel_time_cv", "alternation_error_rate")
 WORD_RECALL_PROTOCOL_VERSION = "word-recall-1"
 PD_VOWEL_KEY = "pd_vowel"  # app/ml/rules.py PD_VOWEL_MODEL_KEY
 VOWEL_DETAIL_LABEL = "experimental voice-model score"
@@ -507,37 +511,65 @@ def submit_vowel(db: Session, user: User, audio_bytes: bytes, filename: str | No
 
 # ================================================================ §5.3 finger tapping
 
-def submit_tapping(db: Session, user: User, left_ms: list[float], right_ms: list[float],
-                   duration_s: float = 15) -> AssessmentTask:
-    """Store a both-hand 15 s tapping session (§5.3). Commits.
+def build_tapping_task(user: User, left_events: list[dict[str, Any]], right_events: list[dict[str, Any]],
+                       duration_s: float = 30, keys: Sequence[str] = ("s", ";"),
+                       device: str = TAPPING_DEVICE) -> AssessmentTask:
+    """Unsaved ``AssessmentTask(finger_tap)`` for a keyboard BRAIN tap-test session (§5.3).
 
-    ``features`` = per-hand features + asymmetry, plus flat ``tap_count`` / ``mean_iti_ms`` /
-    ``iti_cv`` (mean of both hands when valid) read by the PD-04 baseline series.
+    ``features`` = per-hand features + asymmetry, plus flat ``TAPPING_FLAT_KEYS`` (mean of both hands
+    when valid) read by the PD-04 baseline series. ``device`` (= input method, "keyboard") is stored in
+    ``recording_quality`` and ``raw_json`` like the voice tasks so the baseline is per input method.
     """
-    feats = tapping_session_features(left_ms, right_ms, duration_s)
+    feats = tapping_session_features(left_events, right_events, duration_s, keys)
     if feats["valid"]:
-        for k in ("tap_count", "mean_iti_ms", "iti_cv", "decrement_slope_ms_per_tap"):
-            vals = [feats[h][k] for h in ("left", "right") if feats[h].get(k) is not None]
+        for k in TAPPING_FLAT_KEYS:
+            vals = [feats[h][k] for h in ("left", "right") if isinstance(feats[h].get(k), (int, float))]
             feats[k] = float(sum(vals) / len(vals)) if vals else None
-    task = AssessmentTask(
+    quality = {"device": device, "input_method": "keyboard", "duration_s": float(duration_s)}
+    for h in ("left", "right"):
+        quality[h] = {k: feats[h][k] for k in ("n_events", "tap_count", "error_presses", "n_autorepeat",
+                                               "n_freezes", "n_outliers", "n_unreleased", "valid", "reason")}
+    return AssessmentTask(
         user_id=user.id, task_type="finger_tap", protocol_version=TAPPING_PROTOCOL_VERSION,
-        language=user_language(user), raw_json={"left_ms": list(left_ms), "right_ms": list(right_ms),
-                                                "duration_s": duration_s},
-        features=feats, model_scores={}, score=None, valid=bool(feats["valid"]),
+        language=user_language(user),
+        raw_json={"input_method": "keyboard", "device": device, "duration_s": float(duration_s), "keys": list(keys),
+                  "left": {"events": [dict(e) for e in left_events]},
+                  "right": {"events": [dict(e) for e in right_events]}},
+        recording_quality=quality, features=feats, model_scores={}, score=None, valid=bool(feats["valid"]),
         invalid_reason=(feats.get("reason") or None) if not feats["valid"] else None,
     )
+
+
+def submit_tapping(db: Session, user: User, left_events: list[dict[str, Any]], right_events: list[dict[str, Any]],
+                   duration_s: float = 30, keys: Sequence[str] = ("s", ";")) -> AssessmentTask:
+    """Store a both-hand keyboard tapping session (§5.3; see :func:`build_tapping_task`). Commits."""
+    task = build_tapping_task(user, left_events, right_events, duration_s, keys)
     db.add(task)
     db.flush()
-    audit(db, user.id, "task.tapping.submit", f"assessment_task:{task.id}", {"valid": task.valid})
+    audit(db, user.id, "task.tapping.submit", f"assessment_task:{task.id}",
+          {"valid": task.valid, "reason": task.invalid_reason, "device": TAPPING_DEVICE})
     db.commit()
     return task
+
+
+_TAPPING_MESSAGES = {
+    "key_autorepeat_detected": "A key was held down and the keyboard auto-repeated it. Please press and release "
+                               "each key with a single tap of your index finger and try again.",
+    "fewer_than_10_taps": "Not enough key presses were recorded. Please alternate the S and ; keys with your "
+                          "index finger as fast as you can for the full 30 seconds with each hand.",
+    "duration_below_20_s": "The trial was too short. Please tap for the full 30 seconds with each hand.",
+    "too_many_outlier_intervals": "The tapping rhythm could not be measured. Please tap steadily, alternating "
+                                  "the S and ; keys, for the full 30 seconds with each hand.",
+}
 
 
 def tapping_message(task: AssessmentTask) -> str:
     if task.valid:
         return "Tapping recorded — thank you."
-    return ("Not enough taps were recorded. Please tap the two targets alternately with your index finger "
-            "for the full 15 seconds with each hand.")
+    for reason, msg in _TAPPING_MESSAGES.items():
+        if reason in (task.invalid_reason or ""):
+            return msg
+    return _TAPPING_MESSAGES["fewer_than_10_taps"]
 
 
 # ================================================================ §1.4 word recall

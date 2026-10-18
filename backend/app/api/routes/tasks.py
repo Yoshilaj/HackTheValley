@@ -153,7 +153,11 @@ async def vowel(
 
 @router.post("/tapping", response_model=TappingOut, status_code=201)
 def tapping(body: TappingIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> Any:
-    task = svc.submit_tapping(db, user, body.left_ms, body.right_ms, body.duration_s)
+    """Keyboard BRAIN tap test (§5.3). Keyboard only: pointer / touch input is refused with 422."""
+    if body.input_method.strip().lower() != "keyboard":
+        raise HTTPException(422, "keyboard tapping only")
+    task = svc.submit_tapping(db, user, [e.model_dump() for e in body.left.events],
+                              [e.model_dump() for e in body.right.events], body.duration_s, keys=body.keys)
     return {"task_id": task.id, "valid": task.valid, "reason": task.invalid_reason, "features": task.features,
             "message": svc.tapping_message(task)}
 
