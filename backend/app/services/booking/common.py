@@ -147,6 +147,78 @@ def confirm_url(appointment_id: str, slot_index: int, clinic_id: str | None = No
             f"?slot={slot_index}&token={token}")
 
 
+# ---------------------------------------------------------------- user action links (e-mail buttons)
+#
+# The approval e-mail carries "Approve" / "Not now" buttons and the confirmation e-mail an "Add to
+# calendar" button. They work without signing in, so each link is an HMAC token bound to the
+# appointment, the action and a *nonce* that changes when the decision changes: the approval card's
+# `requested_at` (a new card — new times — invalidates the old buttons) or the confirmed slot start.
+# Like the clinic links, GET only shows a page with a button; only POST acts.
+
+USER_ACTIONS = ("approve", "decline", "calendar")
+CALENDAR_LINK_TTL = timedelta(days=60)
+
+
+def _user_sig(appointment_id: str, action: str, nonce: str, ts: int) -> str:
+    msg = json.dumps(["user-action-v1", appointment_id, action, nonce or "", ts], separators=(",", ":"))
+    return hmac.new(_token_secret(), msg.encode(), hashlib.sha256).hexdigest()[:40]
+
+
+def user_action_token(appointment_id: str, action: str, nonce: str, issued_at: datetime | None = None) -> str:
+    if action not in USER_ACTIONS:
+        raise ValueError(f"unknown action {action!r}")
+    ts = int((issued_at or datetime.now(timezone.utc)).timestamp())
+    return f"{ts}.{_user_sig(appointment_id, action, nonce, ts)}"
+
+
+def verify_user_action_token(appointment_id: str, action: str, nonce: str, token: str | None,
+                             now: datetime | None = None) -> bool:
+    """True when `token` was issued for (appointment, action, nonce) and has not expired
+    (approve / decline: ``settings.user_action_link_days``; calendar: 60 days)."""
+    if action not in USER_ACTIONS or not token or "." not in token:
+        return False
+    ts_s, sig = token.split(".", 1)
+    if not ts_s.isdigit():
+        return False
+    ts = int(ts_s)
+    ttl = CALENDAR_LINK_TTL if action == "calendar" else timedelta(days=max(1, settings.user_action_link_days))
+    current = now or datetime.now(timezone.utc)
+    if ts > current.timestamp() + 300 or current.timestamp() - ts > ttl.total_seconds():
+        return False
+    return hmac.compare_digest(_user_sig(appointment_id, action, nonce, ts), sig)
+
+
+def approval_nonce(appt: Any) -> str:
+    """Nonce of the approve / decline buttons: the current card's `requested_at`."""
+    return str((appt.approval or {}).get("requested_at") or "")
+
+
+def calendar_nonce(appt: Any) -> str:
+    """Nonce of the "Add to calendar" button: the confirmed slot start."""
+    return str((appt.chosen_slot or {}).get("start") or "")
+
+
+def user_action_url(appt: Any, action: str) -> str:
+    """Absolute link for an e-mail button (GET page → POST)."""
+    nonce = calendar_nonce(appt) if action == "calendar" else approval_nonce(appt)
+    token = user_action_token(appt.id, action, nonce)
+    base = settings.base_url.rstrip("/")
+    if action == "calendar":
+        return f"{base}/api/appointments/{appt.id}/calendar?token={token}"
+    return f"{base}/api/appointments/{appt.id}/action?do={action}&token={token}"
+
+
+def ics_url(appt: Any) -> str:
+    token = user_action_token(appt.id, "calendar", calendar_nonce(appt))
+    return f"{settings.base_url.rstrip('/')}/api/appointments/{appt.id}/calendar.ics?token={token}"
+
+
+def app_url(appt: Any | None = None, path: str = "/appointments") -> str:
+    """Deep link into the frontend; with an appointment it opens that appointment's sheet."""
+    base = settings.frontend_origin.rstrip("/") + path
+    return f"{base}?appointment={appt.id}" if appt is not None else base
+
+
 # ---------------------------------------------------------------- labels
 
 def slot_label(slot: Slot, tz: str | None) -> str:

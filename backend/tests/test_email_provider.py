@@ -53,6 +53,27 @@ def test_resend_send_success_mocked(monkeypatch):
 def test_render_email_has_disclaimers_and_escapes():
     html = render_email("<Title>", "<p>body</p>", cta_url="https://x.test/a?b=1&c=2")
     assert "&lt;Title&gt;" in html and "<p>body</p>" in html
-    assert "This is not a diagnosis" in html and "これは診断ではありません" in html
-    assert "https://x.test/a?b=1&amp;c=2" in html
+    # Canada only, English only: the 911 / 811 disclaimer, no Japanese footer, no "119"
+    assert "This is not a diagnosis" in html and "call 911" in html and "811" in html
+    assert "これは診断ではありません" not in html and "119" not in html
+    assert "https://x.test/a?b=1&amp;c=2" in html and "CareSync" in html
     assert email_mod.DISCLAIMER_EN.startswith("This is not a diagnosis")
+
+
+def test_fake_email_keeps_attachments():
+    fake = FakeEmail()
+    att = email_mod.Attachment("invite.ics", b"BEGIN:VCALENDAR", "text/calendar")
+    res = fake.send("a@example.com", "Hi", "<p>x</p>", attachments=[att])
+    assert res.accepted and fake.outbox[0].attachments == [att]
+    assert att.as_dict() == {"filename": "invite.ics", "content_type": "text/calendar", "size": 15}
+
+
+def test_resend_attachments_are_base64(monkeypatch):
+    import resend
+
+    seen = {}
+    monkeypatch.setattr(resend.Emails, "send", staticmethod(lambda params: seen.update(params) or {"id": "em_1"}))
+    att = email_mod.Attachment("invite.ics", b"BEGIN:VCALENDAR", "text/calendar")
+    ResendEmail(api_key="re_test", from_email="noreply@example.com").send("a@example.com", "s", "<p>h</p>", attachments=[att])
+    assert seen["attachments"] == [{"filename": "invite.ics", "content_type": "text/calendar",
+                                    "content": "QkVHSU46VkNBTEVOREFS"}]

@@ -447,3 +447,31 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .guest-gate .btn-primary { margin-top: 8px; min-width: 140px; }
 .guest-icon { width: 52px; height: 52px; margin-bottom: 4px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); }
 .guest-icon svg, .avatar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Appointment sheet for the booking agent's requests (approval card, confirmation + calendar step) */
+.agent-sheet { width: min(600px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.agent-sheet .sheet-head .badge { display: inline-block; margin-bottom: 8px; }
+.agent-why { padding: 12px 16px; border-radius: var(--radius-sm); background: var(--primary-soft); }
+.agent-why h3 { font-size: 13px; font-weight: 600; color: var(--primary); margin-bottom: 4px; }
+.agent-why p { font-size: 15px; font-weight: 600; }
+.agent-why ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.agent-why small { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.agent-rows dd { max-width: 68%; }
+.agent-rows dd small { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--muted); text-align: right; }
+.agent-slots { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.agent-shared { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; font-weight: 500; }
+.agent-shared span { font-weight: 400; color: var(--muted); margin-right: 8px; }
+.agent-note { font-size: 14px; color: var(--muted); }
+.agent-note.warn { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-ink); }
+.agent-calendar { padding: 14px 16px; border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.7); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06); display: flex; flex-direction: column; gap: 8px; }
+.agent-calendar.added { background: var(--ok-bg); }
+.agent-calendar h3 { font-size: 15px; }
+.agent-calendar p { font-size: 14px; color: var(--muted); }
+.agent-calendar.added p { color: var(--ok-ink); }
+.agent-calendar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+.agent-link-btn { display: inline-flex; align-items: center; text-decoration: none; }
+.agent-link-btn:hover { text-decoration: none; }
+/* Card buttons that open the sheet */
+.appt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.appt-actions .btn-secondary { min-height: 36px; padding: 0 14px; font-size: 14px; }
+.appt-actions .btn-primary { min-height: 36px; padding: 0 14px; font-size: 14px; }

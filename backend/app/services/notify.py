@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.security import audit, has_consent
 from app.db.models import Notification, User
-from app.providers.email import EmailProvider, get_email_provider, render_email
+from app.providers.email import Attachment, EmailProvider, get_email_provider, render_email
 
 log = get_logger(__name__)
 
@@ -56,11 +56,27 @@ def _body_html(body: str | None) -> str:
     return "".join(f"<p>{_html.escape(p)}</p>" for p in body.split("\n") if p.strip())
 
 
-def _send(provider: EmailProvider, to: str, title: str, body: str | None, kind: str) -> dict[str, Any]:
-    html = render_email(title, _body_html(body), cta_url=f"{settings.frontend_origin}/notifications")
+class EmailContent:
+    """A designed e-mail a caller hands to ``notify`` instead of the default title + body rendering
+    (see app/services/user_emails.py). ``attachments`` are ``app.providers.email.Attachment``."""
+
+    __slots__ = ("subject", "html", "text", "attachments")
+
+    def __init__(self, subject: str, html: str, text: str, attachments: list[Attachment] | None = None) -> None:
+        self.subject, self.html, self.text, self.attachments = subject, html, text, list(attachments or [])
+
+
+def _send(provider: EmailProvider, to: str, title: str, body: str | None, kind: str,
+          content: EmailContent | None = None) -> dict[str, Any]:
+    if content is None:
+        content = EmailContent(title, render_email(title, _body_html(body), cta_url=settings.frontend_origin), body or "")
     try:
-        result = provider.send(to, title, html, text=body, tags={"kind": kind})
-        return result.as_dict()
+        result = provider.send(to, content.subject, content.html, text=content.text, tags={"kind": kind},
+                               attachments=content.attachments or None)
+        out = result.as_dict()
+        if content.attachments:
+            out["attachments"] = [a.as_dict() for a in content.attachments]
+        return out
     except Exception as exc:  # never let email break the notification write
         log.warning("email send raised", extra={"error": str(exc)})
         return {"id": None, "provider": getattr(provider, "name", "?"), "accepted": False, "error": str(exc)}
@@ -78,11 +94,13 @@ def notify(
     email: bool = False,
     email_provider: EmailProvider | None = None,
     *,
+    email_content: EmailContent | None = None,
     commit: bool = True,
 ) -> Notification:
     """Write a Notification row; optionally email the user (consent 'data_processing' required).
 
-    The email outcome is stored in `payload["email"]` as
+    ``email_content`` replaces the default rendering (title + body + one button) with a designed
+    message. The email outcome is stored in `payload["email"]` as
     `{"sent": bool, "reason"?: str, "result"?: EmailResult.as_dict()}`.
     """
     if kind not in NOTIFICATION_KINDS:
@@ -96,7 +114,7 @@ def notify(
         elif not has_consent(db, user_id, "data_processing"):
             data["email"] = {"sent": False, "reason": "no_consent"}
         else:
-            result = _send(email_provider or get_email_provider(), user.email, title, body, kind)
+            result = _send(email_provider or get_email_provider(), user.email, title, body, kind, email_content)
             data["email"] = {"sent": bool(result["accepted"]), "result": result}
 
     row = Notification(user_id=user_id, kind=kind, title=title[:300], body=body, payload=data)

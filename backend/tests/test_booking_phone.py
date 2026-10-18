@@ -269,6 +269,8 @@ def test_full_chain_confirmed_with_calendar_event_and_idempotent(client, db, req
                        "appointment_status": "confirmed", "matched_by": "external_ref"} == r.json()
     db.refresh(appt)
     assert appt.status == "confirmed" and appt.chosen_slot["start"] == slot["start"]
+    assert cal.events == {} and appt.approval["calendar"]["status"] == "pending"  # written only on the user's OK
+    ba.add_to_calendar(db, user, appt.id, calendar=cal)
     ev = cal.events[appt.calendar_event_id]
     assert ev["status"] == "confirmed" and ev["start"].isoformat() == slot["start"]
     assert len(notes(db, user, "appointment_confirmed")) == 1

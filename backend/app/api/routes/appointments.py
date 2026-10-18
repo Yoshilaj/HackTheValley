@@ -1,12 +1,15 @@
 """Appointment endpoints (thin; logic in app/services/booking/, API in app/services/booking_agent.py)."""
 
 import html as _html
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_admin
+from app.core.config import settings
 from app.db.models import RiskAssessment, User
 from app.db.session import get_db
 from app.schemas.appointments import AppointmentDetailOut, AppointmentMessageOut, AppointmentOut, UserInfoIn
@@ -82,6 +85,31 @@ def messages(appointment_id: str, user: User = Depends(get_current_user), db: Se
     return svc.list_messages(db, user.id, appointment_id)
 
 
+class CalendarDecisionIn(BaseModel):
+    """`add` = write the confirmed time to the user's Google Calendar (needs Google connected +
+    calendar_access consent; otherwise 409 and the app offers the .ics); `skip` = stop asking."""
+
+    decision: Literal["add", "skip"] = "add"
+
+
+@router.get("/{appointment_id}/calendar-sync")
+def calendar_sync(appointment_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """What the app shows under "Add to calendar" for a confirmed appointment:
+    `{ status: pending|added|skipped|none, mode: google|manual, event_id?, add_url?, google_url?, ics_url? }`."""
+    return _act(svc.calendar_status_for, db, user, appointment_id)
+
+
+@router.post("/{appointment_id}/calendar-sync")
+def calendar_decision(appointment_id: str, body: CalendarDecisionIn, user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)) -> dict[str, Any]:
+    """The user's answer to "Add it to your calendar?" (notification B). Returns the new sync status."""
+    if body.decision == "add":
+        _act(svc.add_to_calendar, db, user, appointment_id)
+    else:
+        _act(svc.skip_calendar, db, user, appointment_id)
+    return svc.calendar_status_for(db, user, appointment_id)
+
+
 @router.get("/{appointment_id}", response_model=AppointmentDetailOut)
 def get_appointment(appointment_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """One appointment including `agent_log` (the UI's "what the agent did")."""
@@ -155,3 +183,149 @@ def confirm(appointment_id: str, slot: int = Query(..., ge=0), token: str = Quer
     when = (appt.chosen_slot or {}).get("start", "")
     return _page("Appointment confirmed",
                  f"Thank you. The appointment at {when} is confirmed and the patient has been notified.")
+
+
+# ---------------------------------------------------------------- e-mail buttons (public, signed links)
+
+_PAGE_CSS = ("font-family:-apple-system,'Segoe UI',sans-serif;max-width:560px;margin:40px auto;padding:0 16px;color:#1d1d1f;"
+             "line-height:1.5")
+_BTN = ("padding:12px 20px;font-size:15px;font-weight:600;border:0;border-radius:8px;cursor:pointer;")
+
+
+def _shell(title: str, inner: str, code: int = 200) -> HTMLResponse:
+    page = (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,"
+            f"initial-scale=1'><meta name='robots' content='noindex'><title>{_html.escape(title)}</title></head>"
+            f"<body style=\"{_PAGE_CSS}\"><p style='margin:0 0 20px;font-size:15px;font-weight:700;color:#155bd0'>"
+            f"{_html.escape(settings.product_name)}</p><h1 style='font-size:22px;margin:0 0 12px'>{_html.escape(title)}</h1>"
+            f"{inner}</body></html>")
+    return HTMLResponse(page, status_code=code, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+                                                         "X-Frame-Options": "DENY"})
+
+
+def _open_app(url: str, label: str = "Open the app") -> str:
+    return (f"<p style='margin-top:24px'><a href='{_html.escape(url, quote=True)}' style='color:#155bd0;font-weight:600'>"
+            f"{_html.escape(label)} →</a></p>")
+
+
+def _link_errors(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs), None
+    except LookupError:
+        return None, _shell("Not found", "<p>This appointment does not exist.</p>", 404)
+    except PermissionError:
+        return None, _shell("This link has expired",
+                            "<p>For your safety the buttons in our e-mails stop working after a while. "
+                            "You can still decide in the app.</p>" + _open_app(settings.frontend_origin), 403)
+    except svc.AppointmentStateError as exc:
+        return None, _shell("Nothing to do", f"<p>{_html.escape(str(exc))}</p>" + _open_app(settings.frontend_origin), 409)
+
+
+def _rows(rows: list[tuple[str, str]]) -> str:
+    return ("<table style='border-collapse:collapse;font-size:15px'>" + "".join(
+        f"<tr><td style='padding:4px 12px 4px 0;color:#6e6e73;vertical-align:top'>{_html.escape(k)}</td>"
+        f"<td style='padding:4px 0'>{_html.escape(v)}</td></tr>" for k, v in rows) + "</table>")
+
+
+def _form(action_url: str, label: str, color: str = "#155bd0") -> str:
+    return (f"<form method='post' action='{_html.escape(action_url, quote=True)}' style='margin:20px 0'>"
+            f"<button type='submit' style=\"{_BTN}background:{color};color:#fff\">{_html.escape(label)}</button></form>")
+
+
+@router.get("/{appointment_id}/action", response_class=HTMLResponse, operation_id="approval_link_page")
+def approval_link_page(appointment_id: str, do: Literal["approve", "decline"] = Query(..., alias="do"),
+                       token: str = Query(...), db: Session = Depends(get_db)):
+    """The Approve / Not now buttons of the approval e-mail land here. GET never changes anything
+    (mail scanners prefetch links): it shows the request and a button that POSTs to the same URL."""
+    info, err = _link_errors(svc.link_preview, db, appointment_id, do, token)
+    if err is not None:
+        return err
+    if info["state"] != "ready":
+        return _shell("Already handled", f"<p>{_html.escape(info['state_text'])}</p>" + _open_app(info["app_url"]))
+    here = f"/api/appointments/{appointment_id}/action?do={do}&token={token}"
+    clinic = _html.escape(info["clinic"])
+    if do == "approve":
+        inner = (f"<p>We will contact <strong>{clinic}</strong> and propose these times:</p><ul>"
+                 + "".join(f"<li>{_html.escape(x)}</li>" for x in info["slots"]) + "</ul>"
+                 f"<p>{_html.escape(info['plan'])}</p><p style='font-weight:600;margin-bottom:6px'>The clinic receives</p>"
+                 + _rows(info["shared"]) + "<p style='font-size:13px;color:#6e6e73'>Never your measurements, diagnoses, "
+                 "medications or health-card number.</p>" + _form(here, "Approve and contact the clinic")
+                 + _open_app(info["app_url"], "Review the details in the app instead"))
+        return _shell(f"Approve the request to {info['clinic']}?", inner)
+    inner = (f"<p>Nothing will be sent to <strong>{clinic}</strong>. You can ask {_html.escape(settings.product_name)} "
+             "to book a visit any time from the Appointments page.</p>" + _form(here, "Decline this request", "#6e6e73")
+             + _open_app(info["app_url"], "Review the details in the app instead"))
+    return _shell("Decline this request?", inner)
+
+
+@router.post("/{appointment_id}/action", response_class=HTMLResponse, operation_id="approval_link_post")
+def approval_link_post(appointment_id: str, do: Literal["approve", "decline"] = Query(..., alias="do"),
+                       token: str = Query(...), db: Session = Depends(get_db)):
+    """Runs the approval (channels web → e-mail → phone) or declines, exactly like the in-app buttons."""
+    appt, err = _link_errors(svc.act_by_link, db, appointment_id, do, token)
+    if err is not None:
+        return err
+    app_url = f"{settings.frontend_origin.rstrip('/')}/appointments?appointment={appointment_id}"
+    clinic = _html.escape((appt.clinic or {}).get("name") or "the clinic")
+    if do == "decline":
+        return _shell("Request declined", f"<p>Nothing was sent to {clinic}.</p>" + _open_app(app_url))
+    text = {"requested": f"We are contacting {clinic} now and will e-mail you as soon as it replies.",
+            "confirmed": f"{clinic} confirmed a time straight away. Check your inbox for the details.",
+            "needs_user_info": f"{clinic} has a question for you. Please answer it in the app.",
+            "awaiting_approval": "The first clinics could not be reached; we prepared a new request for you to approve "
+                                 "in the app.",
+            "failed": "We could not reach any of the clinics. Please see the app for what to do next."}
+    return _shell("Thank you — request approved", f"<p>{_html.escape(text.get(appt.status, 'Done.'))}</p>" + _open_app(app_url))
+
+
+@router.get("/{appointment_id}/calendar", response_class=HTMLResponse, operation_id="calendar_link_page")
+def calendar_link_page(appointment_id: str, token: str = Query(...), db: Session = Depends(get_db)):
+    """"Add to Google Calendar" from the confirmation e-mail. GET shows the time and a button; POST writes
+    the event. Without a connected Google Calendar the page offers the .ics and the Google template link."""
+    info, err = _link_errors(svc.link_preview, db, appointment_id, "calendar", token)
+    if err is not None:
+        return err
+    cal = info["calendar"]
+    when = _html.escape(info.get("when") or "")
+    if info["state"] != "ready":
+        return _shell("Nothing to add" if info["state"] == "closed" else "Already in your calendar",
+                      f"<p>{_html.escape(info['state_text'])}</p>" + _open_app(info["app_url"]))
+    head = f"<p><strong>{_html.escape(info['clinic'])}</strong><br>{when}"
+    if info.get("address"):
+        head += f"<br><span style='color:#6e6e73'>{_html.escape(info['address'])}</span>"
+    head += "</p>"
+    if cal.get("mode") == "google":
+        inner = (head + "<p>We add this appointment to your Google Calendar as a confirmed event with a one-hour reminder.</p>"
+                 + _form(f"/api/appointments/{appointment_id}/calendar?token={token}", "Add to Google Calendar")
+                 + f"<p style='font-size:14px'>Prefer another calendar? <a href='{_html.escape(cal['ics_url'], quote=True)}'>"
+                   "Download the invitation (.ics)</a></p>" + _open_app(info["app_url"]))
+        return _shell("Add it to your calendar?", inner)
+    inner = (head + "<p>Your Google Calendar is not connected, so nothing is added automatically. Pick one:</p>"
+             f"<p><a href='{_html.escape(cal['google_url'], quote=True)}' style=\"{_BTN}display:inline-block;background:#155bd0;"
+             "color:#fff;text-decoration:none\">Open in Google Calendar</a></p>"
+             f"<p><a href='{_html.escape(cal['ics_url'], quote=True)}' style=\"{_BTN}display:inline-block;background:#eef1f5;"
+             "color:#1d1d1f;text-decoration:none\">Download the invitation (.ics)</a></p>" + _open_app(info["app_url"]))
+    return _shell("Add it to your calendar", inner)
+
+
+@router.post("/{appointment_id}/calendar", response_class=HTMLResponse, operation_id="calendar_link_post")
+def calendar_link_post(appointment_id: str, token: str = Query(...), db: Session = Depends(get_db)):
+    appt, err = _link_errors(svc.act_by_link, db, appointment_id, "calendar", token)
+    if err is not None:
+        return err
+    app_url = f"{settings.frontend_origin.rstrip('/')}/appointments?appointment={appointment_id}"
+    return _shell("Added to your Google Calendar",
+                  f"<p>{_html.escape((appt.clinic or {}).get('name') or 'The appointment')} is now in your calendar "
+                  "with a reminder one hour before.</p>"
+                  "<p><a href='https://calendar.google.com/' style='color:#155bd0;font-weight:600'>Open Google Calendar →</a></p>"
+                  + _open_app(app_url))
+
+
+@router.get("/{appointment_id}/calendar.ics", operation_id="calendar_ics")
+def calendar_ics(appointment_id: str, token: str = Query(...), db: Session = Depends(get_db)):
+    """The .ics invitation (signed link from the confirmation e-mail / app)."""
+    out, err = _link_errors(svc.ics_by_link, db, appointment_id, token)
+    if err is not None:
+        return err
+    data, filename = out
+    return Response(data, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})

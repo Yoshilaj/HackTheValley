@@ -52,6 +52,7 @@ from app.integrations import Clinic, Slot
 from app.prompts import booking as booking_prompt
 from app.providers.llm import ToolSpec
 from app.services import notify as notify_svc
+from app.services import user_emails
 from app.services.booking import sandbox
 from app.services.booking.channels import CHANNEL_ORDER, BookingContext, ChannelMessage, ChannelResult, default_channels
 from app.services.booking.common import (
@@ -429,6 +430,7 @@ def _await_approval(env: Env, appt: Appointment, s: PlanningSession) -> Appointm
     appt.clinic = json_safe(clinic.as_dict())
     appt.proposed_slots = [x.as_dict() for x in s.proposed]
     appt.approval = _approval(env, s, clinic, s.proposed, plan, s.detections.get(clinic.id), s.user_message)
+    appt.approval = appt.approval | {"finding": _finding(s.assessment)}
     appt.status = "awaiting_approval"
     append_log(appt, entry("approval_requested", clinic=clinic.name, channel_plan=_plan_summary(plan),
                            candidates=[c.name for c, _ in [(clinic, None)] + s.backups]))
@@ -443,11 +445,39 @@ def _await_approval(env: Env, appt: Appointment, s: PlanningSession) -> Appointm
                                      "channel_plan": plan, "slots": appt.approval["slots"],
                                      "shared_fields": appt.approval["shared_fields"],
                                      "missing_profile_fields": appt.approval["missing_profile_fields"],
+                                     "finding": appt.approval["finding"],
                                      "candidates": [{"rank": e["rank"], "clinic": e["summary"],
                                                      "channel_plan": e["channel_plan"], "slots": e["slots"]}
                                                     for e in appt.approval["candidates"]]},
-                      email=True, commit=False)
+                      email=True, email_content=_email_or_none(user_emails.approval_email, env.user, appt), commit=False)
     return appt
+
+
+def _finding(assessment: RiskAssessment | None) -> dict[str, Any]:
+    """Why the agent ran, in the user's words: pathway name, the neutral headline and up to three
+    rule summaries (structured data from the risk engine; the LLM never writes this)."""
+    if assessment is None:
+        return {}
+    from app.services.risk_service import PATHWAY_NAMES
+
+    headline = ((assessment.data_quality or {}).get("headline") or {})
+    points = [f.get("summary_text") for f in (assessment.fired_rules or [])
+              if f.get("summary_text") and f.get("level") in ("followup_recommended", None)]
+    return json_safe({"pathway": assessment.pathway,
+                      "pathway_name": PATHWAY_NAMES.get(assessment.pathway, {}).get("en", assessment.pathway),
+                      "headline": headline.get("en") if isinstance(headline, dict) else None,
+                      "points": points[:3], "priority_score": assessment.priority_score,
+                      "assessment_id": assessment.id})
+
+
+def _email_or_none(builder: Any, *args: Any) -> Any:
+    """A broken e-mail template must never block a booking step: fall back to the plain rendering."""
+    try:
+        return builder(*args)
+    except Exception as exc:  # pragma: no cover - defensive
+        log.exception("user e-mail rendering failed", extra={"builder": getattr(builder, "__name__", "?"),
+                                                              "error": str(exc)})
+        return None
 
 
 # ================================================================ entry point
@@ -566,6 +596,8 @@ def _ctx_for(env: Env, appt: Appointment, **kw: Any) -> BookingContext:
 
 
 def _tentative_event(env: Env, appt: Appointment, ctx: BookingContext) -> None:
+    if settings.calendar_write_requires_approval:
+        return  # the user adds the confirmed time themselves (add_to_calendar); no silent hold
     if appt.calendar_event_id or not env.events_allowed or not ctx.slots:
         return
     try:
@@ -598,7 +630,8 @@ def _on_requested(env: Env, appt: Appointment, ctx: BookingContext, channel: str
                       "We will let you know when the clinic replies.",
                       payload={"appointment_id": appt.id, "clinic": ctx.clinic.name, "channel": channel,
                                "proposed_slots": appt.proposed_slots or [], "report_url": ctx.report_url},
-                      email=True, commit=False)
+                      email=True, email_content=_email_or_none(user_emails.requested_email, env.user, appt, channel),
+                      commit=False)
 
 
 def execute_plan(env: Env, appt: Appointment, only: list[str] | None = None, reminder: bool = False) -> ChannelResult | None:
@@ -826,9 +859,11 @@ def _settle(appt: Appointment, expected: str) -> None:
 
 
 def approve_appointment(db: Session, user: User, appointment_id: str, *, calendar: Any = None, email: Any = None,
-                        llm: Any = None, channels: dict[str, Any] | None = None, now: datetime | None = None) -> Appointment:
+                        llm: Any = None, channels: dict[str, Any] | None = None, now: datetime | None = None,
+                        by: str = "user") -> Appointment:
     """The user approves the plan on the card -> channels run (spec §1.5). 409 unless awaiting_approval
-    (also for a second concurrent approve: the status is claimed atomically first)."""
+    (also for a second concurrent approve: the status is claimed atomically first). ``by`` records
+    where the approval came from ("user" = the app, "user:email_link" = the e-mail button)."""
     appt = _own(db, user, appointment_id)
     if appt.status != "awaiting_approval":
         raise AppointmentStateError(f"appointment is {appt.status}, not awaiting_approval")
@@ -841,9 +876,9 @@ def approve_appointment(db: Session, user: User, appointment_id: str, *, calenda
     env = _env(db, user, calendar=calendar, email=email, llm=llm, channels=channels, now=now)
     _claim(db, appt, "awaiting_approval")
     try:
-        _approve(env, appt)
+        _approve(env, appt, by=by)
         _settle(appt, "awaiting_approval")
-        audit(db, user.id, "appointment.approve", f"appointment:{appt.id}", {"status": appt.status})
+        audit(db, user.id, "appointment.approve", f"appointment:{appt.id}", {"status": appt.status, "by": by})
         db.commit()
     except Exception:
         _release(db, appt, "awaiting_approval")
@@ -851,17 +886,17 @@ def approve_appointment(db: Session, user: User, appointment_id: str, *, calenda
     return appt
 
 
-def decline_appointment(db: Session, user: User, appointment_id: str) -> Appointment:
+def decline_appointment(db: Session, user: User, appointment_id: str, *, by: str = "user") -> Appointment:
     appt = _own(db, user, appointment_id)
     if appt.status != "awaiting_approval":
         raise AppointmentStateError(f"appointment is {appt.status}, not awaiting_approval")
     _claim(db, appt, "awaiting_approval")
     approval = dict(appt.approval or {})
-    approval.update(status="declined", declined_at=utcnow().isoformat())
+    approval.update(status="declined", declined_at=utcnow().isoformat(), declined_by=by)
     appt.approval = approval
     appt.status = "cancelled"
-    append_log(appt, entry("cancelled", by="patient", reason="approval declined"))
-    audit(db, user.id, "appointment.decline", f"appointment:{appt.id}")
+    append_log(appt, entry("cancelled", by="patient", reason="approval declined", via=by))
+    audit(db, user.id, "appointment.decline", f"appointment:{appt.id}", {"by": by})
     db.commit()
     return appt
 
@@ -1123,12 +1158,20 @@ def _parse_slot(value: Any, tz: str) -> Slot | None:
 
 
 def finalize_confirmed(env: Env, appt: Appointment, slot: dict[str, Any] | None, via: str) -> Appointment:
-    """status confirmed, chosen_slot, calendar event confirmed (updated or created), user notified."""
+    """status confirmed, chosen_slot, user notified (in-app + e-mail with the .ics attached).
+
+    Calendar: with ``CALENDAR_WRITE_REQUIRES_APPROVAL`` (default) nothing is written — the card gets
+    ``approval.calendar = {status: pending}`` and the notification / e-mail ask the user to tap
+    "Add to calendar" (``add_to_calendar``). Otherwise the tentative event is confirmed / created here."""
     appt.status = "confirmed"
     appt.chosen_slot = slot
     entries = [entry("confirmed", slot=slot, via=via)]
     clinic_name = (appt.clinic or {}).get("name", "—")
-    if slot:
+    approval = dict(appt.approval or {})
+    if slot and settings.calendar_write_requires_approval:
+        approval["calendar"] = {"status": "pending", "requested_at": utcnow().isoformat(), "mode": _calendar_mode(env)}
+        entries.append(entry("calendar_approval_requested", mode=approval["calendar"]["mode"]))
+    elif slot:
         s = Slot.from_any(slot)
         summary = f"Appointment: {clinic_name}"
         try:
@@ -1140,14 +1183,170 @@ def finalize_confirmed(env: Env, appt: Appointment, slot: dict[str, Any] | None,
                 appt.calendar_event_id = env.calendar.create_event(summary, s.start, s.end,
                                                                    "Booked via health assistant.", tentative=False)
                 entries.append(entry("calendar_event", event_id=appt.calendar_event_id, status="confirmed"))
+            if appt.calendar_event_id:
+                approval["calendar"] = {"status": "added", "event_id": appt.calendar_event_id, "mode": "google",
+                                        "at": utcnow().isoformat(), "by": "auto"}
         except Exception as exc:
             entries.append(entry("calendar_update", event_id=appt.calendar_event_id, ok=False, error=str(exc)[:300]))
+    appt.approval = json_safe(approval)
     append_log(appt, *entries)
     when = slot_label(Slot.from_any(slot), env.tz) if slot else "a time to be confirmed"
+    cal = calendar_sync_status(env, appt)
+    body = f"{clinic_name} confirmed {when}."
+    if cal.get("status") == "pending":
+        body += " Add it to your calendar? Nothing is added until you say so."
     notify_svc.notify(env.db, appt.user_id, notify_svc.KIND_APPOINTMENT_CONFIRMED, f"Appointment confirmed: {clinic_name}",
-                      f"{clinic_name} confirmed {when}.", payload={"appointment_id": appt.id, "chosen_slot": slot},
-                      email=True, commit=False)
+                      body, payload={"appointment_id": appt.id, "chosen_slot": slot, "slot_label": when,
+                                     "clinic": _clinic_summary(_clinic_obj(appt.clinic or {})) if appt.clinic else None,
+                                     "calendar": cal},
+                      email=True, email_content=_email_or_none(user_emails.confirmed_email, env.user, appt, cal),
+                      commit=False)
     return appt
+
+
+# ================================================================ calendar (user-approved writes)
+
+def _calendar_mode(env: Env) -> str:
+    """'google' = we can write the event through the API (connected + calendar_access consent);
+    'manual' = the user adds it from the .ics / Google template link."""
+    return "google" if env.events_allowed else "manual"
+
+
+def calendar_sync_status(env: Env, appt: Appointment) -> dict[str, Any]:
+    """`{status: pending|added|skipped|none, mode: google|manual, event_id?, add_url?, google_url?, ics_url?}`
+    — what the app / e-mail shows under "Add to calendar"."""
+    state = dict((appt.approval or {}).get("calendar") or {})
+    if not appt.chosen_slot or appt.status != "confirmed":
+        return {"status": "none", "mode": _calendar_mode(env)}
+    status = state.get("status") or ("added" if appt.calendar_event_id else "pending")
+    out = {"status": status, "mode": _calendar_mode(env), "event_id": appt.calendar_event_id or state.get("event_id"),
+           "at": state.get("at")}
+    if status != "added":
+        out |= user_emails.calendar_options(appt, google_available=env.events_allowed)
+        out["mode"] = _calendar_mode(env)
+    return out
+
+
+def add_to_calendar(db: Session, user: User, appointment_id: str, *, calendar: Any = None, by: str = "user") -> Appointment:
+    """The user approved the calendar write: create (or confirm) the Google Calendar event.
+    409 (`AppointmentStateError`) unless the appointment is confirmed with a time and Google Calendar is
+    connected with the calendar_access consent; the caller then offers the .ics instead."""
+    appt = _own(db, user, appointment_id)
+    if appt.status != "confirmed" or not appt.chosen_slot:
+        raise AppointmentStateError(f"appointment is {appt.status}; only a confirmed time can be added")
+    env = _env(db, user, calendar=calendar)
+    if not env.events_allowed:
+        raise AppointmentStateError("Google Calendar is not connected (or the calendar_access consent is missing); "
+                                    "use the .ics invitation instead")
+    s = Slot.from_any(appt.chosen_slot)
+    clinic_name = (appt.clinic or {}).get("name", "clinic")
+    summary = f"Appointment: {clinic_name}"
+    description = f"Booked via {settings.product_name}. " + ", ".join(appt.clinic.get(k) for k in ("address", "phone")
+                                                                       if (appt.clinic or {}).get(k))
+    state = dict((appt.approval or {}).get("calendar") or {})
+    if appt.calendar_event_id:
+        ok = env.calendar.update_event(appt.calendar_event_id, status="confirmed", start=s.start, end=s.end,
+                                       summary=summary, description=description)
+        if not ok:
+            appt.calendar_event_id = env.calendar.create_event(summary, s.start, s.end, description, tentative=False)
+    else:
+        appt.calendar_event_id = env.calendar.create_event(summary, s.start, s.end, description, tentative=False)
+    state.update(status="added", event_id=appt.calendar_event_id, mode="google", at=utcnow().isoformat(), by=by)
+    appt.approval = json_safe(dict(appt.approval or {}) | {"calendar": state})
+    append_log(appt, entry("calendar_event", event_id=appt.calendar_event_id, status="confirmed", by=by))
+    audit(db, user.id, "appointment.calendar_add", f"appointment:{appt.id}", {"event_id": appt.calendar_event_id, "by": by})
+    db.commit()
+    return appt
+
+
+def skip_calendar(db: Session, user: User, appointment_id: str) -> Appointment:
+    """"Not now" on the add-to-calendar prompt: remembered so the app stops asking (the .ics stays
+    available from the appointment menu)."""
+    appt = _own(db, user, appointment_id)
+    state = dict((appt.approval or {}).get("calendar") or {})
+    if state.get("status") == "added":
+        return appt
+    state.update(status="skipped", at=utcnow().isoformat())
+    appt.approval = json_safe(dict(appt.approval or {}) | {"calendar": state})
+    append_log(appt, entry("calendar_skipped"))
+    db.commit()
+    return appt
+
+
+def calendar_status_for(db: Session, user: User, appointment_id: str, *, calendar: Any = None) -> dict[str, Any]:
+    appt = _own(db, user, appointment_id)
+    return calendar_sync_status(_env(db, user, calendar=calendar), appt)
+
+
+# ================================================================ e-mail buttons (signed links)
+
+def _by_link(db: Session, appointment_id: str, action: str, token: str | None) -> tuple[Appointment, User]:
+    from app.services.booking.common import approval_nonce, calendar_nonce, verify_user_action_token
+
+    appt = db.get(Appointment, appointment_id)
+    if appt is None:
+        raise LookupError("appointment not found")
+    nonce = calendar_nonce(appt) if action == "calendar" else approval_nonce(appt)
+    if not verify_user_action_token(appt.id, action, nonce, token):
+        raise PermissionError("invalid or expired link")
+    user = db.get(User, appt.user_id)
+    if user is None:
+        raise LookupError("appointment not found")
+    return appt, user
+
+
+def link_preview(db: Session, appointment_id: str, action: str, token: str | None, *, calendar: Any = None) -> dict[str, Any]:
+    """What the GET page of an e-mail button shows (never changes state): the appointment summary and
+    whether the action can still run (`state`: ready | done | closed)."""
+    appt, user = _by_link(db, appointment_id, action, token)
+    env = _env(db, user, calendar=calendar)
+    clinic = appt.clinic or {}
+    tz = env.tz
+    info: dict[str, Any] = {"appointment_id": appt.id, "action": action, "status": appt.status,
+                            "clinic": clinic.get("name") or "the clinic", "address": clinic.get("address"),
+                            "app_url": f"{settings.frontend_origin.rstrip('/')}/appointments?appointment={appt.id}",
+                            "product": settings.product_name}
+    if action in ("approve", "decline"):
+        approval = appt.approval or {}
+        info["slots"] = [x.get("label_user") or x.get("label") for x in approval.get("slots") or []]
+        info["plan"] = user_emails._plan_sentence(approval.get("channel_plan") or [])
+        shared = approval.get("shared_fields") or {}
+        info["shared"] = [(label, str(shared[k])) for k, label in user_emails.SHARED_LABELS if shared.get(k)]
+        info["state"] = "ready" if appt.status == "awaiting_approval" else "closed"
+        info["state_text"] = {"cancelled": "This request was declined or cancelled.",
+                              "requested": "This request was already approved and sent to the clinic.",
+                              "confirmed": "This appointment is already confirmed.",
+                              "needs_user_info": "This request was approved; the clinic has a question for you.",
+                              "failed": "This request could not be completed.",
+                              PROCESSING: "This request is being processed right now."}.get(appt.status, "")
+    else:
+        cal = calendar_sync_status(env, appt)
+        info |= {"calendar": cal, "when": slot_label(Slot.from_any(appt.chosen_slot), tz) if appt.chosen_slot else None}
+        info["state"] = ("done" if cal.get("status") == "added" else
+                         "ready" if appt.status == "confirmed" and appt.chosen_slot else "closed")
+        info["state_text"] = ("This appointment is already in your Google Calendar." if info["state"] == "done" else
+                              "" if info["state"] == "ready" else "This appointment is no longer confirmed.")
+    return info
+
+
+def act_by_link(db: Session, appointment_id: str, action: str, token: str | None, *, calendar: Any = None,
+                email: Any = None, llm: Any = None, channels: dict[str, Any] | None = None) -> Appointment:
+    """The POST of an e-mail button: approve / decline the card, or add the confirmed time to Google Calendar."""
+    appt, user = _by_link(db, appointment_id, action, token)
+    if action == "approve":
+        return approve_appointment(db, user, appt.id, calendar=calendar, email=email, llm=llm, channels=channels,
+                                   by="user:email_link")
+    if action == "decline":
+        return decline_appointment(db, user, appt.id, by="user:email_link")
+    return add_to_calendar(db, user, appt.id, calendar=calendar, by="user:email_link")
+
+
+def ics_by_link(db: Session, appointment_id: str, token: str | None) -> tuple[bytes, str]:
+    """(.ics bytes, filename) for the signed download link of the confirmation e-mail."""
+    appt, user = _by_link(db, appointment_id, "calendar", token)
+    if appt.status != "confirmed" or not appt.chosen_slot:
+        raise AppointmentStateError("this appointment has no confirmed time")
+    return user_emails.appointment_ics(appt, tz=tz_of(user)), f"appointment-{appt.id[:8]}.ics"
 
 
 # ================================================================ clinic link / cancel / queries

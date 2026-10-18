@@ -45,9 +45,13 @@ def test_confirm_service_updates_event_and_notifies(db, booked):
     user, appt, cal, _ = booked
     out = ba.confirm_appointment(db, appt.id, 1, ba.confirm_token_for(appt, 1), calendar=cal)
     assert out.status == "confirmed" and out.chosen_slot == appt.proposed_slots[1]
+    # calendar writes wait for the user's OK (notification B): nothing written yet, the card says "pending"
+    assert cal.events == {} and appt.calendar_event_id is None and appt.approval["calendar"]["status"] == "pending"
+    assert "appointment_confirmed" in _kinds(db, user)
+    ba.add_to_calendar(db, user, appt.id, calendar=cal)
     event = cal.events[appt.calendar_event_id]
     assert event["status"] == "confirmed" and event["start"].isoformat() == appt.proposed_slots[1]["start"]
-    assert "appointment_confirmed" in _kinds(db, user)
+    assert appt.approval["calendar"] | {"status": "added", "event_id": appt.calendar_event_id} == appt.approval["calendar"]
     assert ba.confirm_appointment(db, appt.id, 1, ba.confirm_token_for(appt, 1), calendar=cal).status == "confirmed"
     with pytest.raises(ba.AppointmentStateError):
         ba.confirm_appointment(db, appt.id, 0, ba.confirm_token_for(appt, 0), calendar=cal)
@@ -239,8 +243,7 @@ def test_full_chain_followup_to_confirmed(client, db, monkeypatch):
     assert res.status_code == 200 and res.json()["status"] == "requested"
     mail = clinic_mail(fake.outbox)[0]
     assert mail.reply_to.startswith("book+") and mail.reply_to.endswith("@book.example.org")
-    event_id = res.json()["calendar_event_id"]
-    assert cal.events[event_id]["status"] == "tentative"
+    assert res.json()["calendar_event_id"] is None and cal.events == {}  # no silent tentative hold
 
     payload = {"type": "email.received", "data": {"email_id": "in_1", "from": mail.to[0], "to": [mail.reply_to],
                                                   "subject": "Re: " + mail.subject,
@@ -250,9 +253,14 @@ def test_full_chain_followup_to_confirmed(client, db, monkeypatch):
     assert r.status_code == 200 and r.json()["appointment_status"] == "confirmed", r.json()
     detail = client.get(f"/api/appointments/{appt.id}", headers=h).json()
     assert detail["status"] == "confirmed" and detail["chosen_slot"] == detail["proposed_slots"][2]
-    ev = cal.events[event_id]
-    assert ev["status"] == "confirmed" and ev["start"].isoformat() == detail["proposed_slots"][2]["start"]
     assert "appointment_confirmed" in _kinds(db, user)
+    # notification B: the user adds it to the calendar from the app
+    sync = client.get(f"/api/appointments/{appt.id}/calendar-sync", headers=h).json()
+    assert sync["status"] == "pending" and sync["mode"] == "google" and sync["ics_url"].endswith(f"token={sync['ics_url'].split('token=')[1]}")
+    sync = client.post(f"/api/appointments/{appt.id}/calendar-sync", json={"decision": "add"}, headers=h).json()
+    ev = cal.events[sync["event_id"]]
+    assert sync["status"] == "added" and ev["status"] == "confirmed"
+    assert ev["start"].isoformat() == detail["proposed_slots"][2]["start"]
     msgs = client.get(f"/api/appointments/{appt.id}/messages", headers=h).json()
     assert [(m["direction"], (m["classification"] or {}).get("outcome")) for m in msgs] == [
         ("out", None), ("in", "confirmed")]

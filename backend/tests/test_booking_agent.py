@@ -143,8 +143,7 @@ def test_approve_sends_one_clinic_email_and_tentative_event(db, setup):
     assert attempts == [("web", "skipped"), ("email", "requested")]
     assert out.reply_token and out.external_ref == msg.id
     assert out.clinic["request"]["to"] == "booking@bloorheart.example.com" and out.clinic["request"]["accepted"]
-    event = cal.events[out.calendar_event_id]
-    assert event["status"] == "tentative" and event["start"].isoformat() == out.proposed_slots[0]["start"]
+    assert cal.events == {} and out.calendar_event_id is None  # calendar writes wait for the user's OK
     rows = db.scalars(select(AppointmentMessage).where(AppointmentMessage.appointment_id == appt.id)).all()
     assert [(r.direction, r.channel) for r in rows] == [("out", "email")]
     assert len(notes(db, user, "appointment_requested")) == 1
@@ -196,8 +195,10 @@ def test_blocked_channel_skipped_instantly_never_executed(db, setup):
     assert web.calls == [] and out.channel_attempts[0] == out.channel_attempts[0] | {"status": "skipped",
                                                                                      "reason": "captcha"}
     assert out.status == "confirmed" and out.chosen_slot["start"] == "2026-11-02T10:00:00-05:00"
-    assert cal.events[out.calendar_event_id]["status"] == "confirmed"
+    assert cal.events == {} and out.approval["calendar"]["status"] == "pending"
     assert len(notes(db, user, "appointment_confirmed")) == 1
+    ba.add_to_calendar(db, user, appt.id, calendar=cal)
+    assert cal.events[out.calendar_event_id]["status"] == "confirmed"
 
 
 def test_all_channels_fail_next_candidate_needs_new_approval_then_failed(db, setup):

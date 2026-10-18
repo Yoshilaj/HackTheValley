@@ -266,8 +266,13 @@ def _handle_transition(db: Session, user: User, row: RiskAssessment, prev: RiskA
     if newly_followup or (row.level == "followup_recommended" and prev_deferred):
         if newly_followup:
             title = (f"{name}: 受診をおすすめします" if lang == "ja" else f"{name}: a check-up is recommended")
+            # One e-mail per finding: when the booking agent will produce an approval card in this run,
+            # that card's e-mail carries the finding, so this notification stays in-app only.
+            will_book = not suppress_hooks and _booking_will_follow(db, user, row)
             notify_svc.notify(db, user.id, notify_svc.KIND_FOLLOWUP_RECOMMENDED, title, row.explanation,
-                              payload=payload, email=True, commit=False)
+                              payload=payload | ({"email": {"sent": False, "reason": "covered_by_approval_email"}}
+                                                 if will_book else {}),
+                              email=not will_book, commit=False)
             actions.append("followup_recommended")
         if suppress_hooks:
             # §7: emergency elsewhere in this run → no hooks now; mark the row so the next
@@ -286,6 +291,19 @@ def _handle_transition(db: Session, user: User, row: RiskAssessment, prev: RiskA
                           payload=payload | {"missing_inputs": row.missing_inputs or []}, commit=False)
         actions.append("data_needed")
     return actions
+
+
+def _booking_will_follow(db: Session, user: User, row: RiskAssessment) -> bool:
+    """True when the follow-up hooks will run the booking agent for this pathway (consents present,
+    no active appointment) — i.e. an `appointment_approval_needed` e-mail is about to be sent."""
+    if not FOLLOWUP_HOOKS or not has_consent(db, user.id, "ai_assessment") or not has_consent(db, user.id, "share_with_clinic"):
+        return False
+    try:
+        from app.services.followup import active_appointment_for_pathway
+
+        return active_appointment_for_pathway(db, user.id, row.pathway) is None
+    except Exception:  # pragma: no cover - defensive: never block the notification
+        return False
 
 
 def on_followup_recommended(db: Session, user: User, assessment: RiskAssessment) -> None:

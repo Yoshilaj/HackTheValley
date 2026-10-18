@@ -11,9 +11,13 @@ import { timeAgo } from "../utils/dates.js";
 
 const REFRESH_MS = 60_000;
 
-// Backend kind -> the icon it gets and the page it opens.
-function kindOf(kind) {
-  if (kind.startsWith("appointment") || kind.startsWith("booking")) return { kind: "appointment", to: "/appointments" };
+// Backend kind -> the icon it gets and the page it opens. Appointment notifications
+// open that appointment's sheet (approval card, confirmation + calendar step).
+function kindOf(kind, payload) {
+  if (kind.startsWith("appointment") || kind.startsWith("booking")) {
+    const id = payload?.appointment_id;
+    return { kind: "appointment", to: id ? `/appointments?appointment=${encodeURIComponent(id)}` : "/appointments" };
+  }
   if (kind.includes("medication") || kind.includes("refill")) return { kind: "medication", to: "/medications" };
   return { kind: "risk", icon: "alert", to: "/" }; // follow-up findings, level changes, emergencies
 }
@@ -32,7 +36,7 @@ function shortBody(body) {
 function fromBackend(n) {
   return {
     id: n.id,
-    ...kindOf(n.kind ?? ""),
+    ...kindOf(n.kind ?? "", n.payload),
     title: n.title,
     body: shortBody(n.body),
     time: timeAgo(new Date(n.created_at).getTime()),

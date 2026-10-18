@@ -416,6 +416,8 @@ def test_full_chain_approve_web_confirmed_with_calendar_event(db, booking_setup,
     booking = mock_clinic.store.all()[0]
     assert out.external_ref == booking["reference"] and out.chosen_slot["start"] == booking["slot_start"]
     assert [(a["channel"], a["status"]) for a in out.channel_attempts] == [("web", "confirmed")]
+    assert cal.events == {} and out.approval["calendar"]["status"] == "pending"  # written only on the user's OK
+    ba.add_to_calendar(db, user, appt.id, calendar=cal)
     event = cal.events[out.calendar_event_id]
     assert event["status"] == "confirmed" and event["start"].isoformat() == booking["slot_start"]
     assert clinic_mail(email.outbox) == []  # the website booking replaced the e-mail

@@ -44,6 +44,16 @@ SCHEDULER_TIMEZONE=America/Toronto
   inbound replies via webhook) → phone (ElevenLabs Agents). **Sandbox by default**: every outbound
   action goes to the `SANDBOX_CLINIC_*` targets or the built-in mock clinic (`/mock-clinic`), never
   to the real clinic; the real clinic is shown and logged ("sandbox: redirected from …").
+- **User notifications A and B (2026-10-17 evening):** (A) a detected sign → ONE e-mail "Please approve:
+  appointment request with {clinic}" with the finding ("Why this was flagged"), the clinic, the 3 times, how it
+  is contacted, exactly what it receives, and **Approve / Not now buttons that work from the inbox** (signed
+  7-day links; GET shows a page, only POST acts) plus a deep link into the app; the in-app bell opens the same
+  card as a sheet (`AgentAppointmentSheet`). The `followup_recommended` e-mail is skipped when this one follows.
+  (B) clinic confirms → ONE e-mail "Confirmed: {clinic} · {time}" with directions, what to bring, the `.ics`
+  attached and **the calendar step: nothing is written to the calendar until the user taps "Add to Google
+  Calendar"** (e-mail button or in-app; `CALENDAR_WRITE_REQUIRES_APPROVAL=true`). Without a connected Google
+  Calendar the user gets the `.ics` and a pre-filled Google Calendar link instead. Routes in API.md §11
+  (`/action`, `/calendar`, `/calendar.ics`, `/calendar-sync`); tests `tests/test_user_notifications.py`.
 - Everything from the earlier build (data in, assessments, risk engine, reports, notifications,
   auth, consent, audit, export/delete, rate limits, scheduler) is unchanged.
 

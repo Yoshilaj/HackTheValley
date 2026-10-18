@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     """All configuration comes from env vars / .env. See .env.example."""
 
     app_name: str = "HackTheValley API"
+    # The name users see in e-mails and on the approval / calendar pages.
+    product_name: str = "CareSync"
     frontend_origin: str = "http://localhost:5173"
     base_url: str = "http://localhost:8000"
 
@@ -75,6 +77,12 @@ class Settings(BaseSettings):
     # team controls, never to real clinics. live = real clinic contact details. Default sandbox.
     booking_target_mode: Literal["sandbox", "live"] = "sandbox"
     booking_require_approval: bool = True
+    # Calendar writes (Google Calendar events) only after the user taps "Add to calendar" on the
+    # confirmation notification / e-mail. false = the pre-2026-10-17 behaviour: a tentative hold at
+    # request time and an automatic update on confirmation (needs the calendar_access consent).
+    calendar_write_requires_approval: bool = True
+    # How long the approve / decline links in the approval e-mail stay valid.
+    user_action_link_days: int = 7
     sandbox_clinic_email: str = ""
     sandbox_clinic_phone: str = ""        # E.164, e.g. +14165550123 (your own phone)
     sandbox_clinic_website: str = ""      # empty = the built-in mock clinic site at BASE_URL/mock-clinic

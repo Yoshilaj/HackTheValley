@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   USE_BACKEND,
   approveAppointment,
   bookAppointment,
   cancelAppointment,
   cancelBooking,
+  decideCalendarSync,
+  declineAppointment,
   getAppointments,
   getBookings,
 } from "../api/client.js";
@@ -25,7 +27,10 @@ import { describeSlot } from "../utils/slots.js";
 // "Past" (backend on) is the same data once its time has gone by: your bookings
 // whose time has passed, and the agent's confirmed appointments whose chosen
 // time has passed. Appointments still being arranged stay under Upcoming.
+// The agent's appointments are re-read every minute and when the tab regains
+// focus, so a request approved from the e-mail shows up without a reload.
 const STORAGE_KEY = "caresync-appointments";
+const REFRESH_MS = 60_000;
 
 // Agent appointment statuses that are still upcoming, and how each reads in the app.
 const UPCOMING = {
@@ -126,6 +131,9 @@ function fromAgent(a) {
           ? `${a.proposed_slots.length} times proposed to the clinic.`
           : "",
     slot: start,
+    // The calendar step of a confirmed visit: pending until the user adds or skips it.
+    calendarStatus: a.approval?.calendar?.status ?? (a.status === "confirmed" && a.chosen_slot ? "pending" : "none"),
+    raw: a, // the backend record, for the appointment sheet (approval card, finding, calendar)
   };
 }
 
@@ -183,6 +191,30 @@ export function AppointmentsProvider({ children }) {
     };
   }, [account]);
 
+  // Re-read the agent's appointments (their status changes on the server: clinic
+  // replies, approvals from the e-mail buttons).
+  const refresh = useCallback(() => {
+    if (!USE_BACKEND || !account) return Promise.resolve();
+    return getAppointments()
+      .then((list) => setAgent(list.filter((a) => a.status in UPCOMING).map(fromAgent)))
+      .catch(() => {
+        /* offline: keep what we have */
+      });
+  }, [account]);
+
+  useEffect(() => {
+    if (!USE_BACKEND || !account) return;
+    const timer = setInterval(refresh, REFRESH_MS);
+    const onFocus = () => document.visibilityState === "visible" && refresh();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [account, refresh]);
+
   // Backend on: anything with a settled time that has passed moves to "Past", newest first.
   const now = Date.now();
   const hasPassed = (a) => a.slot && new Date(a.slot).getTime() < now && (a.booking || (a.backendStatus === "confirmed" && a.chosen));
@@ -227,20 +259,49 @@ export function AppointmentsProvider({ children }) {
     }
   };
 
-  // Approve an appointment the backend's agent is waiting on (status "Needs your approval").
-  const approveVisit = async (appointmentId) => {
-    const updated = await approveAppointment(appointmentId);
+  // Replace one agent appointment with the backend's updated record (or drop it
+  // when it is no longer upcoming). Returns the mapped appointment.
+  const applyUpdate = (appointmentId, updated) => {
+    const mapped = fromAgent(updated);
     setAgent((list) =>
       UPCOMING[updated.status]
-        ? list.map((a) => (a.id === appointmentId ? fromAgent(updated) : a))
+        ? list.map((a) => (a.id === appointmentId ? mapped : a))
         : list.filter((a) => a.id !== appointmentId)
     );
+    return mapped;
+  };
+
+  // Approve an appointment the backend's agent is waiting on (status "Needs your approval").
+  const approveVisit = async (appointmentId) => applyUpdate(appointmentId, await approveAppointment(appointmentId));
+
+  // "Not now" on the approval card: nothing is sent, the request is closed.
+  const declineVisit = async (appointmentId) => applyUpdate(appointmentId, await declineAppointment(appointmentId));
+
+  // The calendar step of a confirmed visit: "add" writes it to Google Calendar
+  // (backend), "skip" stops the prompt. Returns the sync status.
+  const calendarDecision = async (appointmentId, decision) => {
+    const sync = await decideCalendarSync(appointmentId, decision);
+    setAgent((list) =>
+      list.map((a) =>
+        a.id === appointmentId
+          ? {
+              ...a,
+              calendarStatus: sync.status,
+              raw: { ...a.raw, calendar_event_id: sync.event_id ?? a.raw.calendar_event_id, approval: { ...a.raw.approval, calendar: sync } },
+            }
+          : a
+      )
+    );
+    return sync;
   };
 
   const isBooked = (providerId) => upcoming.some((a) => a.providerId === providerId);
+  const agentById = (id) => agent.find((a) => a.id === id) ?? null;
 
   return (
-    <AppointmentsContext.Provider value={{ upcoming, past, loaded, bookVisit, cancelVisit, approveVisit, isBooked }}>
+    <AppointmentsContext.Provider
+      value={{ upcoming, past, loaded, bookVisit, cancelVisit, approveVisit, declineVisit, calendarDecision, refresh, agentById, isBooked }}
+    >
       {children}
     </AppointmentsContext.Provider>
   );

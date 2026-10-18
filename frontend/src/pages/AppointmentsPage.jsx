@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import useRecommendations from "../hooks/useRecommendations.js";
 import useProviders from "../hooks/useProviders.js";
+import { getAppointment } from "../api/client.js";
 import BookVisitSheet from "../components/BookVisitSheet.jsx";
 import CancelAppointmentDialog from "../components/CancelAppointmentDialog.jsx";
 import BookDetailSheet from "../components/BookDetailSheet.jsx";
+import AgentAppointmentSheet from "../components/AgentAppointmentSheet.jsx";
 import VisitSummary from "../components/VisitSummary.jsx";
 import GuestGate from "../components/GuestGate.jsx";
 import { useSession } from "../context/SessionContext.jsx";
@@ -108,37 +110,44 @@ function AppointmentMenu({ a, onCancel, onPrint }) {
   );
 }
 
-// A visit the backend's booking agent is waiting on: nothing is sent to the
-// clinic until the user approves. Shows the error in place if approving fails.
-function ApproveButton({ a, onApprove }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const approve = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      await onApprove(a.id);
-    } catch {
-      setError("Couldn't approve it. Try again in a moment.");
-      setBusy(false);
-    }
-  };
+// What a visit arranged by the booking agent asks of the user right now. The
+// buttons open the appointment sheet, which shows the details before anything
+// happens: review & approve (nothing is sent before), add the confirmed time to
+// the calendar (nothing is written before), or just see where it stands.
+function AgentActions({ a, onOpen }) {
+  if (!a.remote) return null;
+  if (a.backendStatus === "awaiting_approval") {
+    return (
+      <div className="appt-actions">
+        <button type="button" className="btn-primary" onClick={() => onOpen(a)} aria-haspopup="dialog">
+          Review & approve
+        </button>
+      </div>
+    );
+  }
+  if (a.backendStatus === "confirmed" && a.calendarStatus === "pending") {
+    return (
+      <div className="appt-actions">
+        <button type="button" className="btn-primary" onClick={() => onOpen(a)} aria-haspopup="dialog">
+          Add to calendar
+        </button>
+        <button type="button" className="btn-secondary" onClick={() => onOpen(a)} aria-haspopup="dialog">
+          Details
+        </button>
+      </div>
+    );
+  }
   return (
-    <div className="appt-approve">
-      <button type="button" className="btn-primary" onClick={approve} disabled={busy} aria-label={`Approve request to ${a.name}`}>
-        {busy ? "Approving…" : "Approve request"}
+    <div className="appt-actions">
+      <button type="button" className="btn-secondary" onClick={() => onOpen(a)} aria-haspopup="dialog">
+        {a.backendStatus === "needs_user_info" ? "See the clinic's question" : "Details"}
       </button>
-      {error && (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      )}
     </div>
   );
 }
 
 // onCancel / onPrint are only passed for upcoming visits; past ones have no menu.
-function AppointmentCard({ a, onCancel, onPrint, onApprove }) {
+function AppointmentCard({ a, onCancel, onPrint, onOpen }) {
   return (
     <li className="card appt-card">
       <span className="appt-icon" aria-hidden="true">
@@ -148,7 +157,7 @@ function AppointmentCard({ a, onCancel, onPrint, onApprove }) {
         <h3>{a.name}</h3>
         <p className="appt-meta">{[a.specialty, a.place, a.address].filter(Boolean).join(" · ")}</p>
         {a.note && <p className="appt-note">{a.note}</p>}
-        {onApprove && a.backendStatus === "awaiting_approval" && <ApproveButton a={a} onApprove={onApprove} />}
+        {onOpen && <AgentActions a={a} onOpen={onOpen} />}
       </div>
       <div className="appt-when">
         <b>{a.date}</b>
@@ -294,16 +303,47 @@ function SectionHeading({ id, open, onToggle, children }) {
 }
 
 export default function AppointmentsPage() {
-  const { hash, key } = useLocation();
+  const { hash, key, search } = useLocation();
+  const navigate = useNavigate();
   const recRef = useRef(null);
   const { items, location, locate, locating, locError } = useRecommendations();
   const { providers, loading: providersLoading } = useProviders(location);
-  const { upcoming, past, isBooked, approveVisit } = useAppointments();
+  const { upcoming, past, isBooked, loaded, agentById } = useAppointments();
   const [bookOpen, setBookOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [detailTarget, setDetailTarget] = useState(null); // provider whose Book was pressed
   const [printing, setPrinting] = useState(null); // appointment whose visit summary is being printed
+  const [agentTarget, setAgentTarget] = useState(null); // agent appointment open in its sheet
   const { isGuest } = useSession();
+
+  // Arriving from a notification or an e-mail button (?appointment=<id>): open that
+  // appointment's sheet. The list usually has it; a closed one (cancelled, past) is
+  // fetched on its own so the link still shows what happened.
+  const linkedId = new URLSearchParams(search).get("appointment");
+  useEffect(() => {
+    if (!linkedId || !loaded || isGuest) return;
+    const fromList = agentById(linkedId);
+    if (fromList) {
+      setAgentTarget(fromList);
+      return;
+    }
+    let cancelled = false;
+    getAppointment(linkedId)
+      .then((raw) => !cancelled && setAgentTarget({ id: raw.id, remote: true, backendStatus: raw.status, status: raw.status, name: raw.clinic?.name, raw }))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // agentById is derived from the list; re-running on every list change would reopen a closed sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedId, loaded, isGuest]);
+
+  // Keep the open sheet in step with the list (approve → requested, calendar added…).
+  const liveTarget = agentTarget && (agentById(agentTarget.id) ?? agentTarget);
+  const closeAgent = () => {
+    setAgentTarget(null);
+    if (linkedId) navigate("/appointments", { replace: true });
+  };
 
   // The summary renders first, then the print dialog opens; it's removed once printing ends.
   useEffect(() => {
@@ -387,6 +427,7 @@ export default function AppointmentsPage() {
       />
       <CancelAppointmentDialog appointment={cancelTarget} onClose={() => setCancelTarget(null)} />
       <BookDetailSheet provider={detailTarget} onClose={() => setDetailTarget(null)} />
+      <AgentAppointmentSheet appointment={liveTarget} onClose={closeAgent} />
       {printing && <VisitSummary appointment={printing} />}
 
       <section aria-labelledby="upcoming-title">
@@ -411,7 +452,7 @@ export default function AppointmentsPage() {
                     a={a}
                     onCancel={setCancelTarget}
                     onPrint={(appt) => setPrinting({ ...appt })}
-                    onApprove={approveVisit}
+                    onOpen={setAgentTarget}
                   />
                 ))}
               </ul>

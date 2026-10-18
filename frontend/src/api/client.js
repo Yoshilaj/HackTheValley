@@ -158,12 +158,33 @@ export function getAppointments() {
   return request("/api/appointments");
 }
 
+export function getAppointment(id) {
+  return request(`/api/appointments/${encodeURIComponent(id)}`);
+}
+
 export function approveAppointment(id) {
   return post(`/api/appointments/${encodeURIComponent(id)}/approve`);
 }
 
+// "Not now" on the approval card: the request is cancelled, nothing is sent.
+export function declineAppointment(id) {
+  return post(`/api/appointments/${encodeURIComponent(id)}/decline`);
+}
+
 export function cancelAppointment(id) {
   return post(`/api/appointments/${encodeURIComponent(id)}/cancel`);
+}
+
+// Calendar step of a confirmed appointment. CareSync never writes to the user's
+// calendar without this: { status: pending | added | skipped | none,
+// mode: google (connected: "add" writes the event) | manual (use ics_url / google_url),
+// event_id?, add_url?, google_url?, ics_url? }.
+export function getCalendarSync(id) {
+  return request(`/api/appointments/${encodeURIComponent(id)}/calendar-sync`);
+}
+
+export function decideCalendarSync(id, decision) {
+  return post(`/api/appointments/${encodeURIComponent(id)}/calendar-sync`, { decision });
 }
 
 // ---- Measurements: home blood pressure ({ readings, summary }) and daily

@@ -111,6 +111,8 @@ def test_confirmed_by_reply_token_and_idempotent(client, db, requested, shared):
     assert r.json() | {"status": "processed", "matched_by": "reply_token", "outcome": "confirmed"} == r.json()
     db.refresh(appt)
     assert appt.status == "confirmed" and appt.chosen_slot == appt.proposed_slots[1]
+    assert cal.events == {} and appt.approval["calendar"]["status"] == "pending"  # written only on the user's OK
+    ba.add_to_calendar(db, user, appt.id, calendar=cal)
     ev = cal.events[appt.calendar_event_id]
     assert ev["status"] == "confirmed" and ev["start"].isoformat() == appt.proposed_slots[1]["start"]
     assert len(notes(db, user, "appointment_confirmed")) == 1
