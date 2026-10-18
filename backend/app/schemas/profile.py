@@ -110,6 +110,9 @@ class ProfileBase(BaseModel):
     family_doctor: FamilyDoctor | None = None
     has_referral: bool | None = None
     emergency_contact: dict[str, Any] | None = None
+    # Free-text lists from the web app's health profile (e.g. ["Penicillin"], ["Prediabetes"]).
+    allergies: list[str] | None = Field(default=None, max_length=50)
+    conditions: list[str] | None = Field(default=None, max_length=50)
 
 
 class ProfileUpdate(ProfileBase):
@@ -167,6 +170,21 @@ class ProfileUpdate(ProfileBase):
     @classmethod
     def _strip(cls, v: str | None) -> str | None:
         return (v.strip() or None) if isinstance(v, str) else v
+
+    @field_validator("allergies", "conditions")
+    @classmethod
+    def _clean_list(cls, v: list[str] | None) -> list[str] | None:
+        """Trimmed, blanks dropped, duplicates (any case) removed, each at most 120 characters."""
+        if v is None:
+            return None
+        out: list[str] = []
+        for item in v:
+            item = " ".join(str(item).split())
+            if len(item) > 120:
+                raise ValueError("each item must be at most 120 characters")
+            if item and item.lower() not in {o.lower() for o in out}:
+                out.append(item)
+        return out
 
 
 class ProfileOut(ProfileBase, ORMModel):

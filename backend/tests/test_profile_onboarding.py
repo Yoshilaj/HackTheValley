@@ -144,3 +144,19 @@ def test_clinic_email_has_name_and_dob_but_no_extra_identity_fields():
         assert "Robert MacLeod" in text_ and "1958-01-15" in text_ and "M5H 2N2" in text_
         for absent in ("100 Queen", "Anita Shah", "Kensington", "male", "English", "555-0106"):
             assert absent not in text_, absent
+
+
+def test_allergies_and_conditions_are_saved_and_cleaned(client, auth_headers):
+    """The web app's health profile lists (free text), separate from the known_* risk flags."""
+    res = client.put("/api/profile", json={"allergies": [" Penicillin ", "penicillin", "", "Peanuts"],
+                                           "conditions": ["Prediabetes"]}, headers=auth_headers)
+    assert res.status_code == 200, res.text
+    assert res.json()["allergies"] == ["Penicillin", "Peanuts"]
+    got = client.get("/api/profile", headers=auth_headers).json()
+    assert got["allergies"] == ["Penicillin", "Peanuts"] and got["conditions"] == ["Prediabetes"]
+    # Sending only another field leaves the lists alone; an empty list clears them.
+    client.put("/api/profile", json={"display_name": "Sam"}, headers=auth_headers)
+    assert client.get("/api/profile", headers=auth_headers).json()["conditions"] == ["Prediabetes"]
+    client.put("/api/profile", json={"conditions": []}, headers=auth_headers)
+    assert client.get("/api/profile", headers=auth_headers).json()["conditions"] == []
+    assert client.put("/api/profile", json={"allergies": ["x" * 121]}, headers=auth_headers).status_code == 422

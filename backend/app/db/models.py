@@ -89,6 +89,10 @@ class Profile(IdMixin, Base):
     known_dementia: Mapped[bool | None]
     family_history: Mapped[JsonDict | None] = mapped_column(JSON)   # {"dementia": true, ...}
     medications: Mapped[list | None] = mapped_column(JSON)          # [{"name","dose","schedule"}]
+    # What the user lists on their health profile in the web app (free text, as they write it).
+    # Separate from the known_* flags, which the risk rules read.
+    allergies: Mapped[list | None] = mapped_column(JSON)            # ["Penicillin", ...]
+    conditions: Mapped[list | None] = mapped_column(JSON)           # ["Prediabetes", ...]
     address: Mapped[str | None] = mapped_column(Text)          # free-form full address (geocoding); kept in sync with street/city
     street: Mapped[str | None] = mapped_column(String(200))    # "100 Queen St W" (incl. unit)
     city: Mapped[str | None] = mapped_column(String(100))
