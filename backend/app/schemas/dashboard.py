@@ -21,7 +21,10 @@ class PreventiveMeasure(BaseModel):
 
 
 class NextAction(BaseModel):
-    type: Literal["appointment_requested", "appointment_confirmed", "none", "collect_data", "emergency_guidance"]
+    # Matches dashboard_service.NEXT_ACTION_BY_STATUS and docs/API.md (the approval and needs-info
+    # values were missing, so /api/risk/latest failed with a 500 once an appointment awaited approval).
+    type: Literal["appointment_approval_needed", "appointment_requested", "appointment_needs_info",
+                  "appointment_confirmed", "none", "collect_data", "emergency_guidance"]
     appointment_id: str | None = None
 
 

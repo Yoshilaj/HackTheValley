@@ -17,11 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import audit
-from app.db.models import AssessmentTask, ChatMessage, Observation, User
+from app.db.models import AssessmentTask, ChatConversation, ChatMessage, Observation, User
 from app.prompts.chat_system import build_context_block
 from app.prompts.extraction import EXTRACTABLE_KINDS, OBSERVATION_SCHEMA, SEVERITIES, extraction_system
 from app.providers.embeddings import EmbeddingProvider
@@ -60,6 +60,7 @@ class ChatTurn:
     language: str = "en"
     transcript: str | None = None
     task_id: str | None = None
+    conversation_id: str | None = None
 
 
 def resolve_language(text: str, language: str | None, user: User | None = None) -> str:
@@ -77,10 +78,82 @@ def _snake(label: str) -> str:
     return s[:100]
 
 
-def _recent_history(db: Session, user_id: str, limit: int = HISTORY_TURNS) -> list[dict[str, str]]:
-    rows = db.scalars(select(ChatMessage).where(ChatMessage.user_id == user_id, ChatMessage.role.in_(("user", "assistant")))
-                      .order_by(ChatMessage.created_at.desc()).limit(limit)).all()
+def _recent_history(db: Session, user_id: str, conversation_id: str | None = None,
+                    limit: int = HISTORY_TURNS) -> list[dict[str, str]]:
+    """Last turns the model sees: only this conversation's, so separate chats don't leak into each
+    other. Without a conversation (iOS Shortcut, old clients) it is the user's unthreaded messages."""
+    q = select(ChatMessage).where(ChatMessage.user_id == user_id, ChatMessage.role.in_(("user", "assistant")))
+    q = q.where(ChatMessage.conversation_id == conversation_id if conversation_id
+                else ChatMessage.conversation_id.is_(None))
+    rows = db.scalars(q.order_by(ChatMessage.created_at.desc()).limit(limit)).all()
     return [{"role": r.role, "content": r.content} for r in reversed(rows)]
+
+
+# ---------------------------------------------------------------- conversations
+
+class ConversationNotFound(LookupError):
+    """The conversation doesn't exist or belongs to another user (the API answers 404 either way)."""
+
+
+TITLE_MAX = 60
+
+
+def conversation_title(text: str) -> str:
+    """Sidebar title from the first message: first line, trimmed to ~60 characters on a word break."""
+    line = " ".join((text or "").split())
+    if len(line) <= TITLE_MAX:
+        return line or "New chat"
+    cut = line[:TITLE_MAX].rsplit(" ", 1)[0] or line[:TITLE_MAX]
+    return cut.rstrip(" ,.;:") + "…"
+
+
+def get_conversation(db: Session, user: User, conversation_id: str) -> ChatConversation:
+    conv = db.get(ChatConversation, conversation_id)
+    if conv is None or conv.user_id != user.id:
+        raise ConversationNotFound(conversation_id)
+    return conv
+
+
+def _open_conversation(db: Session, user: User, conversation_id: str | None, first_text: str) -> ChatConversation:
+    """The user's conversation ``conversation_id``, or a new one titled from ``first_text``."""
+    if conversation_id:
+        return get_conversation(db, user, conversation_id)
+    conv = ChatConversation(user_id=user.id, title=conversation_title(first_text))
+    db.add(conv)
+    db.flush()
+    return conv
+
+
+def list_conversations(db: Session, user: User, limit: int = 100) -> list[dict[str, Any]]:
+    """The user's conversations, most recently active first, with their message counts."""
+    counts = (select(ChatMessage.conversation_id, func.count(ChatMessage.id).label("n"))
+              .where(ChatMessage.user_id == user.id, ChatMessage.conversation_id.is_not(None))
+              .group_by(ChatMessage.conversation_id).subquery())
+    rows = db.execute(select(ChatConversation, func.coalesce(counts.c.n, 0))
+                      .outerjoin(counts, counts.c.conversation_id == ChatConversation.id)
+                      .where(ChatConversation.user_id == user.id)
+                      .order_by(ChatConversation.updated_at.desc()).limit(limit)).all()
+    return [{"id": c.id, "title": c.title, "created_at": c.created_at, "updated_at": c.updated_at,
+             "message_count": n} for c, n in rows]
+
+
+def conversation_messages(db: Session, user: User, conversation_id: str) -> list[ChatMessage]:
+    """Every message in one of the user's conversations, oldest first."""
+    conv = get_conversation(db, user, conversation_id)
+    return list(db.scalars(select(ChatMessage).where(ChatMessage.user_id == user.id,
+                                                     ChatMessage.conversation_id == conv.id)
+                           .order_by(ChatMessage.created_at)).all())
+
+
+def delete_conversation(db: Session, user: User, conversation_id: str) -> int:
+    """Delete one of the user's conversations and its messages. Returns how many messages went."""
+    conv = get_conversation(db, user, conversation_id)
+    gone = db.execute(delete(ChatMessage).where(ChatMessage.user_id == user.id,
+                                                ChatMessage.conversation_id == conv.id)).rowcount or 0
+    db.delete(conv)
+    audit(db, user.id, "chat.conversation_delete", f"chat_conversation:{conv.id}", {"messages": gone})
+    db.commit()
+    return gone
 
 
 def _emergency_turn(db: Session, user: User, msg: ChatMessage, labels: list[str], lang: str) -> ChatTurn:
@@ -97,14 +170,16 @@ def _emergency_turn(db: Session, user: User, msg: ChatMessage, labels: list[str]
     # shared §7 path: guidance + throttled notify_emergency + RiskAssessment(trigger='event')
     answer = handle_red_flags(db, user, labels, source="chat", source_id=msg.id, language=lang,
                               observations=obs, extra={"message_id": msg.id})
-    reply = ChatMessage(user_id=user.id, role="assistant", content=answer, sources=[])
+    reply = ChatMessage(user_id=user.id, conversation_id=msg.conversation_id, role="assistant", content=answer,
+                        sources=[])
     db.add(reply)
     db.flush()
     audit(db, user.id, "chat.emergency", f"chat_message:{msg.id}", {"red_flags": labels, "rule": "EMG-01"},
           actor="system")
     db.commit()
     return ChatTurn(answer=answer, sources=[], observations_created=obs, red_flags=labels,
-                    assessment_hint="emergency", message_id=reply.id, user_message_id=msg.id, language=lang)
+                    assessment_hint="emergency", message_id=reply.id, user_message_id=msg.id, language=lang,
+                    conversation_id=msg.conversation_id)
 
 
 def extract_observations(db: Session, user: User, llm: LlmProvider, text: str, message_id: str,
@@ -150,15 +225,23 @@ def assessment_hint(observations: list[Observation]) -> str | None:
 
 
 def handle_message(db: Session, user: User, text: str, llm: LlmProvider, embedding_provider: EmbeddingProvider | None,
-                   language: str | None = None, audio_meta: dict[str, Any] | None = None, k: int = 6) -> ChatTurn:
-    """Run one chat turn (see module docstring). Commits."""
+                   language: str | None = None, audio_meta: dict[str, Any] | None = None, k: int = 6,
+                   conversation_id: str | None = None, new_conversation: bool = False) -> ChatTurn:
+    """Run one chat turn (see module docstring). Commits.
+
+    ``conversation_id`` continues one of the user's conversations (``ConversationNotFound`` if it
+    isn't theirs); ``new_conversation`` starts one titled from this message. With neither the turn
+    joins the user's unthreaded messages (iOS Shortcut, older clients)."""
     text = (text or "").strip()
     if not text:
         raise ValueError("empty message")
     lang = resolve_language(text, language, user)
-    history = _recent_history(db, user.id)
+    conv = _open_conversation(db, user, conversation_id, text) if (conversation_id or new_conversation) else None
+    history = _recent_history(db, user.id, conv.id if conv else None)
+    if conv is not None:
+        conv.updated_at = datetime.now(timezone.utc)
 
-    msg = ChatMessage(user_id=user.id, role="user", content=text,
+    msg = ChatMessage(user_id=user.id, conversation_id=conv.id if conv else None, role="user", content=text,
                       audio_url=(audio_meta or {}).get("audio_url"))
     db.add(msg)
     db.flush()
@@ -177,7 +260,8 @@ def handle_message(db: Session, user: User, text: str, llm: LlmProvider, embeddi
         hits = []
     result = rag_service.answer_with_citations(db, llm, text, hits, context, lang, history=history, audit_hook=hook)
     answer = output_guard(result["answer"], lang)
-    reply = ChatMessage(user_id=user.id, role="assistant", content=answer, sources=result["sources"])
+    reply = ChatMessage(user_id=user.id, conversation_id=msg.conversation_id, role="assistant", content=answer,
+                        sources=result["sources"])
     db.add(reply)
     db.flush()
 
@@ -188,7 +272,8 @@ def handle_message(db: Session, user: User, text: str, llm: LlmProvider, embeddi
     db.commit()
     return ChatTurn(answer=answer, sources=result["sources"], cited=rag_service.cited_numbers(answer, len(hits)),
                     observations_created=obs, red_flags=[],
-                    assessment_hint=assessment_hint(obs), message_id=reply.id, user_message_id=msg.id, language=lang)
+                    assessment_hint=assessment_hint(obs), message_id=reply.id, user_message_id=msg.id, language=lang,
+                    conversation_id=msg.conversation_id)
 
 
 def _speech_task(db: Session, user: User, transcript: Any, audio_bytes: bytes, audio_url: str | None,
@@ -226,7 +311,8 @@ def _speech_task(db: Session, user: User, transcript: Any, audio_bytes: bytes, a
 
 def handle_voice_message(db: Session, user: User, audio_bytes: bytes, filename: str | None, stt: Any,
                          llm: LlmProvider, embedding_provider: EmbeddingProvider | None,
-                         language: str | None = None, storage: Any = None) -> ChatTurn:
+                         language: str | None = None, storage: Any = None,
+                         conversation_id: str | None = None, new_conversation: bool = False) -> ChatTurn:
     """Transcribe (language forced) → store audio → AssessmentTask(free_speech) → :func:`handle_message`."""
     from app.providers.storage import get_storage
 
@@ -242,7 +328,8 @@ def handle_voice_message(db: Session, user: User, audio_bytes: bytes, filename: 
         log.exception("audio storage failed")
     task = _speech_task(db, user, transcript, audio_bytes, audio_url, lang)
     turn = handle_message(db, user, text, llm, embedding_provider, language=lang,
-                          audio_meta={"audio_url": audio_url, "task_id": task.id if task else None})
+                          audio_meta={"audio_url": audio_url, "task_id": task.id if task else None},
+                          conversation_id=conversation_id, new_conversation=new_conversation)
     turn.transcript = text
     turn.task_id = task.id if task else None
     return turn

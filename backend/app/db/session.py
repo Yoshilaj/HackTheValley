@@ -45,7 +45,19 @@ def make_engine(url: str) -> Engine:
             cur.close()
 
         return eng
-    return create_engine(url, pool_pre_ping=True)
+    # Postgres (Neon). Neon's pooled endpoint (the "-pooler" host) is PgBouncer in transaction mode,
+    # which can't keep psycopg's server-side prepared statements between transactions, so they are
+    # off (prepare_threshold=None). Neon's free tier also suspends after a few idle minutes:
+    # pre_ping drops dead connections and pool_recycle retires any older than 5 minutes. A small
+    # pool suits the single uvicorn worker and Neon's connection limit.
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=5,
+        connect_args={"prepare_threshold": None},
+    )
 
 
 engine: Engine = make_engine(settings.database_url)
@@ -70,6 +82,30 @@ def init_db(bind: Engine | None = None) -> None:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind)
     add_missing_columns(bind)
+    add_missing_indexes(bind)
+
+
+def add_missing_indexes(bind: Engine | None = None) -> list[str]:
+    """``create_all`` only creates a model's indexes together with a NEW table, so an index added to
+    an existing table later (e.g. ``ix_chat_messages_conversation_time``) is created here.
+    Idempotent (checkfirst). Returns the names of the indexes created."""
+    import app.db.models  # noqa: F401
+
+    bind = bind or engine
+    insp = inspect(bind)
+    existing_tables = set(insp.get_table_names())
+    created: list[str] = []
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        have = {ix["name"] for ix in insp.get_indexes(table.name)}
+        for index in table.indexes:
+            if index.name and index.name not in have:
+                index.create(bind, checkfirst=True)
+                created.append(index.name)
+    if created:
+        log.info("added missing indexes: %s", ", ".join(created))
+    return created
 
 
 def add_missing_columns(bind: Engine | None = None) -> list[str]:

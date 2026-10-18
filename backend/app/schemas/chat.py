@@ -14,6 +14,10 @@ from app.schemas.metrics import ObservationOut
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     language: Literal["ja", "en"] | None = None
+    # Continue one of your conversations (404 if it isn't yours), or start a new one titled from
+    # this message. With neither, the turn joins your unthreaded messages (iOS Shortcut, older clients).
+    conversation_id: str | None = Field(default=None, max_length=36)
+    new_conversation: bool = False
 
 
 class SourceRef(BaseModel):
@@ -37,6 +41,7 @@ class ChatResponse(BaseModel):
     assessment_hint: str | None = None
     message_id: str | None = None
     language: str | None = None
+    conversation_id: str | None = None  # the conversation this turn was saved in
 
 
 class VoiceChatResponse(ChatResponse):
@@ -48,11 +53,22 @@ class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    conversation_id: str | None = None
     role: str
     content: str
     audio_url: str | None = None
     sources: list[dict[str, Any]] | None = None
     created_at: datetime
+
+
+class ConversationOut(BaseModel):
+    """One of the user's chat conversations (GET /api/chat/conversations)."""
+
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    message_count: int = 0
 
 
 class CheckinQuestion(BaseModel):

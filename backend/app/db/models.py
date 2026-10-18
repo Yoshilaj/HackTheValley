@@ -277,11 +277,30 @@ class UploadedDocument(IdMixin, CreatedAtMixin, Base):
 
 # ================================================================ Chat + RAG
 
-class ChatMessage(IdMixin, CreatedAtMixin, Base):
-    __tablename__ = "chat_messages"
-    __table_args__ = (Index("ix_chat_messages_user_time", "user_id", "created_at"),)
+class ChatConversation(IdMixin, CreatedAtMixin, Base):
+    """One chat thread (the web app's "Chat history" list). Belongs to one user; its messages point
+    at it with ``ChatMessage.conversation_id``. ``updated_at`` moves on every turn (newest first)."""
+
+    __tablename__ = "chat_conversations"
+    __table_args__ = (Index("ix_chat_conversations_user_updated", "user_id", "updated_at"),)
 
     user_id: Mapped[str] = user_fk(index=False)
+    title: Mapped[str] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ChatMessage(IdMixin, CreatedAtMixin, Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        Index("ix_chat_messages_user_time", "user_id", "created_at"),
+        Index("ix_chat_messages_conversation_time", "conversation_id", "created_at"),
+    )
+
+    user_id: Mapped[str] = user_fk(index=False)
+    # The thread it belongs to (NULL for messages from before conversations existed, and for the
+    # iOS Shortcut / voice turns sent without one). No foreign key, so ``add_missing_columns`` can
+    # add it to an existing table; ownership is checked through ``user_id`` instead.
+    conversation_id: Mapped[str | None] = mapped_column(String(36))
     role: Mapped[str] = mapped_column(String(16))  # user | assistant | system
     content: Mapped[str] = mapped_column(Text)
     audio_url: Mapped[str | None] = mapped_column(Text)
@@ -454,9 +473,45 @@ class AuditLog(IdMixin, CreatedAtMixin, Base):
     detail: Mapped[JsonDict | None] = mapped_column(JSON)
 
 
+# ================================================================ Medications
+# The medication list itself is ``Profile.medications`` (the risk engine, chat context, reports and
+# document extraction already read it); see app/services/medication_service.py. These two tables
+# hold what happens to those medications. ``medication_id`` is the id of an entry in that list.
+
+REFILL_STATUSES = ("requested", "cancelled")
+REFILL_METHODS = ("pickup", "delivery")
+
+
+class RefillRequest(IdMixin, CreatedAtMixin, Base):
+    """A refill the user asked the pharmacy for. At most one ``requested`` row per medication."""
+
+    __tablename__ = "refill_requests"
+    __table_args__ = (Index("ix_refill_requests_user_status", "user_id", "status"),)
+
+    user_id: Mapped[str] = user_fk(index=False)
+    medication_id: Mapped[str] = mapped_column(String(36))
+    pharmacy_id: Mapped[str | None] = mapped_column(String(64))
+    method: Mapped[str] = mapped_column(String(16), default="pickup")  # pickup | delivery
+    note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="requested")  # requested | cancelled
+    cancelled_at: Mapped[datetime | None] = mapped_column()
+
+
+class DoseLog(IdMixin, CreatedAtMixin, Base):
+    """One scheduled dose ticked off on one day. ``dose_key`` = "<medication id>-<time>", e.g. "a1b2-8:00 AM"."""
+
+    __tablename__ = "dose_logs"
+    __table_args__ = (UniqueConstraint("user_id", "day", "dose_key", name="uq_dose_logs_user_day_key"),)
+
+    user_id: Mapped[str] = user_fk(index=False)
+    day: Mapped[date] = mapped_column()
+    dose_key: Mapped[str] = mapped_column(String(120))
+
+
 # Order matters for deletes (children before parents).
 USER_OWNED_MODELS: tuple[type[Base], ...] = (
     AppointmentMessage, Report, Appointment, RiskAssessment, Notification, OAuthCredential, ChatMessage,
+    ChatConversation, RefillRequest, DoseLog,
     UploadedDocument, AssessmentTask, ScreenerResponse, Observation, DailyLog,
     DeviceRhythmResult, BpReading, MetricSample, DeviceToken, Consent, Profile, AuditLog,
 )

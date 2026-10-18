@@ -15,8 +15,8 @@ from app.providers.llm import LlmProvider, get_llm_provider
 from app.providers.storage import Storage, get_storage
 from app.providers.stt import SttProvider, get_stt_provider
 from app.schemas.chat import (
-    ChatMessageOut, ChatRequest, ChatResponse, CheckinQuestion, CheckinResult, CheckinSubmit, IngestRequest,
-    IngestResponse, ResearchSourceOut, VoiceChatResponse,
+    ChatMessageOut, ChatRequest, ChatResponse, CheckinQuestion, CheckinResult, CheckinSubmit, ConversationOut,
+    IngestRequest, IngestResponse, ResearchSourceOut, VoiceChatResponse,
 )
 from app.services import chat_service, checkin_service
 
@@ -46,7 +46,11 @@ def get_file_storage() -> Storage:
 def _turn_response(turn: chat_service.ChatTurn) -> dict:
     return {"answer": turn.answer, "sources": turn.sources, "cited": turn.cited, "observations_created": turn.observations_created,
             "red_flags": turn.red_flags, "assessment_hint": turn.assessment_hint, "message_id": turn.message_id,
-            "language": turn.language}
+            "language": turn.language, "conversation_id": turn.conversation_id}
+
+
+def _no_conversation() -> HTTPException:
+    return HTTPException(404, "Conversation not found")
 
 
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(rate_limit("chat"))])
@@ -54,7 +58,11 @@ def chat(req: ChatRequest, user: User = Depends(get_current_user), db: Session =
          llm: LlmProvider = Depends(get_llm), embeddings: EmbeddingProvider = Depends(get_embeddings)):
     """Advocate chat turn: red-flag short-circuit, RAG-cited answer, observation extraction."""
     try:
-        turn = chat_service.handle_message(db, user, req.message, llm, embeddings, language=req.language)
+        turn = chat_service.handle_message(db, user, req.message, llm, embeddings, language=req.language,
+                                           conversation_id=req.conversation_id,
+                                           new_conversation=req.new_conversation)
+    except chat_service.ConversationNotFound as exc:
+        raise _no_conversation() from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return _turn_response(turn)
@@ -62,6 +70,7 @@ def chat(req: ChatRequest, user: User = Depends(get_current_user), db: Session =
 
 @router.post("/chat/voice", response_model=VoiceChatResponse, dependencies=[Depends(rate_limit("chat"))])
 async def chat_voice(file: UploadFile = File(...), language: str | None = Form(None),
+                     conversation_id: str | None = Form(None), new_conversation: bool = Form(False),
                      user: User = Depends(get_current_user), db: Session = Depends(get_db),
                      llm: LlmProvider = Depends(get_llm), embeddings: EmbeddingProvider = Depends(get_embeddings),
                      stt: SttProvider = Depends(get_stt), storage: Storage = Depends(get_file_storage)):
@@ -78,10 +87,39 @@ async def chat_voice(file: UploadFile = File(...), language: str | None = Form(N
         raise HTTPException(422, "language must be ja or en")
     try:
         turn = chat_service.handle_voice_message(db, user, data, file.filename, stt, llm, embeddings,
-                                                 language=language, storage=storage)
+                                                 language=language, storage=storage,
+                                                 conversation_id=conversation_id,
+                                                 new_conversation=new_conversation)
+    except chat_service.ConversationNotFound as exc:
+        raise _no_conversation() from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return {**_turn_response(turn), "transcript": turn.transcript or "", "task_id": turn.task_id}
+
+
+@router.get("/chat/conversations", response_model=list[ConversationOut])
+def list_conversations(limit: int = Query(100, ge=1, le=500), user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    """Your conversations, most recently active first. Only ever the signed-in user's."""
+    return chat_service.list_conversations(db, user, limit)
+
+
+@router.get("/chat/conversations/{conversation_id}/messages", response_model=list[ChatMessageOut])
+def conversation_messages(conversation_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Every message in one of your conversations, oldest first (404 for anyone else's)."""
+    try:
+        return chat_service.conversation_messages(db, user, conversation_id)
+    except chat_service.ConversationNotFound as exc:
+        raise _no_conversation() from exc
+
+
+@router.delete("/chat/conversations/{conversation_id}", status_code=204)
+def delete_conversation(conversation_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete one of your conversations and its messages."""
+    try:
+        chat_service.delete_conversation(db, user, conversation_id)
+    except chat_service.ConversationNotFound as exc:
+        raise _no_conversation() from exc
 
 
 @router.get("/chat/history", response_model=list[ChatMessageOut])
