@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { vitals } from "../data/placeholder.js";
-import { VITAL_INPUTS, VITAL_ORDER } from "../utils/vitals.js";
+import { BP_SESSIONS, VITAL_INPUTS, VITAL_ORDER, bpSessionFor } from "../utils/vitals.js";
 import { toLocalInput } from "../utils/dates.js";
 
 // Glass sheet behind "Log a reading": pick the vital, enter the value (two
 // numbers for blood pressure), when it was taken and an optional note.
 // Values are checked against sensible limits, with each error shown under
-// its field. onSave({ vitalId, values, at, note }) may throw.
+// its field. onSave({ vitalId, values, at, note, session, irregularPulse }) may
+// throw. Blood pressure also asks which session the reading belongs to (morning
+// or evening, the backend's home-BP protocol) and whether the cuff flagged an
+// irregular pulse; both go to the backend with the reading.
 // initial: { vitalId } to start on a vital, or one of the user's own readings
 // ({ id, vitalId, values, at, note }) to edit it.
 export default function LogReadingSheet({ open, initial, onClose, onSave }) {
@@ -17,6 +20,9 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
   const [when, setWhen] = useState("");
   const [maxWhen, setMaxWhen] = useState("");
   const [note, setNote] = useState("");
+  const [session, setSession] = useState("other"); // BP only: morning | evening | other
+  const [sessionTouched, setSessionTouched] = useState(false);
+  const [irregular, setIrregular] = useState(false); // BP only: cuff's irregular-pulse symbol
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -30,6 +36,9 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
       setWhen(editing ? toLocalInput(new Date(initial.at)) : now);
       setMaxWhen(now);
       setNote(editing ? initial.note ?? "" : "");
+      setSession(editing && initial.session ? initial.session : bpSessionFor(editing ? new Date(initial.at) : new Date()));
+      setSessionTouched(Boolean(editing && initial.session));
+      setIrregular(Boolean(editing && initial.irregularPulse));
       setErrors({});
       setSaveError("");
       dialog.showModal();
@@ -54,6 +63,7 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
     for (const f of input.fields) {
       const text = String(raw[f.key] ?? "").trim().replace(",", ".");
       const n = Number(text);
+      if (!text && f.optional) continue;
       if (!text) errs[f.key] = "Enter a value.";
       else if (!Number.isFinite(n)) errs[f.key] = "Enter a number.";
       else if (n < f.min || n > f.max) errs[f.key] = `Enter a value between ${f.min} and ${f.max}.`;
@@ -80,7 +90,13 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
     setSaving(true);
     setSaveError("");
     try {
-      await onSave({ vitalId, values, at, note: note.trim() || undefined });
+      await onSave({
+        vitalId,
+        values,
+        at,
+        note: note.trim() || undefined,
+        ...(vitalId === "bp" && { session, irregularPulse: irregular }),
+      });
       onClose();
     } catch {
       setSaveError("Couldn't save this reading. Try again in a moment.");
@@ -138,10 +154,13 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
             </div>
           </fieldset>
 
-          <div className={`reading-fields ${input.fields.length > 1 ? "two" : ""}`}>
+          <div className={`reading-fields ${["", "", "two", "three"][input.fields.length] ?? "three"}`}>
             {input.fields.map((f) => (
               <div className="form-field" key={`${vitalId}-${f.key}`}>
-                <label htmlFor={`reading-${f.key}`}>{f.label}</label>
+                <label htmlFor={`reading-${f.key}`}>
+                  {f.label}
+                  {f.optional && <span className="book-optional">Optional</span>}
+                </label>
                 <div className={`input-unit ${errors[f.key] ? "invalid" : ""}`}>
                   <input
                     id={`reading-${f.key}`}
@@ -152,7 +171,7 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
                     onChange={(e) => setRaw((r) => ({ ...r, [f.key]: e.target.value }))}
                     {...errorProps(f.key)}
                   />
-                  <span className="unit">{input.unit}</span>
+                  <span className="unit">{f.unit ?? input.unit}</span>
                 </div>
                 {errors[f.key] && (
                   <p id={`reading-${f.key}-error`} className="field-error">
@@ -164,6 +183,39 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
           </div>
           {range && <p className="field-hint">Healthy range: {range}</p>}
 
+          {vitalId === "bp" && (
+            <>
+              <fieldset className="book-field">
+                <legend>Which session?</legend>
+                <div className="book-chips">
+                  {BP_SESSIONS.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="book-chip"
+                      aria-pressed={session === s.id}
+                      onClick={() => {
+                        setSession(s.id);
+                        setSessionTouched(true);
+                      }}
+                    >
+                      {s.label}
+                      {s.hint && <small>{s.hint}</small>}
+                    </button>
+                  ))}
+                </div>
+                <p className="field-hint reading-hint">
+                  Take two readings each morning and evening, seated, after a minute of rest. The assessment needs
+                  readings on 5 of the last 7 days.
+                </p>
+              </fieldset>
+              <label className="check-row">
+                <input type="checkbox" checked={irregular} onChange={(e) => setIrregular(e.target.checked)} />
+                <span>The cuff showed an irregular heartbeat symbol</span>
+              </label>
+            </>
+          )}
+
           <div className="form-field">
             <label htmlFor="reading-when">When</label>
             <input
@@ -172,7 +224,10 @@ export default function LogReadingSheet({ open, initial, onClose, onSave }) {
               type="datetime-local"
               value={when}
               max={maxWhen}
-              onChange={(e) => setWhen(e.target.value)}
+              onChange={(e) => {
+                setWhen(e.target.value);
+                if (!sessionTouched && e.target.value) setSession(bpSessionFor(new Date(e.target.value)));
+              }}
               {...errorProps("when")}
             />
             {errors.when && (

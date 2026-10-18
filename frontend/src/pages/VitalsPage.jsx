@@ -4,6 +4,8 @@ import LogReadingSheet from "../components/LogReadingSheet.jsx";
 import VitalSheet from "../components/VitalSheet.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import GuestGate from "../components/GuestGate.jsx";
+import RhythmResultCard from "../components/RhythmResultCard.jsx";
+import { USE_BACKEND } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
 import useVitals from "../hooks/useVitals.js";
 import { VITAL_INPUTS } from "../utils/vitals.js";
@@ -37,7 +39,7 @@ export default function VitalsPage() {
   const [justAdded, setJustAdded] = useState(null);
   const [announce, setAnnounce] = useState("");
 
-  const { isGuest } = useSession();
+  const { isGuest, signedIn } = useSession();
   const detail = vitals.find((v) => v.id === detailId) ?? null;
 
   const save = async (data) => {
@@ -138,7 +140,10 @@ export default function VitalsPage() {
       </section>
 
       <div className="page-split">
-        <ActivityChart />
+        <div className="stack">
+          <ActivityChart />
+          {USE_BACKEND && signedIn && <RhythmResultCard />}
+        </div>
 
         <section className="card" aria-labelledby="readings-title">
           <div className="card-head">

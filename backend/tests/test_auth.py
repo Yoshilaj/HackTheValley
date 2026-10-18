@@ -145,3 +145,108 @@ def test_require_admin(app):
         require_admin("wrong")
     with pytest.raises(HTTPException):
         require_admin(None)
+
+
+# ---------------------------------------------------------------- sessions (sign-out)
+
+def test_token_response_names_the_account(client):
+    email, body = _signup(client)
+    assert body["email"] == email
+    login = client.post("/api/auth/login", json={"email": email, "password": "password123"}).json()
+    assert login["email"] == email
+
+
+def test_logout_revokes_this_token_only(client):
+    email, first = _signup(client)
+    second = client.post("/api/auth/login", json={"email": email, "password": "password123"}).json()
+    h1, h2 = _bearer(first["access_token"]), _bearer(second["access_token"])
+    assert client.get("/api/auth/me", headers=h1).status_code == 200
+
+    res = client.post("/api/auth/logout", headers=h1)
+    assert res.status_code == 204
+    assert res.headers["cache-control"] == "no-store"
+    assert client.get("/api/auth/me", headers=h1).status_code == 401
+    assert client.get("/api/auth/me", headers=h2).status_code == 200  # the other browser stays signed in
+    # a revoked token cannot sign out again, or do anything else
+    assert client.post("/api/auth/logout", headers=h1).status_code == 401
+
+
+def test_logout_everywhere(client):
+    email, first = _signup(client)
+    second = client.post("/api/auth/login", json={"email": email, "password": "password123"}).json()
+    assert client.post("/api/auth/logout", json={"all": True}, headers=_bearer(second["access_token"])).status_code == 204
+    assert client.get("/api/auth/me", headers=_bearer(first["access_token"])).status_code == 401
+    assert client.get("/api/auth/me", headers=_bearer(second["access_token"])).status_code == 401
+
+
+def test_sessions_list_and_remote_revoke(client):
+    email, first = _signup(client)
+    second = client.post(
+        "/api/auth/login", json={"email": email, "password": "password123"},
+        headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
+                               "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"},
+    ).json()
+    h1 = _bearer(first["access_token"])
+    rows = client.get("/api/auth/sessions", headers=h1).json()
+    assert len(rows) == 2
+    assert [r["current"] for r in rows].count(True) == 1
+    phone = next(r for r in rows if not r["current"])
+    assert phone["label"] == "Safari on iPhone" and phone["method"] == "password"
+
+    assert client.delete(f"/api/auth/sessions/{phone['id']}", headers=h1).status_code == 204
+    assert client.get("/api/auth/me", headers=_bearer(second["access_token"])).status_code == 401
+    assert [r["id"] for r in client.get("/api/auth/sessions", headers=h1).json()] != [phone["id"]]
+    assert client.delete(f"/api/auth/sessions/{phone['id']}", headers=h1).status_code == 404  # already gone
+
+
+def test_sessions_are_private_to_their_user(client):
+    _, a = _signup(client)
+    _, b = _signup(client)
+    mine = client.get("/api/auth/sessions", headers=_bearer(a["access_token"])).json()
+    assert client.delete(f"/api/auth/sessions/{mine[0]['id']}", headers=_bearer(b["access_token"])).status_code == 404
+    assert client.get("/api/auth/me", headers=_bearer(a["access_token"])).status_code == 200
+
+
+def test_token_without_session_claim_still_works(client, demo_user):
+    # tokens minted by tests / scripts carry no sid: valid until expiry, not revocable
+    assert client.get("/api/auth/me", headers=_bearer(create_access_token(demo_user.id))).status_code == 200
+
+
+def test_token_for_a_foreign_session_is_rejected(client):
+    _, a = _signup(client)
+    _, b = _signup(client)
+    sid_b = client.get("/api/auth/sessions", headers=_bearer(b["access_token"])).json()[0]["id"]
+    forged = create_access_token(a["user_id"], session_id=sid_b)
+    assert client.get("/api/auth/me", headers=_bearer(forged)).status_code == 401
+
+
+def test_device_tokens_list_and_revoke(client, auth_headers):
+    created = client.post("/api/auth/device-token", json={"label": "Watch"}, headers=auth_headers).json()
+    rows = client.get("/api/auth/device-tokens", headers=auth_headers).json()
+    mine = next(r for r in rows if r["id"] == created["id"])
+    assert mine["label"] == "Watch" and "token" not in mine and "token_hash" not in mine
+    assert client.get("/api/auth/me", headers={"X-Device-Token": created["token"]}).status_code == 200
+    assert client.delete(f"/api/auth/device-tokens/{created['id']}", headers=auth_headers).status_code == 204
+    assert client.get("/api/auth/me", headers={"X-Device-Token": created["token"]}).status_code == 401
+    assert client.delete(f"/api/auth/device-tokens/{created['id']}", headers=auth_headers).status_code == 404
+
+
+def test_sign_in_attempts_are_rate_limited(client):
+    from app.core.config import settings
+
+    settings.rate_limit_enabled = True
+    try:
+        statuses = [
+            client.post("/api/auth/login", json={"email": f"nobody-{i}@example.com", "password": "wrong-pass"}).status_code
+            for i in range(25)
+        ]
+    finally:
+        settings.rate_limit_enabled = False
+    assert statuses[0] == 401 and statuses[-1] == 429
+    assert statuses.count(401) == 20
+
+
+def test_malformed_authorization_header(client):
+    assert client.get("/api/auth/me", headers={"Authorization": "Basic abc"}).status_code == 401
+    assert client.get("/api/auth/me", headers={"Authorization": "Bearer"}).status_code == 401
+    assert client.get("/api/auth/me", headers={"Authorization": "Bearer "}).status_code == 401

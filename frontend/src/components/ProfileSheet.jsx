@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useProfile } from "../context/ProfileContext.jsx";
+import { EMPTY_RISK, useProfile } from "../context/ProfileContext.jsx";
 import { ageFrom } from "../utils/dates.js";
 import { CareTeamList } from "./CareTeamSheet.jsx";
 
@@ -14,12 +14,6 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i; // Canadian, A1A 1A1
 const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local
 
-const SEX_OPTIONS = [
-  ["male", "Male"],
-  ["female", "Female"],
-  ["other", "Other"],
-  ["prefer_not", "Prefer not to say"],
-];
 const PROVINCES = [
   ["AB", "Alberta"],
   ["BC", "British Columbia"],
@@ -35,7 +29,8 @@ const PROVINCES = [
   ["SK", "Saskatchewan"],
   ["YT", "Yukon"],
 ];
-const CONTACT_FIELDS = ["sex", "phone", "email", "street", "city", "province", "postalCode"];
+// Sex is edited with the risk factors (draft.risk.sex); clinics receive it from there too.
+const CONTACT_FIELDS = ["phone", "email", "street", "city", "province", "postalCode"];
 
 // "m5h2n2" -> "M5H 2N2"
 const formatPostal = (v) => {
@@ -63,12 +58,63 @@ function validate(d) {
   if (d.phone && !PHONE.test(d.phone)) errors.phone = "Enter a phone number, like (416) 555-0187.";
   if (d.email && !EMAIL.test(d.email)) errors.email = "Enter an e-mail address, like name@example.com.";
   if (d.postalCode && !POSTAL.test(d.postalCode)) errors.postalCode = "Enter a Canadian postal code, like M5H 2N2.";
+  for (const [key, label, unit, min, max] of LABS) {
+    const v = d.risk?.[key];
+    if (v != null && (!Number.isFinite(v) || v < min || v > max)) errors[key] = `${label}: enter ${min}-${max} ${unit}.`;
+  }
   const c = d.emergencyContact;
   if (c) {
     if (!c.name.trim()) errors.contactName = "Enter your contact's name.";
     if (!PHONE.test(c.phone.trim())) errors.contactPhone = "Enter a phone number, like (416) 555-0187.";
   }
   return errors;
+}
+
+// Risk factors the heart-risk calculator and the rule engine read from the profile.
+const SEX_OPTIONS = [
+  ["male", "Male"],
+  ["female", "Female"],
+  ["other", "Other"],
+];
+const SMOKING_OPTIONS = [
+  ["never", "Never"],
+  ["former", "Former"],
+  ["current", "Current"],
+];
+const YES_NO = [
+  [true, "Yes"],
+  [false, "No"],
+  [null, "Not sure"],
+];
+const KNOWN = [
+  ["knownHypertension", "High blood pressure diagnosed"],
+  ["diabetes", "Diabetes"],
+  ["knownAf", "Atrial fibrillation diagnosed"],
+  ["knownChd", "Heart disease (angina, heart attack, stent)"],
+  ["knownPd", "Parkinson's disease diagnosed"],
+  ["knownDementia", "Dementia diagnosed"],
+  ["familyPrematureCvd", "A parent, brother or sister had a heart attack or stroke early (men under 55, women under 65)"],
+];
+// Labs are entered in mg/dL, the unit the backend stores (it refuses mmol/L values with a hint).
+const LABS = [
+  ["totalChol", "Total cholesterol", "mg/dL", 100, 405],
+  ["hdl", "HDL cholesterol", "mg/dL", 20, 100],
+  ["ldl", "LDL cholesterol", "mg/dL", 30, 300],
+  ["egfr", "Kidney function (eGFR)", "mL/min", 1, 200],
+];
+
+// Three-way choice drawn as the app's segmented control.
+function Segmented({ name, value, options, onChange, label }) {
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label}>
+      {options.map(([v, text]) => (
+        <label key={String(v)}>
+          <input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} />
+          <span>{text}</span>
+        </label>
+      ))}
+    </div>
+  );
 }
 
 // Editable list (allergies, conditions): each item has a remove button, and
@@ -132,6 +178,7 @@ export default function ProfileSheet({ open, onClose }) {
   const { profile, updateProfile } = useProfile();
   const [draft, setDraft] = useState(null); // null = viewing; otherwise the form's values
   const [pending, setPending] = useState({ allergies: "", conditions: "" }); // typed but not yet added
+  const [labText, setLabText] = useState({}); // lab boxes as typed; parsed into draft.risk on change
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -156,7 +203,9 @@ export default function ProfileSheet({ open, onClose }) {
       conditions: [...profile.conditions],
       emergencyContact: profile.emergencyContact ? { ...profile.emergencyContact } : null,
       ...Object.fromEntries(CONTACT_FIELDS.map((k) => [k, profile[k] ?? ""])),
+      risk: { ...EMPTY_RISK, ...(profile.risk ?? {}) },
     });
+    setLabText(Object.fromEntries(LABS.map(([k]) => [k, profile.risk?.[k] != null ? String(profile.risk[k]) : ""])));
     setPending({ allergies: "", conditions: "" });
     setErrors({});
     setSaveError("");
@@ -173,6 +222,15 @@ export default function ProfileSheet({ open, onClose }) {
   const set = (field, value) => {
     setDraft((d) => ({ ...d, [field]: value }));
     setErrors((e) => ({ ...e, [field]: undefined }));
+  };
+  const setRisk = (field, value) => {
+    setDraft((d) => ({ ...d, risk: { ...d.risk, [field]: value } }));
+    setErrors((e) => ({ ...e, [field]: undefined }));
+  };
+  const setLab = (field, text) => {
+    setLabText((t) => ({ ...t, [field]: text }));
+    const clean = text.trim().replace(",", ".");
+    setRisk(field, clean === "" ? null : Number(clean));
   };
   const setContact = (field, value) => {
     setDraft((d) => ({ ...d, emergencyContact: { ...d.emergencyContact, [field]: value } }));
@@ -379,34 +437,18 @@ export default function ProfileSheet({ open, onClose }) {
                     {err("phone")}
                   </div>
                   <div className="form-field">
-                    <label htmlFor="profile-sex">Sex (as on your health card)</label>
-                    <select
-                      id="profile-sex"
+                    <label htmlFor="profile-email">E-mail</label>
+                    <input
+                      id="profile-email"
                       className="text-input"
-                      value={draft.sex}
-                      onChange={(e) => set("sex", e.target.value)}
-                    >
-                      <option value="">Not given</option>
-                      {SEX_OPTIONS.map(([v, label]) => (
-                        <option key={v} value={v}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
+                      type="email"
+                      autoComplete="email"
+                      value={draft.email}
+                      onChange={(e) => set("email", e.target.value)}
+                      {...invalid("email")}
+                    />
+                    {err("email")}
                   </div>
-                </div>
-                <div className="form-field">
-                  <label htmlFor="profile-email">E-mail</label>
-                  <input
-                    id="profile-email"
-                    className="text-input"
-                    type="email"
-                    autoComplete="email"
-                    value={draft.email}
-                    onChange={(e) => set("email", e.target.value)}
-                    {...invalid("email")}
-                  />
-                  {err("email")}
                 </div>
                 <div className="form-field">
                   <label htmlFor="profile-street">Street address</label>
@@ -461,6 +503,48 @@ export default function ProfileSheet({ open, onClose }) {
                     {...invalid("postalCode")}
                   />
                   {err("postalCode")}
+                </div>
+              </section>
+
+              <section className="profile-section profile-risk" aria-labelledby="profile-edit-risk">
+                <h3 id="profile-edit-risk" className="sheet-sub">
+                  Risk factors
+                </h3>
+                <p className="field-hint reading-hint">Used for your heart-risk estimate and the assessment. Leave anything you don't know.</p>
+                <div className="form-field">
+                  <span className="form-label">Sex</span>
+                  <Segmented name="profile-sex" label="Sex" value={draft.risk.sex} options={SEX_OPTIONS} onChange={(v) => setRisk("sex", v)} />
+                </div>
+                <div className="form-field">
+                  <span className="form-label">Smoking</span>
+                  <Segmented name="profile-smoking" label="Smoking" value={draft.risk.smokingStatus} options={SMOKING_OPTIONS} onChange={(v) => setRisk("smokingStatus", v)} />
+                </div>
+                {KNOWN.map(([key, label]) => (
+                  <div className="form-field" key={key}>
+                    <span className="form-label">{label}</span>
+                    <Segmented name={`profile-${key}`} label={label} value={draft.risk[key]} options={YES_NO} onChange={(v) => setRisk(key, v)} />
+                  </div>
+                ))}
+                <div className="profile-row">
+                  {LABS.map(([key, label, unit]) => (
+                    <div className="form-field" key={key}>
+                      <label htmlFor={`profile-${key}`}>
+                        {label} <span className="book-optional">Optional</span>
+                      </label>
+                      <div className={`input-unit ${errors[key] ? "invalid" : ""}`}>
+                        <input
+                          id={`profile-${key}`}
+                          type="text"
+                          inputMode="decimal"
+                          value={labText[key] ?? ""}
+                          onChange={(e) => setLab(key, e.target.value)}
+                          {...invalid(key)}
+                        />
+                        <span className="unit">{unit}</span>
+                      </div>
+                      {err(key)}
+                    </div>
+                  ))}
                 </div>
               </section>
 
@@ -563,10 +647,6 @@ export default function ProfileSheet({ open, onClose }) {
                   <dd>{profile.conditions.length ? profile.conditions.join(", ") : "None recorded"}</dd>
                 </div>
                 <div>
-                  <dt>Sex</dt>
-                  <dd>{SEX_OPTIONS.find(([v]) => v === profile.sex)?.[1] ?? "Not given"}</dd>
-                </div>
-                <div>
                   <dt>Phone</dt>
                   <dd>
                     {profile.phone ? (
@@ -585,6 +665,26 @@ export default function ProfileSheet({ open, onClose }) {
                 <div>
                   <dt>Address</dt>
                   <dd>{addressLine(profile) || "Not added"}</dd>
+                </div>
+                <div>
+                  <dt>Risk factors</dt>
+                  <dd>
+                    {[
+                      profile.risk?.sex && SEX_OPTIONS.find(([v]) => v === profile.risk.sex)?.[1],
+                      profile.risk?.smokingStatus && `${SMOKING_OPTIONS.find(([v]) => v === profile.risk.smokingStatus)?.[1]} smoker`,
+                      ...KNOWN.filter(([k]) => profile.risk?.[k] === true).map(([, label]) => label.split(" (")[0]),
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "Not added"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Labs</dt>
+                  <dd>
+                    {LABS.filter(([k]) => profile.risk?.[k] != null)
+                      .map(([k, label, unit]) => `${label.split(" ")[0]} ${profile.risk[k]} ${unit}`)
+                      .join(", ") || "Not added"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Emergency contact</dt>

@@ -7,10 +7,15 @@ import useStoredState from "../hooks/useStoredState.js";
 // The signed-in user's health profile, editable from the profile sheet:
 // { fullName, dateOfBirth (YYYY-MM-DD), healthCardLast4, allergies: [],
 //   conditions: [], emergencyContact: { name, relation, phone } | null,
-//   sex, phone, email, street, city, province, postalCode }.
+//   risk: { sex, smokingStatus, diabetes, knownHypertension, knownAf, knownChd,
+//           knownPd, knownDementia, familyPrematureCvd, totalChol, hdl, ldl, egfr },
+//   phone, email, street, city, province, postalCode }.
+// `risk` holds what the heart-risk calculator (Framingham) and the rule engine
+// read from the profile; booleans are true | false | null (not sure), labs are
+// mg/dL numbers or null.
 // The first name and initials are worked out from the full name, so a rename
-// shows in the greeting and avatar too. Name, date of birth, sex and the
-// contact and address fields are what a clinic receives when booking.
+// shows in the greeting and avatar too. Name, date of birth, sex (risk.sex) and
+// the contact and address fields are what a clinic receives when booking.
 //
 // Backend off: everything is kept in this browser, starting from the demo patient.
 // Backend on: everything but the health card comes from and saves to
@@ -25,9 +30,25 @@ const ProfileContext = createContext(null);
 export const PROFILE_SAVED_EVENT = "caresync:profile-saved";
 
 // Booking details: what a clinic asks for, all plain strings ("" = not given).
-const CONTACT_FIELDS = ["sex", "phone", "email", "street", "city", "province", "postalCode"];
+// Sex is in `risk` (the risk calculator reads it too).
+const CONTACT_FIELDS = ["phone", "email", "street", "city", "province", "postalCode"];
 const NO_CONTACT = Object.fromEntries(CONTACT_FIELDS.map((k) => [k, ""]));
 
+export const EMPTY_RISK = {
+  sex: null, // "male" | "female" | "other" | "prefer_not" | null
+  smokingStatus: null, // "never" | "former" | "current" | null
+  diabetes: null,
+  knownHypertension: null,
+  knownAf: null,
+  knownChd: null,
+  knownPd: null,
+  knownDementia: null,
+  familyPrematureCvd: null,
+  totalChol: null, // mg/dL
+  hdl: null,
+  ldl: null,
+  egfr: null, // mL/min/1.73m²
+};
 const EMPTY = {
   fullName: "",
   dateOfBirth: "",
@@ -35,6 +56,7 @@ const EMPTY = {
   allergies: [],
   conditions: [],
   emergencyContact: null,
+  risk: EMPTY_RISK,
   ...NO_CONTACT,
 };
 const LOCAL_ONLY = ({ healthCardLast4, allergies, conditions }) => ({ healthCardLast4, allergies, conditions });
@@ -47,8 +69,12 @@ const editable = (p) => ({
   allergies: p.allergies,
   conditions: p.conditions,
   emergencyContact: p.emergencyContact ?? null,
+  risk: { ...EMPTY_RISK, ...(p.risk ?? {}) },
   ...Object.fromEntries(CONTACT_FIELDS.map((k) => [k, p[k] ?? ""])),
 });
+
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const bool = (v) => (typeof v === "boolean" ? v : null);
 
 function withDerived(p) {
   const words = p.fullName.trim().split(/\s+/).filter(Boolean);
@@ -65,7 +91,6 @@ function fromBackend(p, email) {
     fullName,
     dateOfBirth: p.date_of_birth ?? "",
     emergencyContact: c?.name ? { name: c.name, relation: c.relation ?? "", phone: c.phone ?? "" } : null,
-    sex: p.sex ?? "",
     phone: p.phone ?? "",
     email: p.contact_email || email || "",
     street: p.street ?? "",
@@ -75,13 +100,43 @@ function fromBackend(p, email) {
     // Left out when the backend has never stored them, so the browser's lists show instead.
     ...(list(p.allergies) && { allergies: p.allergies }),
     ...(list(p.conditions) && { conditions: p.conditions }),
+    risk: {
+      sex: p.sex ?? null,
+      smokingStatus: p.smoking_status ?? null,
+      diabetes: bool(p.diabetes),
+      knownHypertension: bool(p.known_hypertension),
+      knownAf: bool(p.known_af),
+      knownChd: bool(p.known_chd),
+      knownPd: bool(p.known_pd),
+      knownDementia: bool(p.known_dementia),
+      familyPrematureCvd: bool(p.family_history?.premature_cvd),
+      totalChol: num(p.total_chol_mg_dl),
+      hdl: num(p.hdl_mg_dl),
+      ldl: num(p.ldl_mg_dl),
+      egfr: num(p.egfr),
+    },
   };
 }
 
 // The profile sheet's fields -> a PUT /api/profile body (only these fields change).
-function toBackend(p, previousContact) {
+function toBackend(p, previousContact, previousFamilyHistory) {
   const [first, ...rest] = p.fullName.split(" ");
+  const r = { ...EMPTY_RISK, ...(p.risk ?? {}) };
   return {
+    sex: r.sex,
+    smoking_status: r.smokingStatus,
+    diabetes: r.diabetes,
+    known_hypertension: r.knownHypertension,
+    known_af: r.knownAf,
+    known_chd: r.knownChd,
+    known_pd: r.knownPd,
+    known_dementia: r.knownDementia,
+    // Keep other family-history keys the backend may hold; only premature CVD is edited here.
+    family_history: { ...(previousFamilyHistory ?? {}), premature_cvd: r.familyPrematureCvd },
+    total_chol_mg_dl: r.totalChol,
+    hdl_mg_dl: r.hdl,
+    ldl_mg_dl: r.ldl,
+    egfr: r.egfr,
     first_name: first || null,
     last_name: rest.join(" ") || null,
     display_name: first || null,
@@ -90,7 +145,6 @@ function toBackend(p, previousContact) {
     emergency_contact: p.emergencyContact ? { ...previousContact, ...p.emergencyContact } : null,
     allergies: p.allergies,
     conditions: p.conditions,
-    sex: p.sex || null,
     phone: p.phone || null,
     contact_email: p.email || null,
     street: p.street || null,
@@ -136,7 +190,7 @@ export function ProfileProvider({ children }) {
   const updateProfile = async (next) => {
     const clean = editable(next);
     if (USE_BACKEND) {
-      const saved = await saveProfile(toBackend(clean, remote?.emergency_contact));
+      const saved = await saveProfile(toBackend(clean, remote?.emergency_contact, remote?.family_history));
       setRemote(saved);
       setStored(LOCAL_ONLY(clean));
       window.dispatchEvent(new Event(PROFILE_SAVED_EVENT));

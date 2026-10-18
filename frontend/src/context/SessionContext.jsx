@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { DEMO_ACCOUNT, SIGNED_OUT_EVENT, USE_BACKEND, getToken, login, loginWithGoogle, setToken, signup } from "../api/client.js";
+import { DEMO_ACCOUNT, SIGNED_OUT_EVENT, USE_BACKEND, getToken, login, loginWithGoogle, logout, setToken, signup } from "../api/client.js";
 import useStoredState from "../hooks/useStoredState.js";
 
 // Who is using the app. Until there is a session the landing page shows, and
@@ -20,8 +20,12 @@ export function SessionProvider({ children }) {
 
   // A sign-in saved before the backend was switched on has no token, so every
   // backend call would fail and the dashboard would stay empty: sign in again.
+  // The other way round, a token left behind without a signed-in session (storage
+  // out of step) must not be sent on a guest's requests: drop it.
   useEffect(() => {
-    if (USE_BACKEND && session && !session.guest && !getToken()) setSession(null);
+    if (!USE_BACKEND) return;
+    if (session && !session.guest && !getToken()) setSession(null);
+    if ((!session || session.guest) && getToken()) setToken(null);
   }, []); // once, on load
 
   // The backend rejected the saved token (expired or revoked): back to the landing page.
@@ -39,7 +43,7 @@ export function SessionProvider({ children }) {
       const res = newAccount && method !== "demo" ? await signup(creds.email, creds.password) : await login(creds.email, creds.password);
       setToken(res.access_token);
       setAuthPrompt(null);
-      setSession({ method, email: creds.email, userId: res.user_id, signedInAt: Date.now() });
+      setSession({ method, email: res.email ?? creds.email, userId: res.user_id, signedInAt: Date.now() });
       return;
     }
     setAuthPrompt(null);
@@ -47,19 +51,13 @@ export function SessionProvider({ children }) {
   };
 
   // Google Identity Services handed back an ID token (useGoogleSignIn). The
-  // backend verifies it; the email is read from it only to show who's signed in.
+  // backend verifies it and answers with the account's email (shown in the
+  // account menu); the token itself is never trusted here.
   const signInWithGoogle = async (credential) => {
     const res = await loginWithGoogle(credential);
-    let email = null;
-    try {
-      const part = credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-      email = JSON.parse(atob(part)).email ?? null;
-    } catch {
-      /* display only */
-    }
     setToken(res.access_token);
     setAuthPrompt(null);
-    setSession({ method: "google", email, userId: res.user_id, signedInAt: Date.now() });
+    setSession({ method: "google", email: res.email ?? null, userId: res.user_id, signedInAt: Date.now() });
   };
 
   const continueAsGuest = () => {
@@ -68,9 +66,12 @@ export function SessionProvider({ children }) {
     setSession({ guest: true, startedAt: Date.now() });
   };
 
-  // Back to the landing page. Google's One Tap stops picking the account
-  // automatically, or it would sign straight back in.
+  // Back to the landing page. The server ends this sign-in so the token can't
+  // be used again (best effort: the local sign-out happens either way), and
+  // Google's One Tap stops picking the account automatically, or it would sign
+  // straight back in.
   const signOut = () => {
+    if (USE_BACKEND && getToken()) logout().catch(() => {});
     window.google?.accounts?.id?.disableAutoSelect();
     setToken(null);
     setAuthPrompt(null);

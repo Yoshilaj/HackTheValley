@@ -63,8 +63,14 @@ export default function useGoogleSignIn({ oneTap = false } = {}) {
     setError("");
     try {
       await signInWithGoogle(credential);
-    } catch {
-      setError("Couldn't sign you in with Google. Try again, or use your email.");
+    } catch (err) {
+      setError(
+        err?.status === 503
+          ? "Google sign-in isn't available right now. Use your email and password."
+          : err?.status === 429
+            ? "Too many attempts. Wait a minute and try again."
+            : "Couldn't sign you in with Google. Try again, or use your email."
+      );
     } finally {
       setBusy(false);
     }
@@ -99,13 +105,22 @@ export default function useGoogleSignIn({ oneTap = false } = {}) {
   }, [clientId]);
 
   useEffect(() => {
-    if (oneTap && clientId && !session) window.google.accounts.id.prompt();
+    if (!(oneTap && clientId && !session)) return;
+    window.google.accounts.id.prompt((moment) => {
+      // Dev builds: say why One Tap didn't show (most often the page's origin isn't among the
+      // OAuth client's "Authorized JavaScript origins", or the user dismissed it recently).
+      if (import.meta.env.DEV && moment.isNotDisplayed?.()) {
+        console.warn(`Google One Tap not shown: ${moment.getNotDisplayedReason?.() ?? "unknown reason"}`);
+      }
+    });
   }, [oneTap, clientId, session]);
 
   // Draws Google's own button into `el` ("Continue with Google" / "Sign up with Google").
+  // Any earlier button in `el` is removed first, so re-rendering never stacks two.
   const renderButton = useCallback(
     (el, text = "continue_with") => {
       if (!el || !clientId) return;
+      el.replaceChildren();
       window.google.accounts.id.renderButton(el, {
         type: "standard",
         theme: "outline",

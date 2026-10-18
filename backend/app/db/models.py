@@ -61,6 +61,7 @@ class User(IdMixin, CreatedAtMixin, Base):
     )
     consents: Mapped[list["Consent"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
     device_tokens: Mapped[list["DeviceToken"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
+    sessions: Mapped[list["UserSession"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
 
 
 class Profile(IdMixin, Base):
@@ -155,6 +156,19 @@ class DeviceToken(IdMixin, CreatedAtMixin, Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # sha256 hex
     label: Mapped[str | None] = mapped_column(String(100))
     last_used_at: Mapped[datetime | None]
+
+
+class UserSession(IdMixin, CreatedAtMixin, Base):
+    """One web sign-in (signup, login or Google). The access token's ``sid`` claim names it, so
+    signing out (``revoked_at``) ends the token before it expires. No secret is stored here."""
+
+    __tablename__ = "user_sessions"
+
+    user_id: Mapped[str] = user_fk()
+    method: Mapped[str] = mapped_column(String(16), default="password")  # password | google
+    label: Mapped[str | None] = mapped_column(String(100))  # browser / device, from the User-Agent
+    last_seen_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]
 
 
 # ================================================================ Health data
@@ -558,5 +572,5 @@ USER_OWNED_MODELS: tuple[type[Base], ...] = (
     AppointmentMessage, Report, Appointment, RiskAssessment, Notification, OAuthCredential, ChatMessage,
     ChatConversation, RefillRequest, DoseLog, VisitBooking,
     UploadedDocument, AssessmentTask, ScreenerResponse, Observation, DailyLog,
-    DeviceRhythmResult, BpReading, MetricSample, DeviceToken, Consent, Profile, AuditLog,
+    DeviceRhythmResult, BpReading, MetricSample, DeviceToken, UserSession, Consent, Profile, AuditLog,
 )

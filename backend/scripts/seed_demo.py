@@ -10,7 +10,9 @@ Extends ``scripts.seed.seed_demo_user`` with 35 days of data:
 * OMRON Connect "Possible AFib" (possible_af) 3 days ago (→ RHY-01), a palpitations observation;
 * a completed PD screener (all "no"), daily fatigue logs;
 * **simulated** Parkinson's-pathway trend (every row carries ``raw_json.simulated=True``): 35 daily
-  finger_tap sessions, stable then tap count down / interval up over the last 7 days (→ PD-04), plus
+  keyboard finger_tap sessions (BRAIN test, s / ; keys, 30 s per hand, built from synthetic key-event
+  streams through ``task_service.build_tapping_task``), stable then tap count down / interval up /
+  dwell up over the last 7 days (→ PD-04), plus
   12 story_recall and 12 sustained_vowel sessions over 8 weeks on one device with stable acoustic
   features, the last 3 shifted in the PD direction (shimmer ×2.4, NHR ×3, CPPS −3.5 dB; speech rate
   −25 %, pause ratio ×1.6 — sized to clear the per-feature K of spec §5.5) → PD-03B fires alongside
@@ -45,6 +47,7 @@ from app.db.models import (
 )
 from app.ml.screener import PD_SCREENER_ITEMS
 from app.services.context_builder import user_zone
+from app.services.task_service import build_tapping_task
 
 MARKER_ACTION = "seed.planted_trend"
 DAYS = 35
@@ -138,16 +141,40 @@ def story_temporal_for(i: int, adverse: bool) -> dict[str, dict[str, Any]]:
     return temporal
 
 
+#: simulated keyboard tapping (BRAIN test): (mean inter-tap interval ms, mean dwell ms) stable vs dropped days
+TAP_HEALTHY = (480.0, 95.0)   # ≈62 taps / 30 s, AT30 ≈ 95 ms — control-like (Noyce 2014)
+TAP_DROPPED = (650.0, 140.0)  # ≈46 taps / 30 s, AT30 ≈ 140 ms — PD-like
+TAP_DURATION_S = 30.0
+
+
+def tap_events_for(i: int, hand: str) -> list[dict[str, Any]]:
+    """Synthetic ``s`` / ``;`` key-event stream for day offset ``i`` (0 = today) and ``hand`` (deterministic).
+
+    Stable before ``TAP_DROP_DAYS``; the last ``TAP_DROP_DAYS`` days are slower (interval up, dwell up)
+    with one ~2 s freeze. The right hand is slightly faster than the left."""
+    import numpy as np
+
+    iti, dwell = TAP_DROPPED if i < TAP_DROP_DAYS else TAP_HEALTHY
+    rng = np.random.default_rng(1_000 + 2 * i + (hand == "right"))
+    iti *= 0.97 if hand == "right" else 1.0
+    events: list[dict[str, Any]] = []
+    t, k = 100.0, 0
+    while t <= TAP_DURATION_S * 1000.0:
+        d = max(30.0, dwell + 8.0 * rng.standard_normal())
+        events.append({"key": "s" if k % 2 == 0 else ";", "down_ms": round(t, 1), "up_ms": round(t + d, 1)})
+        gap = max(120.0, iti + 18.0 * rng.standard_normal())
+        if i < TAP_DROP_DAYS and k == 25:
+            gap += 2000.0  # one freeze
+        t += gap
+        k += 1
+    return events
+
+
 def tap_features_for(i: int) -> dict[str, Any]:
-    """Day offset ``i`` (0 = today): stable tapping, with count down / interval up over the last TAP_DROP_DAYS."""
-    drop = i < TAP_DROP_DAYS
-    count = _wobble(46 if drop else 62, 1.5, i)
-    iti = _wobble(320 if drop else 238, 6, i)
-    cv = _wobble(0.21 if drop else 0.12, 0.01, i)
-    hands = {h: {"tap_count": round(count + d), "mean_iti_ms": round(iti - 4 * d, 1), "iti_cv": round(cv, 3),
-                 "decrement_slope_ms_per_tap": round(0.6 + 0.1 * d, 2), "valid": True} for h, d in (("left", -1), ("right", 1))}
-    return {**hands, "valid": True, "asymmetry_count": 2, "tap_count": round(count), "mean_iti_ms": round(iti, 1),
-            "iti_cv": round(cv, 3), "decrement_slope_ms_per_tap": 0.6}
+    """Features of the planted tapping session for day offset ``i`` (same path as a real submission)."""
+    from app.ml.features.tapping import tapping_session_features
+
+    return tapping_session_features(tap_events_for(i, "left"), tap_events_for(i, "right"), TAP_DURATION_S)
 
 
 def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> dict[str, Any]:
@@ -197,10 +224,10 @@ def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> 
         t = at(i, 19)
         if t > now:
             continue
-        feats = tap_features_for(i)
-        db.add(AssessmentTask(user_id=user.id, task_type="finger_tap", protocol_version="tapping-1", language="en",
-                              raw_json={**SIMULATED, "duration_s": 15}, features=feats, model_scores={}, score=None,
-                              valid=True, created_at=t))
+        task = build_tapping_task(user, tap_events_for(i, "left"), tap_events_for(i, "right"), TAP_DURATION_S)
+        task.raw_json = {**task.raw_json, **SIMULATED}
+        task.language, task.created_at = "en", t
+        db.add(task)
         counts["tapping"] = counts.get("tapping", 0) + 1
     n_sessions = len(VOICE_SESSION_OFFSETS)
     for i, off in enumerate(VOICE_SESSION_OFFSETS):

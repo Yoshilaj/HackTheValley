@@ -119,10 +119,13 @@ PLACES_CACHE_S = 30 * 60
 _places_cache: dict[tuple[str, str, float, float, int], tuple[float, list[dict[str, Any]]]] = {}
 
 
-def _search_places(places: Any, specialty: str, lat: float, lng: float, radius_km: float) -> list[Clinic]:
+def _search_places(places: Any, specialty: str, lat: float, lng: float, radius_km: float,
+                   cache: bool = True) -> list[Clinic]:
     from app.services.booking.discovery import query_for_specialty
 
     query = query_for_specialty(specialty)
+    if not cache:
+        return places.search_text(query, lat, lng, int(radius_km * 1000), specialty)
     key = (query, specialty, round(lat, 3), round(lng, 3), int(radius_km))
     hit = _places_cache.get(key)
     if hit is None or time.monotonic() - hit[0] > PLACES_CACHE_S:
@@ -142,6 +145,7 @@ def find_clinics(profile: Any, specialty: str, radius_km: float = 15.0, places: 
     specialty = _LEGACY_SPECIALTY.get(specialty, specialty)
     lat = getattr(profile, "lat", None) if profile is not None else None
     lng = getattr(profile, "lng", None) if profile is not None else None
+    own_client = places is None  # only the app's own Places client shares the cache
     if places is None:
         from app.integrations.google_places import PlacesClient, places_configured
 
@@ -150,7 +154,7 @@ def find_clinics(profile: Any, specialty: str, radius_km: float = 15.0, places: 
         if lat is None or lng is None:
             return []
         try:
-            found = _search_places(places, specialty, lat, lng, radius_km)
+            found = _search_places(places, specialty, lat, lng, radius_km, cache=own_client)
         except Exception as exc:  # network / quota: show nothing rather than made-up clinics
             log.warning("places lookup failed", extra={"error": str(exc), "specialty": specialty})
             return []

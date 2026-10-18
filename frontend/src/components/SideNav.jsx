@@ -29,6 +29,19 @@ const ICONS = {
       <path d="M9.5 9.5l5 5" />
     </>
   ),
+  "/checkin": (
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="M8 12.5l2.5 2.5L16 9.5" />
+    </>
+  ),
+  "/vitals": <path d="M3 12h4l2.5-6 3 12 2.5-8 1.5 2H21" />,
+  "/assessments": (
+    <>
+      <path d="M7 4h7l4 4v12a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z" />
+      <path d="M14 4v4h4M9 13h6M9 17h4" />
+    </>
+  ),
 };
 
 function useNavOrder() {

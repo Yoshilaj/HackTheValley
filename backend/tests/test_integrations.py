@@ -164,7 +164,7 @@ def test_pathway_specialty_map():
         "cardiology", "memory_clinic", "neurology", "family_medicine"]
 
 
-def test_places_used_when_given_and_seed_on_error():
+def test_places_used_when_given_and_nothing_made_up_on_error():
     me = SimpleNamespace(lat=43.6672, lng=-79.4036)
     custom = FakePlaces([Clinic(id="gp_x", name="X", specialty="cardiology", lat=43.67, lng=-79.40)])
     assert [c.id for c in cs.find_clinics(me, "cardiology", places=custom)] == ["gp_x"]
@@ -174,7 +174,9 @@ def test_places_used_when_given_and_seed_on_error():
         def search_text(self, *a, **kw):
             raise RuntimeError("quota")
 
-    assert cs.find_clinics(me, "cardiology", places=Broken())[0].id == "seed_bloor_heart"
+    # A real directory that fails shows no clinics rather than the fictional seed list.
+    assert cs.find_clinics(me, "cardiology", places=Broken()) == []
+    assert cs.find_clinics(SimpleNamespace(lat=None, lng=None), "cardiology", places=custom) == []
 
 
 def test_places_client_parses_response(monkeypatch):

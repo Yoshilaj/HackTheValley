@@ -45,11 +45,14 @@ MEAN_SERIES: dict[str, str] = {
     "walking_asymmetry_pct": "walking_asymmetry_pct",
 }
 SLEEP_METRIC = "sleep_asleep_minutes"  # → sleep_duration (hours per night)
-#: finger_tap AssessmentTask.features key → series name (§5.3 / PD-04)
+#: finger_tap AssessmentTask.features key → series name (§5.3 / PD-04). Keyboard BRAIN test: dwell =
+#: akinesia time (AT30), travel-time CV = incoordination (IS30, MAD-cleaned).
 TAP_FEATURES: dict[str, str] = {
     "tap_count": "tap_count",
     "mean_iti_ms": "tap_interval_mean",
     "iti_cv": "tap_interval_cv",
+    "dwell_mean_ms": "tap_dwell_mean",
+    "travel_time_cv": "tap_travel_cv",
 }
 
 # Legacy engine screener ids → content-bank ids (app/content/screener_pd.json), which are canonical.
@@ -311,9 +314,16 @@ def _tap_values(features: dict[str, Any] | None) -> dict[str, float]:
 
 
 def tapping_series(tasks: Iterable[AssessmentTask], tz: ZoneInfo) -> dict[str, DailySeries]:
+    """PD-04 daily series from valid ``finger_tap`` tasks. Like PD-03B (§5.5), only sessions on the input
+    method / device of the latest valid session count (``task_device``: "keyboard"); an earlier device's
+    sessions are dropped so a device change restarts the baseline."""
+    valid = sorted((t for t in tasks if t.task_type == "finger_tap" and t.valid), key=lambda t: t.created_at)
+    if not valid:
+        return {}
+    device = task_device(valid[-1])
     per: dict[str, dict[date, list[float]]] = defaultdict(lambda: defaultdict(list))
-    for t in tasks:
-        if t.task_type != "finger_tap" or not t.valid:
+    for t in valid:
+        if task_device(t) != device:
             continue
         d = to_local(t.created_at, tz).date()
         for k, v in _tap_values(t.features).items():

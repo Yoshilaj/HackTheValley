@@ -57,6 +57,16 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Browsers must not sniff JSON into HTML, and nothing under /api/auth (tokens) may be cached."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    if request.url.path.startswith("/api/auth"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.exception_handler(ProviderConfigError)
 @app.exception_handler(LlmConfigError)
 async def provider_config_error(_: Request, exc: Exception) -> JSONResponse:

@@ -27,7 +27,16 @@ const makeId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-$
 function fromBackend(bp, summary) {
   const bpRows = (bp.readings ?? [])
     .filter((r) => r.valid)
-    .map((r) => ({ id: r.id, vitalId: "bp", at: new Date(r.measured_at).getTime(), values: { sys: r.systolic, dia: r.diastolic } }))
+    .map((r) => ({
+      id: r.id,
+      vitalId: "bp",
+      at: new Date(r.measured_at).getTime(),
+      values: { sys: r.systolic, dia: r.diastolic, ...(r.pulse != null && { pulse: r.pulse }) },
+      // Shown beside the time: which home-BP session the backend filed it under.
+      note: [r.session === "morning" ? "Morning" : r.session === "evening" ? "Evening" : null, r.irregular_pulse_flag ? "irregular pulse" : null]
+        .filter(Boolean)
+        .join(", ") || undefined,
+    }))
     .sort((a, b) => a.at - b.at);
   const hrDaily = summary.metrics?.resting_hr?.daily ?? [];
   const hrRows = hrDaily.map((d) => ({
@@ -117,11 +126,19 @@ export default function useVitals() {
   ];
 
   // values: { value } or { sys, dia }; at: time taken (ms). These throw if the backend refuses.
-  const logReading = async ({ vitalId, values, at, note }) => {
+  const logReading = async ({ vitalId, values, at, note, session, irregularPulse }) => {
     if (live && FROM_BACKEND.has(vitalId)) {
       const measuredAt = new Date(at).toISOString();
-      if (vitalId === "bp") await logBloodPressure({ systolic: values.sys, diastolic: values.dia, measuredAt });
-      else await logMetric("resting_hr", values.value, measuredAt);
+      if (vitalId === "bp") {
+        await logBloodPressure({
+          systolic: values.sys,
+          diastolic: values.dia,
+          pulse: values.pulse ?? null,
+          measuredAt,
+          session,
+          irregularPulse,
+        });
+      } else await logMetric("resting_hr", values.value, measuredAt);
       setReload((n) => n + 1);
       return { id: makeId(), vitalId, values, at, note, status: VITAL_INPUTS[vitalId].check(values) };
     }
