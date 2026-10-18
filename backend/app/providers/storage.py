@@ -11,7 +11,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
-from typing import BinaryIO, Protocol
+from typing import Any, BinaryIO, Protocol
 
 from app.core.config import settings
 
@@ -31,7 +31,7 @@ class Storage(Protocol):
     def save_stream(self, user_id: str, kind: str, filename: str, fileobj: BinaryIO) -> str: ...
     def open(self, file_url: str) -> bytes: ...
     def local_path(self, file_url: str) -> Path: ...
-    def delete_user_files(self, user_id: str) -> int: ...
+    def delete_user_files(self, user_id: str, db: Any = None) -> int: ...
 
 
 class LocalStorage:
@@ -76,8 +76,9 @@ class LocalStorage:
     def open(self, file_url: str) -> bytes:
         return self.local_path(file_url).read_bytes()
 
-    def delete_user_files(self, user_id: str) -> int:
-        """Remove every stored file of the user; returns the number of files deleted."""
+    def delete_user_files(self, user_id: str, db: Any = None) -> int:
+        """Remove every stored file of the user; returns the number of files deleted. (``db`` is
+        accepted for the Storage interface and unused: these files are on disk.)"""
         if not _SAFE_SEGMENT.match(user_id):
             raise ValueError("unsafe user id")
         d = self.root / user_id
@@ -153,14 +154,21 @@ class DatabaseStorage:
             path.write_bytes(row.content)
         return path
 
-    def delete_user_files(self, user_id: str) -> int:
+    def delete_user_files(self, user_id: str, db: Any = None) -> int:
+        """Delete the user's stored files. Pass the caller's session when it is mid-transaction on
+        this user (DELETE /api/me): the rows are then deleted in that transaction, uncommitted. A
+        second connection would wait on that transaction's row locks while it waits on us."""
         from sqlalchemy import delete
 
         from app.db.models import StoredFile
 
-        with self._session() as db:
-            n = db.execute(delete(StoredFile).where(StoredFile.user_id == user_id)).rowcount or 0
-            db.commit()
+        stmt = delete(StoredFile).where(StoredFile.user_id == user_id)
+        if db is not None:
+            n = db.execute(stmt).rowcount or 0
+        else:
+            with self._session() as own:
+                n = own.execute(stmt).rowcount or 0
+                own.commit()
         return n + self.local.delete_user_files(user_id)
 
 

@@ -60,3 +60,23 @@ def test_setting_selects_the_backend(monkeypatch):
     assert isinstance(get_storage(), DatabaseStorage)
     monkeypatch.setattr(settings, "storage_backend", "local")
     assert isinstance(get_storage(), LocalStorage)
+
+
+def test_deleting_an_account_removes_its_database_files(client, db, monkeypatch, tmp_path):
+    """DELETE /api/me must delete stored files in its own transaction (it used to hang on Postgres:
+    a second connection waited on the deleting transaction's locks)."""
+    monkeypatch.setattr(settings, "storage_backend", "database")
+    monkeypatch.setattr(settings, "storage_dir", str(tmp_path))
+    from app.core.auth import create_access_token
+
+    u = User(email=f"del-{uuid.uuid4().hex[:8]}@example.com")
+    db.add(u)
+    db.commit()
+    uid = u.id
+    get_storage().save(uid, "document", "note.txt", b"hello")
+    res = client.delete("/api/me", headers={"Authorization": f"Bearer {create_access_token(uid)}"})
+    assert res.status_code == 200, res.text
+    assert res.json()["files_deleted"] == 1
+    db.expunge_all()
+    assert db.query(StoredFile).filter_by(user_id=uid).count() == 0
+    assert db.get(User, uid) is None

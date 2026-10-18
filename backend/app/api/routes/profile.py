@@ -84,8 +84,8 @@ def export_user_data(db: Session, user: User) -> dict[str, Any]:
 
 def delete_user_data(db: Session, user: User, storage: Storage | None = None) -> dict[str, int]:
     """Hard-delete every row owned by the user (OAuthCredential included; Google's revoke
-    endpoint is not called), then the user, then every stored file under the user's storage
-    prefix. Counts per table plus ``files`` (number of files removed). Caller commits."""
+    endpoint is not called), then every stored file of the user, then the user. Counts per table
+    plus ``files`` (number of files removed). Caller commits."""
     counts: dict[str, int] = {}
     user_id = user.id
     # TODO(post-hackathon): call Google's token revoke endpoint (https://oauth2.googleapis.com/revoke)
@@ -93,9 +93,11 @@ def delete_user_data(db: Session, user: User, storage: Storage | None = None) ->
     for model in USER_OWNED_MODELS:
         result = db.execute(delete(model).where(model.user_id == user_id))
         counts[model.__tablename__] = result.rowcount or 0
+    # Files before the user row and in this same transaction: database storage deletes its rows
+    # with this session (on its own connection it would wait on this transaction's locks).
+    counts["files"] = (storage or get_storage()).delete_user_files(user_id, db=db)
     db.execute(delete(User).where(User.id == user_id))
     db.expunge_all()
-    counts["files"] = (storage or get_storage()).delete_user_files(user_id)
     return counts
 
 
