@@ -34,12 +34,19 @@ Enumerations used below:
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
-| POST | /api/auth/signup | public | `{ email, password (8–128), display_name? }` | 201 `Token`; 409 email taken |
-| POST | /api/auth/login | public | `{ email, password }` | `Token`; 401 bad credentials |
+| POST | /api/auth/signup | public, 20/min per IP | `{ email, password (8–128), display_name? }` | 201 `Token`; 409 email taken; 429 too many attempts |
+| POST | /api/auth/login | public, 20/min per IP | `{ email, password }` | `Token`; 401 bad credentials (same answer and timing for unknown e-mails); 429 |
+| GET | /api/auth/google/config | public | – | `{ enabled, client_id }` — whether "Sign in with Google" is set up (`GOOGLE_CLIENT_ID`) and the public OAuth client id for Google Identity Services |
+| POST | /api/auth/google | public, 20/min per IP | `{ credential }` (Google ID token from the GIS button / One Tap) | `Token`; the account with the Google-verified e-mail, created on first sign-in (`password_hash` null, name from the Google profile); 401 invalid token or unverified e-mail; 503 not configured |
+| POST | /api/auth/logout | user | `{ all?: false }` | 204 — ends this sign-in (the bearer token stops working at once); `all: true` ends every sign-in of the account. 204 also for credentials that cannot be revoked (device token, dev header) |
+| GET | /api/auth/sessions | user | – | `[{ id, method: password\|google, label ("Safari on iPhone"), created_at, last_seen_at, current }]` active sign-ins, newest first |
+| DELETE | /api/auth/sessions/{id} | user | – | 204 signs that browser / device out; 404 not yours or already ended |
 | POST | /api/auth/device-token | user | `{ label? = "iOS Shortcut" }` | 201 `{ id, token, label }` — `token` is shown once (only its hash is stored) |
+| GET | /api/auth/device-tokens | user | – | `[{ id, label, created_at, last_used_at }]` (never the tokens) |
+| DELETE | /api/auth/device-tokens/{id} | user | – | 204 revokes it; 404 not yours |
 | GET | /api/auth/me | user | – | `{ id, email, created_at }` |
 
-`Token` = `{ access_token, token_type: "bearer", user_id }`. Demo account (after seeding): `demo@example.com` / `demo1234`.
+`Token` = `{ access_token, token_type: "bearer", user_id, email }`. The JWT (HS256, `JWT_SECRET`, `JWT_EXPIRE_DAYS` = 7) carries `sub` (user id), `iat`, `exp` and `sid`: the `user_sessions` row the sign-in created. Every request checks that row is not revoked (sign-out) and belongs to `sub`; `last_seen_at` is refreshed at most every 5 minutes. Every `/api/auth/*` response is `Cache-Control: no-store`. Demo account (after seeding): `demo@example.com` / `demo1234`.
 
 ## 2. Profile & consent
 

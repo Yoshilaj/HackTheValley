@@ -64,7 +64,7 @@ async function request(path, options = {}) {
 
 const post = (path, body) => request(path, { method: "POST", body: body == null ? undefined : JSON.stringify(body) });
 
-// ---- Auth: email + password. Returns { access_token, user_id }.
+// ---- Auth: email + password. Returns { access_token, user_id, email }.
 export function login(email, password) {
   return post("/api/auth/login", { email, password });
 }
@@ -75,13 +75,28 @@ export function signup(email, password, displayName) {
 
 // Sign in with Google. The config says whether it's set up and gives the public
 // OAuth client id for Google Identity Services; the credential is the ID token
-// Google hands back. Returns { access_token, user_id } like login.
+// Google hands back. Returns { access_token, user_id, email } like login.
 export function getGoogleConfig() {
   return request("/api/auth/google/config");
 }
 
 export function loginWithGoogle(credential) {
   return post("/api/auth/google", { credential });
+}
+
+// End this sign-in on the server so the saved token stops working (all: every
+// browser and device). Reads the token when called, so call it before clearing it.
+export function logout({ all = false } = {}) {
+  return post("/api/auth/logout", { all });
+}
+
+// Where the account is signed in: [{ id, method, label, created_at, last_seen_at, current }].
+export function getSessions() {
+  return request("/api/auth/sessions");
+}
+
+export function revokeSession(id) {
+  return request(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export function getHealth() {

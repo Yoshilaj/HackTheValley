@@ -75,3 +75,14 @@ def test_rejects_bad_tokens_and_unverified_emails(client, google):
 def test_not_configured(client, monkeypatch):
     monkeypatch.setattr(settings, "google_client_id", "")
     assert client.post("/api/auth/google", json={"credential": TOKEN}).status_code == 503
+
+
+def test_google_sign_in_answers_with_the_account_email_and_a_session(client, google):
+    email = f"sess-{uuid.uuid4().hex[:6]}@gmail.com"
+    google["claims"] = _claims(email.upper())
+    body = client.post("/api/auth/google", json={"credential": TOKEN}).json()
+    assert body["email"] == email  # normalised, as stored
+    h = {"Authorization": f"Bearer {body['access_token']}"}
+    assert client.get("/api/auth/sessions", headers=h).json()[0]["method"] == "google"
+    assert client.post("/api/auth/logout", headers=h).status_code == 204
+    assert client.get("/api/auth/me", headers=h).status_code == 401

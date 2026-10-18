@@ -48,4 +48,7 @@ RUN mkdir -p data/uploads
 
 EXPOSE 8000
 # Exactly 1 worker so the in-process APScheduler runs once.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+# --proxy-headers / --forwarded-allow-ips: Render's proxy is the only way in, so trust its
+# X-Forwarded-For; without it every request looks like one client and the per-IP rate limits on
+# /api/auth would lock everyone out together.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]

@@ -41,7 +41,7 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { title: "Create your account", text: "Sign up with email, Google or Apple. It takes a minute." },
+  { title: "Create your account", text: "Sign up with your email or your Google account. It takes a minute." },
   { title: "Add your health", text: "Log readings, list your medications and chat about how you're feeling." },
   { title: "Get a plan", text: "See where you stand, and book follow-ups when something needs a closer look." },
 ];
