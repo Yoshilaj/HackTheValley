@@ -156,3 +156,16 @@ def test_story_auth_and_ownership(client, db, user_headers, overrides, auth_head
     assert client.get(f"/api/tasks/story/{tid}", headers=auth_headers).status_code == 404
     st = client.get(f"/api/tasks/story/{tid}", headers=h).json()
     assert st["language"] == "ja" and "お話" in st["instruction"]
+
+
+def test_story_stores_device_for_voice_baseline(client, app, db, user_headers, overrides):
+    """PD-03B (spec §5.5): the device label is kept in raw_json at start and copied to recording_quality."""
+    user, h = user_headers
+    ua = {"User-Agent": "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15"}
+    tid, st = _walk(client, app, db, h | ua, lambda s: {
+        "story1_recall": s[0].text, "story2_recall": s[1].text, "fluency_60s": "dog cat horse lion",
+        "story1_delayed_recall": s[0].text})
+    assert st["finished"]
+    db.expire_all()
+    t = db.get(AssessmentTask, tid)
+    assert t.raw_json["device"] == "iPad" and t.recording_quality["device"] == "iPad"

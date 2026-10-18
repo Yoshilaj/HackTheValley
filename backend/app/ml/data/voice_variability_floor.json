@@ -1,0 +1,426 @@
+{
+  "source": {
+    "dataset": "UCI Parkinsons Telemonitoring",
+    "doi": "10.24432/C5ZS3N",
+    "licence": "CC BY 4.0",
+    "n_subjects": 42,
+    "n_recordings": 5875,
+    "note": "PD-only, early-stage, home recordings on one device; features from the AHTD pipeline not our extractor - used only as an order-of-magnitude floor for within-person relative variability"
+  },
+  "method": {
+    "rel_mad": "1.4826 * MAD / |median| over the subject's recordings",
+    "baseline10": "same over the subject's first 10 recordings by test_time",
+    "weekly_drift": "median |m_w - m_(w-1)| / |m_(w-1)| over consecutive weekly medians, week = floor(test_time/7)",
+    "spearman": "within-subject Spearman rho of the feature series vs UPDRS; distribution across subjects",
+    "alert_rates": "recording flagged when it moves in the worse direction by > k * baseline10_rel_mad from the baseline-10 median (k in [1.5, 2.0, 3.0]); 'single' = fraction of post-baseline recordings flagged, 'two_of_three' = fraction of 3-recording windows with >= 2 flags; medians across subjects",
+    "worse_direction": {
+      "Jitter(%)": 1,
+      "Shimmer": 1,
+      "Shimmer(dB)": 1,
+      "Shimmer:APQ11": 1,
+      "NHR": 1,
+      "HNR": -1,
+      "RPDE": 1,
+      "DFA": 1,
+      "PPE": 1
+    }
+  },
+  "features": {
+    "Jitter(%)": {
+      "extractor_key": "MDVP:Jitter(%)",
+      "worse_direction": 1,
+      "rel_mad_median": 0.32732919996756477,
+      "rel_mad_iqr": [
+        0.27081527840481556,
+        0.37541735927421227
+      ],
+      "baseline10_rel_mad_median": 0.27928816923076916,
+      "weekly_drift_median": 0.15027412383185185,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": -0.015800303368992796,
+        "iqr": [
+          -0.11993816994979811,
+          0.08548421298141443
+        ],
+        "frac_positive": 0.42857142857142855,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": -0.006583176661673979,
+        "iqr": [
+          -0.10325104837228105,
+          0.08744300968676316
+        ],
+        "frac_positive": 0.5,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.153125,
+          "two_of_three": 0.0712041226747109
+        },
+        "k2": {
+          "single": 0.0894254415381176,
+          "two_of_three": 0.025168669618384987
+        },
+        "k3": {
+          "single": 0.045589398734177215,
+          "two_of_three": 0.0
+        }
+      }
+    },
+    "Shimmer": {
+      "extractor_key": "MDVP:Shimmer",
+      "worse_direction": 1,
+      "rel_mad_median": 0.3378218230340735,
+      "rel_mad_iqr": [
+        0.283700994955157,
+        0.4057593251582259
+      ],
+      "baseline10_rel_mad_median": 0.28403163467799813,
+      "weekly_drift_median": 0.2095160010986719,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": -0.025314067610167378,
+        "iqr": [
+          -0.17511552327711274,
+          0.15671003225633087
+        ],
+        "frac_positive": 0.47619047619047616,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": 0.007840998196274554,
+        "iqr": [
+          -0.1648977919257117,
+          0.1570124612135354
+        ],
+        "frac_positive": 0.5,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.13982820976491864,
+          "two_of_three": 0.08514492753623187
+        },
+        "k2": {
+          "single": 0.09188311688311689,
+          "two_of_three": 0.04166666666666667
+        },
+        "k3": {
+          "single": 0.06014285714285714,
+          "two_of_three": 0.02357456140350877
+        }
+      }
+    },
+    "Shimmer(dB)": {
+      "extractor_key": "MDVP:Shimmer(dB)",
+      "worse_direction": 1,
+      "rel_mad_median": 0.34354171399070726,
+      "rel_mad_iqr": [
+        0.28781787809213455,
+        0.41113355501483195
+      ],
+      "baseline10_rel_mad_median": 0.2980601952783444,
+      "weekly_drift_median": 0.1945713467236523,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": -0.003263211079457283,
+        "iqr": [
+          -0.17066482241038866,
+          0.1281587078315734
+        ],
+        "frac_positive": 0.5,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": -0.015653101492123768,
+        "iqr": [
+          -0.14771976056639208,
+          0.13660892260535928
+        ],
+        "frac_positive": 0.47619047619047616,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.15122123893805312,
+          "two_of_three": 0.08046856604662114
+        },
+        "k2": {
+          "single": 0.09285714285714286,
+          "two_of_three": 0.047291007261217655
+        },
+        "k3": {
+          "single": 0.05017985611510792,
+          "two_of_three": 0.015417457305502846
+        }
+      }
+    },
+    "Shimmer:APQ11": {
+      "extractor_key": "MDVP:APQ",
+      "worse_direction": 1,
+      "rel_mad_median": 0.3566934210828376,
+      "rel_mad_iqr": [
+        0.2749023665386405,
+        0.39630012444634555
+      ],
+      "baseline10_rel_mad_median": 0.28449153327085275,
+      "weekly_drift_median": 0.17775494947659948,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": -0.022597926523122334,
+        "iqr": [
+          -0.16311607273279105,
+          0.11320543149641006
+        ],
+        "frac_positive": 0.42857142857142855,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": 0.018585556577829093,
+        "iqr": [
+          -0.1343919391130718,
+          0.13526402214115116
+        ],
+        "frac_positive": 0.5238095238095238,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.13699674130137707,
+          "two_of_three": 0.0668052668052668
+        },
+        "k2": {
+          "single": 0.09761904761904762,
+          "two_of_three": 0.032907555747997405
+        },
+        "k3": {
+          "single": 0.04904645720260917,
+          "two_of_three": 0.011535947712418301
+        }
+      }
+    },
+    "NHR": {
+      "extractor_key": "NHR",
+      "worse_direction": 1,
+      "rel_mad_median": 0.5743588973936424,
+      "rel_mad_iqr": [
+        0.477287512429719,
+        0.6998374106525307
+      ],
+      "baseline10_rel_mad_median": 0.42228242225321794,
+      "weekly_drift_median": 0.2839110486789653,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": -0.01841036983568644,
+        "iqr": [
+          -0.11433937187824975,
+          0.10511659781041643
+        ],
+        "frac_positive": 0.47619047619047616,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": -0.017538229348567726,
+        "iqr": [
+          -0.10079574803241294,
+          0.09104208267876944
+        ],
+        "frac_positive": 0.47619047619047616,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.16451612903225807,
+          "two_of_three": 0.08888524590163935
+        },
+        "k2": {
+          "single": 0.12244140171733581,
+          "two_of_three": 0.05378724422639703
+        },
+        "k3": {
+          "single": 0.08510142999667443,
+          "two_of_three": 0.031384615384615386
+        }
+      }
+    },
+    "HNR": {
+      "extractor_key": "HNR",
+      "worse_direction": -1,
+      "rel_mad_median": 0.10466757037912569,
+      "rel_mad_iqr": [
+        0.08181452809035417,
+        0.1290163618624762
+      ],
+      "baseline10_rel_mad_median": 0.08294680302184776,
+      "weekly_drift_median": 0.054552358901735244,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": 0.05128719830604758,
+        "iqr": [
+          -0.13966060523463897,
+          0.14487986572927603
+        ],
+        "frac_positive": 0.5952380952380952,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": 0.04526864800062101,
+        "iqr": [
+          -0.1399338079501494,
+          0.15435154761207082
+        ],
+        "frac_positive": 0.5714285714285714,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.1267123287671233,
+          "two_of_three": 0.05847953216374269
+        },
+        "k2": {
+          "single": 0.06692242114236999,
+          "two_of_three": 0.022416666666666668
+        },
+        "k3": {
+          "single": 0.017677937316658947,
+          "two_of_three": 0.0
+        }
+      }
+    },
+    "RPDE": {
+      "extractor_key": "RPDE",
+      "worse_direction": 1,
+      "rel_mad_median": 0.12608117502001512,
+      "rel_mad_iqr": [
+        0.10595386952408473,
+        0.14071127948532838
+      ],
+      "baseline10_rel_mad_median": 0.1081479582393832,
+      "weekly_drift_median": 0.058264329992967184,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": 0.014140728638794457,
+        "iqr": [
+          -0.08094178327196076,
+          0.09766175036626389
+        ],
+        "frac_positive": 0.5476190476190477,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": 0.009114226085478733,
+        "iqr": [
+          -0.08028652008714399,
+          0.1168941132239127
+        ],
+        "frac_positive": 0.5238095238095238,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.09339975093399751,
+          "two_of_three": 0.037496553625585884
+        },
+        "k2": {
+          "single": 0.04616477272727273,
+          "two_of_three": 0.00759144237405107
+        },
+        "k3": {
+          "single": 0.006537064729758599,
+          "two_of_three": 0.0
+        }
+      }
+    },
+    "DFA": {
+      "extractor_key": "DFA",
+      "worse_direction": 1,
+      "rel_mad_median": 0.04976273988531003,
+      "rel_mad_iqr": [
+        0.04190328903461438,
+        0.05991931468208771
+      ],
+      "baseline10_rel_mad_median": 0.035318013265338385,
+      "weekly_drift_median": 0.022014846895216524,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": 0.0003548306095068922,
+        "iqr": [
+          -0.21351287353835238,
+          0.1830356923830111
+        ],
+        "frac_positive": 0.5,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": -0.0032193912747909923,
+        "iqr": [
+          -0.20313353303540183,
+          0.15122447701662825
+        ],
+        "frac_positive": 0.4523809523809524,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.05901741293532338,
+          "two_of_three": 0.019226133076181293
+        },
+        "k2": {
+          "single": 0.020867542419266555,
+          "two_of_three": 0.0
+        },
+        "k3": {
+          "single": 0.003424657534246575,
+          "two_of_three": 0.0
+        }
+      }
+    },
+    "PPE": {
+      "extractor_key": "PPE",
+      "worse_direction": 1,
+      "rel_mad_median": 0.271512249550403,
+      "rel_mad_iqr": [
+        0.2129270276452262,
+        0.3065753920384369
+      ],
+      "baseline10_rel_mad_median": 0.20488042276069984,
+      "weekly_drift_median": 0.12992997916558646,
+      "n_subjects": 42,
+      "spearman_total_updrs": {
+        "median": -0.030585381159414577,
+        "iqr": [
+          -0.09705022972078156,
+          0.09984200408315337
+        ],
+        "frac_positive": 0.4523809523809524,
+        "n_subjects": 42
+      },
+      "spearman_motor_updrs": {
+        "median": 0.01799059337926759,
+        "iqr": [
+          -0.07263109788194393,
+          0.1116870461343803
+        ],
+        "frac_positive": 0.5714285714285714,
+        "n_subjects": 42
+      },
+      "alert_rates": {
+        "k1.5": {
+          "single": 0.16983058714318866,
+          "two_of_three": 0.0932467821920098
+        },
+        "k2": {
+          "single": 0.11275201612903227,
+          "two_of_three": 0.02297410192147034
+        },
+        "k3": {
+          "single": 0.042671839010789185,
+          "two_of_three": 0.0
+        }
+      }
+    }
+  }
+}

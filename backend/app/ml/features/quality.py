@@ -14,6 +14,17 @@ The gate is deliberately simple and transparent:
   frames (a continuous recording with no silence therefore gets a pessimistic
   SNR — the task instructions ask the user to start recording before phonating).
 * **clip_frac** — fraction of samples with ``|y| > 0.99`` (full-scale float).
+
+Recording-condition signals (informational, **not** part of the pass/fail gate;
+stored so the personal voice-stability rule PD-03b can tell a changed room or
+microphone from a changed voice — Bottalico 2018 showed room acoustics shift
+HNR by 7-10 dB, Barsties 2025 that smartphone vs clinical microphones offset
+perturbation measures):
+
+* **noise_floor_dbfs** — RMS (dBFS) of the quietest 10 % of 50 ms frames.
+* **level_dbfs** — RMS (dBFS) of the voiced part (samples inside the non-silent
+  intervals; whole recording when there is none).
+* **clipping_ratio** — alias of ``clip_frac`` under the name the rule layer uses.
 """
 
 from __future__ import annotations
@@ -40,11 +51,18 @@ _TOP_DB = 30.0
 _MIN_NOISE_FRAMES = 3
 _SNR_CAP_DB = 100.0
 _CLIP_LEVEL = 0.99
+_COND_FRAME_S = 0.050  # 50 ms frames for the noise-floor estimate
+_NOISE_FLOOR_QUANTILE = 0.10
+_DBFS_FLOOR = -120.0  # reported for digital silence instead of -inf
 
 
 @dataclass
 class RecordingQuality:
-    """Result of :func:`assess_quality`; serialisable to the ``recording_quality`` JSON column."""
+    """Result of :func:`assess_quality`; serialisable to the ``recording_quality`` JSON column.
+
+    ``noise_floor_dbfs``, ``level_dbfs`` and ``clipping_ratio`` are
+    recording-condition signals; they never affect ``ok``/``reasons``.
+    """
 
     duration_s: float
     voiced_s: float
@@ -52,9 +70,51 @@ class RecordingQuality:
     clip_frac: float
     ok: bool
     reasons: list[str] = field(default_factory=list)
+    noise_floor_dbfs: float | None = None  # None = not computed (empty/silent input); JSON-safe
+    level_dbfs: float | None = None
+    clipping_ratio: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _dbfs(power: float) -> float:
+    """Mean-square power (full-scale float) to dBFS, floored at ``_DBFS_FLOOR``."""
+    if not np.isfinite(power) or power <= 0.0:
+        return _DBFS_FLOOR
+    return float(max(_DBFS_FLOOR, 10.0 * np.log10(power)))
+
+
+def recording_condition_signals(y: np.ndarray, sr: int, intervals: np.ndarray | None = None) -> dict[str, float | None]:
+    """Noise floor, voiced level (dBFS) and clipping ratio of a mono float waveform.
+
+    ``intervals`` are ``(start, end)`` sample pairs of the non-silent regions
+    (``librosa.effects.split`` output); when omitted they are computed here.
+    """
+    y = _to_mono_float(y)
+    if len(y) == 0 or sr <= 0 or not np.all(np.isfinite(y)):
+        return {"noise_floor_dbfs": None, "level_dbfs": None, "clipping_ratio": 0.0}
+    clipping_ratio = float(np.mean(np.abs(y) > _CLIP_LEVEL))
+
+    n = max(1, int(round(_COND_FRAME_S * sr)))
+    n_frames = len(y) // n
+    if n_frames >= 1:
+        frame_p = np.mean(y[: n_frames * n].reshape(n_frames, n) ** 2, axis=1)
+    else:
+        frame_p = np.array([np.mean(y**2)])
+    k = max(1, int(round(_NOISE_FLOOR_QUANTILE * len(frame_p))))
+    noise_floor_dbfs = _dbfs(float(np.mean(np.sort(frame_p)[:k])))
+
+    if intervals is None:
+        import librosa
+
+        intervals = librosa.effects.split(y, top_db=_TOP_DB, frame_length=_FRAME, hop_length=_HOP)
+    if len(intervals):
+        voiced = np.concatenate([y[int(s) : int(e)] for s, e in intervals])
+    else:
+        voiced = y
+    level_dbfs = _dbfs(float(np.mean(voiced**2))) if len(voiced) else _DBFS_FLOOR
+    return {"noise_floor_dbfs": noise_floor_dbfs, "level_dbfs": level_dbfs, "clipping_ratio": clipping_ratio}
 
 
 def _to_mono_float(y: np.ndarray) -> np.ndarray:
@@ -134,6 +194,7 @@ def assess_quality(
         reasons.append(f"snr_below_{min_snr_db:g}db")
     if clip_frac > max_clip_frac:
         reasons.append("clipping")
+    cond = recording_condition_signals(y, sr, intervals)
     return RecordingQuality(
         duration_s=duration_s,
         voiced_s=voiced_s,
@@ -141,6 +202,9 @@ def assess_quality(
         clip_frac=clip_frac,
         ok=not reasons,
         reasons=reasons,
+        noise_floor_dbfs=cond["noise_floor_dbfs"],
+        level_dbfs=cond["level_dbfs"],
+        clipping_ratio=cond["clipping_ratio"],
     )
 
 

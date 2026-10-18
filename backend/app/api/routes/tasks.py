@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -68,10 +68,12 @@ async def _read_audio(file: UploadFile | None) -> bytes | None:
 # ---------------------------------------------------------------- story recall (§1)
 
 @router.post("/story/start", response_model=StoryStatusOut, status_code=201)
-def story_start(language: str | None = Query(default=None, pattern="^(en|ja)(-[A-Za-z]+)?$"),
+def story_start(request: Request, language: str | None = Query(default=None, pattern="^(en|ja)(-[A-Za-z]+)?$"),
+                device: str | None = Query(default=None, max_length=64),
                 db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> Any:
     try:
-        task, session = svc.start_story_session(db, user, language)
+        task, session = svc.start_story_session(db, user, language,
+                                                device=svc.device_label(request.headers.get("user-agent"), device))
     except svc.TaskError as e:
         return _raise(e)
     return svc.story_status(task, session)
@@ -100,6 +102,7 @@ def story_audio(task_id: str, step: str, db: Session = Depends(get_db), user: Us
 
 @router.post("/story/{task_id}/step", response_model=StoryStatusOut)
 async def story_step(
+    request: Request,
     task_id: str,
     step: str = Form(...),
     audio: UploadFile | None = File(default=None),
@@ -117,6 +120,7 @@ async def story_step(
         task, session = svc.submit_step(
             db, user, task_id, step, data, transcript, stt, embeddings=embeddings, storage=storage,
             force_delay=force_delay, played_s=played_s, filename=audio.filename if audio else None,
+            device=svc.device_label(request.headers.get("user-agent")),
         )
     except svc.TaskError as e:
         return _raise(e)
@@ -127,8 +131,10 @@ async def story_step(
 
 @router.post("/vowel", response_model=VowelOut, status_code=201)
 async def vowel(
+    request: Request,
     audio: UploadFile = File(...),
     repetition: int = Form(default=1, ge=1, le=10),
+    device: str | None = Form(default=None, max_length=64),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     storage: Storage = Depends(get_task_storage),
@@ -137,7 +143,8 @@ async def vowel(
     if not data:
         raise HTTPException(422, "empty audio file")
     try:
-        return svc.submit_vowel(db, user, data, audio.filename, repetition, storage)
+        return svc.submit_vowel(db, user, data, audio.filename, repetition, storage,
+                                device=svc.device_label(request.headers.get("user-agent"), device))
     except svc.TaskError as e:
         return _raise(e)
 

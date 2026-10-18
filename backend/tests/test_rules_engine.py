@@ -147,3 +147,38 @@ def test_persistence_counts_consecutive_weekly_windows():
 def test_evaluate_all():
     out = evaluate_all([ctx("cardio", bp_readings=GRADE_II), ctx("general")])
     assert [r.pathway for r in out] == ["cardio", "general"]
+
+
+def test_pd03b_in_engine_display_only_alone_watch_with_tapping():
+    """PD-03B (spec §5.5): alone → no_finding + informational message; with PD-04 → watch [PD-04, PD-03B]."""
+    from tests.test_rules_helpers import ADVERSE_STORY, ADVERSE_VOWEL, story_baseline, voice_baseline
+
+    voice = voice_baseline() + ADVERSE_VOWEL + story_baseline() + ADVERSE_STORY
+    alone = evaluate_pathway(ctx("parkinsons", task_sessions=voice))
+    assert alone.level == "no_finding" and "PD-03B" not in alone.fired_rule_ids
+    note = next(i for i in alone.informational if i["rule_id"] == "PD-03B")
+    assert note["message"]["en"]["title"] == "Change in voice measurements" and note["message"]["ja"]["body"]
+    assert len(note["evidence"]) == 5
+    dq = alone.data_quality
+    assert dq["voice_baseline_sessions"] == {"sustained_vowel": 10, "story_recall": 10}
+    assert dq["voice_valid_sessions"] == {"sustained_vowel": 13, "story_recall": 13}
+    assert dq["voice_baseline_needed"] == 10 and dq["voice_device"] == "iPhone" and dq["voice_sessions_excluded_noise"] == 0
+    assert "voice_baseline_sessions" not in dq["missing_optional_inputs"]
+    tapping = {"tap_count": daily_series("tap_count", wobble(60, 30, 2), [45] * 7)}
+    both = evaluate_pathway(ctx("parkinsons", task_sessions=voice, series=tapping))
+    assert both.fired_rule_ids == ["PD-04", "PD-03B"] and both.level == "watch" and priority_score(both) == 35
+    assert all(f.level == "watch" for f in both.fired_rules)
+    assert both.fired_rules[1].sources[0] == "src_skodda2013"
+
+
+def test_pd03b_insufficient_is_optional_not_a_gate():
+    from tests.test_rules_helpers import voice_baseline
+
+    r = evaluate_pathway(ctx("parkinsons", task_sessions=voice_baseline(4),
+                             screeners=[screener({"tremor_rest": True, "soft_voice": True})]))
+    assert r.fired_rule_ids == ["PD-01"] and r.level == "watch"
+    assert "voice_baseline_sessions" in r.data_quality["missing_optional_inputs"]
+    assert r.data_quality["voice_baseline_sessions"] == {"sustained_vowel": 4, "story_recall": 0}
+    empty = evaluate_pathway(ctx("parkinsons"))
+    assert empty.level == "insufficient_data" and "voice_baseline_sessions" in empty.missing_inputs
+    assert empty.data_quality["voice_baseline_sessions"] == {"sustained_vowel": 0, "story_recall": 0}

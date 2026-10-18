@@ -58,6 +58,11 @@ UCI_FEATURES: list[str] = [
     "PPE",
 ]
 
+# Extra (non-UCI) features appended to the returned dict AFTER the 22 UCI keys.
+# They are not inputs to PdVowelModel (v1); they exist for the personal
+# voice-stability rule (PD-03b), which compares a user against their own baseline.
+EXTRA_FEATURES: tuple[str, ...] = ("CPPS",)
+
 # Analysis constants
 PITCH_FLOOR_HZ = 75.0
 PITCH_CEILING_HZ = 600.0
@@ -144,6 +149,29 @@ FEATURE_NOTES: dict[str, dict[str, Any]] = {
         "difference": "Histogram binning and normalisation are our choices; Little used a different probability-density estimate.",
     },
 }
+
+# Notes for EXTRA_FEATURES, same shape as FEATURE_NOTES (kept separate so the
+# UCI model cards, which iterate FEATURE_NOTES, are unchanged).
+EXTRA_FEATURE_NOTES: dict[str, dict[str, Any]] = {
+    "CPPS": {
+        "approximate": False,
+        "method": (
+            "Smoothed cepstral peak prominence, dB (Hillenbrand 1994 / Praat): "
+            "To PowerCepstrogram (60 Hz, 2 ms step, 5 kHz, pre-emphasis 50 Hz) then "
+            "Get CPPS (time 0.02 s / quefrency 0.0005 s smoothing, peak search 60-330 Hz, "
+            "parabolic interpolation, straight robust trend line over 0.001-0.05 s)"
+        ),
+        "difference": (
+            "Not in the UCI set, so not a model input. Lower in PD (Wright & Aharonson 2025 review) "
+            "and, unlike HNR, robust to room acoustics (Bottalico 2018); used only for within-person "
+            "comparison against the user's own baseline. Praat's CPPS value depends on these "
+            "parameters, so it is comparable across our recordings but not with other software."
+        ),
+    },
+}
+
+_CPPS_PITCH_FLOOR_HZ = 60.0
+_CPPS_PEAK_SEARCH_HZ = (60.0, 330.0)
 
 _OVERALL_NOTE = (
     "UCI features were computed by MDVP (Kay Elemetrics) and Little's MATLAB code on studio "
@@ -317,19 +345,49 @@ def pitch_nonlinear_measures(f0: np.ndarray) -> dict[str, float]:
     return {"PPE": ppe, "spread1": spread1, "spread2": spread2}
 
 
+def cpps(snd: "Any") -> float:
+    """Smoothed cepstral peak prominence (dB) of a parselmouth Sound; ``nan`` on failure.
+
+    Praat >= 6.1 argument lists (verified against parselmouth 0.4.x / Praat 6.1.38):
+
+    * ``To PowerCepstrogram``: pitch floor (Hz), time step (s), maximum frequency (Hz),
+      pre-emphasis from (Hz).
+    * ``Get CPPS``: subtract tilt before smoothing, time averaging window (s), quefrency
+      averaging window (s), peak search pitch range floor/ceiling (Hz), tolerance (0-1),
+      interpolation, tilt line quefrency range start/end (s), line type, fit method.
+    """
+    from parselmouth.praat import call
+
+    try:
+        # Praat silently returns 0 dB for silence / sub-window input; report "not computable" instead.
+        if snd.get_total_duration() < 0.1 or not np.any(np.asarray(snd.values)):
+            return float("nan")
+        cep = call(snd, "To PowerCepstrogram", _CPPS_PITCH_FLOOR_HZ, 0.002, 5000.0, 50.0)
+        val = call(
+            cep, "Get CPPS",
+            False, 0.02, 0.0005, *_CPPS_PEAK_SEARCH_HZ, 0.05, "Parabolic", 0.001, 0.05, "Straight", "Robust",
+        )
+        val = float(val)
+        return val if np.isfinite(val) else float("nan")
+    except Exception as exc:  # noqa: BLE001 - PraatError on degenerate input
+        logger.warning("Praat CPPS failed: %s", exc)
+        return float("nan")
+
+
 # --------------------------------------------------------------------------- main API
 
 def extract_vowel_features(y: np.ndarray, sr: int) -> dict[str, float]:
-    """Compute the 22 UCI Parkinson's dysphonia features from a sustained /a/.
+    """Compute the 22 UCI Parkinson's dysphonia features (+ ``EXTRA_FEATURES``) from a sustained /a/.
 
     Args:
         y: mono waveform (float, [-1, 1]).
         sr: sample rate in Hz.
 
     Returns:
-        dict keyed exactly by ``UCI_FEATURES``. A value is ``nan`` when it cannot
-        be computed (e.g. too few voiced periods); the serving model reports
-        those as missing.
+        dict whose first 22 keys are exactly ``UCI_FEATURES`` (the v1 model
+        input, unchanged), followed by ``EXTRA_FEATURES`` (currently ``CPPS``).
+        A value is ``nan`` when it cannot be computed (e.g. too few voiced
+        periods); the serving model reports those as missing.
     """
     import parselmouth
     from parselmouth.praat import call
@@ -338,7 +396,7 @@ def extract_vowel_features(y: np.ndarray, sr: int) -> dict[str, float]:
     if y.ndim > 1:
         y = y.mean(axis=0 if y.shape[0] < y.shape[1] else 1)
     y = _main_voiced_region(y, sr)
-    out: dict[str, float] = {k: float("nan") for k in UCI_FEATURES}
+    out: dict[str, float] = {k: float("nan") for k in (*UCI_FEATURES, *EXTRA_FEATURES)}
     if len(y) < int(0.2 * sr):
         logger.warning("vowel too short for feature extraction (%d samples)", len(y))
         return out
@@ -391,7 +449,10 @@ def extract_vowel_features(y: np.ndarray, sr: int) -> dict[str, float]:
     # --- pitch-contour nonlinear measures
     out.update(pitch_nonlinear_measures(voiced))
 
-    return {k: (float(out[k]) if out[k] is not None else float("nan")) for k in UCI_FEATURES}
+    # --- extra (non-UCI) features: smoothed cepstral peak prominence
+    out["CPPS"] = cpps(snd)
+
+    return {k: (float(out[k]) if out[k] is not None else float("nan")) for k in (*UCI_FEATURES, *EXTRA_FEATURES)}
 
 
 def feature_notes_summary() -> dict[str, Any]:
