@@ -42,6 +42,11 @@ const FINDINGS = {
 
 // Canadian Cardiovascular Society bands for 10-year Framingham risk: low under 10 %, high from 20 %.
 const FRAMINGHAM_BANDS = [10, 20];
+// Findings as sentences: "A. B." (the backend sends them without full stops).
+const sentences = (texts) => {
+  const parts = texts.filter(Boolean).map((t) => t.replace(/[.\s]+$/, ""));
+  return parts.length ? `${parts.join(". ")}.` : "";
+};
 const TO_BRING = "Photo ID, health card, your recent readings and a list of current medications";
 
 function toCondition(card) {
@@ -87,7 +92,7 @@ function toAssessment(cards, chatCount) {
       ? {
           condition: PATHWAYS[top.pathway].name,
           specialty: PATHWAYS[top.pathway].specialty,
-          why: (top.drivers ?? []).map((d) => d.text).filter(Boolean).join(" ") || top.headline,
+          why: sentences((top.drivers ?? []).map((d) => d.text)) || top.headline,
           bring: TO_BRING,
         }
       : null,

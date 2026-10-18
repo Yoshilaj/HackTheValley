@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { getRecommendations } from "../api/client.js";
+import { USE_BACKEND, getRecommendations } from "../api/client.js";
+import { useSession } from "../context/SessionContext.jsx";
 import { recommendations as placeholder } from "../data/placeholder.js";
 
-// Specialists/doctors/clinics recommended from the user's chat history. The
-// backend will search near the user's location; until GET /api/recommendations
-// exists this returns the placeholder list. Flip USE_BACKEND once it's live.
-const USE_BACKEND = false;
+// Clinics recommended for the user. Backend off: the placeholder list. Backend
+// on (signed in): GET /api/recommendations, the nearest clinic for each
+// follow-up finding in the latest risk assessment, with the reason; re-asked
+// when the user shares their location.
+// Backend field names -> the ones the Appointments page uses.
+const fromBackend = (p) => ({ ...p, distanceKm: p.distance_km, acceptingNew: p.accepting_new, nextSlot: p.next_slot });
 
 const LOCATION_ERRORS = {
   1: "Location access was blocked. You can allow it in your browser's site settings.",
@@ -14,7 +17,8 @@ const LOCATION_ERRORS = {
 };
 
 export default function useRecommendations() {
-  const [items, setItems] = useState(placeholder);
+  const { signedIn } = useSession();
+  const [items, setItems] = useState(USE_BACKEND ? [] : placeholder);
   const [location, setLocation] = useState(null); // { lat, lng }
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState("");
@@ -41,11 +45,11 @@ export default function useRecommendations() {
   }, []);
 
   useEffect(() => {
-    if (!USE_BACKEND) return;
+    if (!USE_BACKEND || !signedIn) return;
     let cancelled = false;
     getRecommendations(location ?? {})
       .then((res) => {
-        if (!cancelled && Array.isArray(res)) setItems(res);
+        if (!cancelled && Array.isArray(res)) setItems(res.map(fromBackend));
       })
       .catch(() => {
         /* keep the current list if the backend is unreachable */
@@ -53,7 +57,7 @@ export default function useRecommendations() {
     return () => {
       cancelled = true;
     };
-  }, [location]);
+  }, [location, signedIn]);
 
   return { items, location, locate, locating, locError, useBackend: USE_BACKEND };
 }

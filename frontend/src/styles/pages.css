@@ -417,6 +417,9 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .login-or { display: flex; align-items: center; gap: 12px; margin: -4px 0; font-size: 14px; color: var(--muted); }
 .login-or::before, .login-or::after { content: ""; flex: 1; height: 1px; background: var(--separator); }
 .login-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+/* Google's own sign-in button (drawn by Google into this box) */
+.login-google { display: flex; justify-content: center; min-height: 44px; }
+.login-google-status { font-size: 14px; color: var(--muted); text-align: center; }
 .login-switch { margin-top: -4px; font-size: 15px; color: var(--muted); text-align: center; }
 .login-switch-btn { min-height: 44px; padding: 0 4px; color: var(--primary); font-weight: 600; }
 .login-switch-btn:hover:not(:disabled) { text-decoration: underline; }

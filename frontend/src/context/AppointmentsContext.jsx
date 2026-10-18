@@ -1,5 +1,13 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { USE_BACKEND, approveAppointment, cancelAppointment, getAppointments } from "../api/client.js";
+import {
+  USE_BACKEND,
+  approveAppointment,
+  bookAppointment,
+  cancelAppointment,
+  cancelBooking,
+  getAppointments,
+  getBookings,
+} from "../api/client.js";
 import { useSession } from "./SessionContext.jsx";
 import { appointmentList } from "../data/placeholder.js";
 import { describeSlot } from "../utils/slots.js";
@@ -9,15 +17,15 @@ import { describeSlot } from "../utils/slots.js";
 // through bookVisit so the visit lands in "Upcoming".
 //
 // Backend off: bookings are kept in this browser; past visits are placeholders.
-// Backend on: "Upcoming" also lists the appointments the backend's booking agent
-// arranged after a follow-up finding (GET /api/appointments), with their real
-// status; cancelling one cancels it on the backend, and approveVisit approves
-// one that's waiting. The backend has no endpoint for picking a provider and
-// time yourself, so those bookings still stay in this browser (kept per
-// account). Past visits have no backend source, so that list starts empty.
+// Backend on (signed in), "Upcoming" combines:
+//   - visits the user booked (GET/POST/DELETE /api/bookings), and
+//   - appointments the backend's booking agent arranged after a follow-up
+//     finding (GET /api/appointments) with their real status; cancel and
+//     approve (approveVisit) go to the backend.
+// Past visits have no backend source, so that list starts empty.
 const STORAGE_KEY = "caresync-appointments";
 
-// Backend statuses that are still upcoming, and how each reads in the app.
+// Agent appointment statuses that are still upcoming, and how each reads in the app.
 const UPCOMING = {
   proposed: "Proposed",
   awaiting_approval: "Needs your approval",
@@ -40,15 +48,17 @@ const initials = (name) =>
 
 const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1).replace(/_/g, " ") : "");
 
-// provider: a recommendation or a directory entry (see `providers` in placeholder.js).
-// slot: local ISO time, or null when the provider has no open times listed.
-function toAppointment(provider, slot, note) {
-  const when = slot
+const whenOf = (slot, fallback) =>
+  slot
     ? {
         date: new Date(slot).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         time: describeSlot(slot).time,
       }
-    : { date: provider.nextSlot ?? "Time to be confirmed", time: "" };
+    : { date: fallback ?? "Time to be confirmed", time: "" };
+
+// provider: a recommendation or a directory entry. slot: local ISO time, or null
+// when the provider has no open times listed.
+function toAppointment(provider, slot, note) {
   return {
     id: `${provider.id}@${slot ?? "next"}`,
     providerId: provider.id,
@@ -56,7 +66,7 @@ function toAppointment(provider, slot, note) {
     specialty: provider.specialty,
     place: provider.clinic ?? provider.name,
     address: provider.address,
-    ...when,
+    ...whenOf(slot, provider.nextSlot),
     length: provider.length ?? "30 min",
     status: "Requested",
     glyph: provider.glyph ?? initials(provider.name),
@@ -65,9 +75,29 @@ function toAppointment(provider, slot, note) {
   };
 }
 
-// A backend appointment -> the shape above. Its time is the chosen slot, or the
-// first of the times the agent proposed while it's still being arranged.
-function fromBackend(a) {
+// A booking from /api/bookings -> the shape above.
+function fromBooking(b) {
+  const p = b.provider ?? {};
+  return {
+    id: b.id,
+    booking: true,
+    providerId: b.provider_id,
+    name: p.name ?? "Clinic",
+    specialty: p.specialty ?? "",
+    place: p.clinic ?? p.name ?? "",
+    address: p.address ?? "",
+    ...whenOf(b.slot),
+    length: "30 min",
+    status: "Requested",
+    glyph: p.glyph ?? initials(p.name ?? "?"),
+    note: b.note ?? "",
+    slot: b.slot,
+  };
+}
+
+// An agent appointment from /api/appointments -> the shape above. Its time is the
+// chosen slot, or the first of the times the agent proposed while it's arranged.
+function fromAgent(a) {
   const clinic = a.clinic ?? {};
   const slot = a.chosen_slot ?? a.proposed_slots?.[0] ?? null;
   const start = slot?.start ?? null;
@@ -82,10 +112,7 @@ function fromBackend(a) {
     specialty: capitalize(clinic.specialty),
     place: clinic.name ?? "",
     address: clinic.address ?? "",
-    date: start
-      ? new Date(start).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      : "Time to be confirmed",
-    time: start ? describeSlot(start).time : "",
+    ...whenOf(start),
     length: `${minutes} min`,
     status: UPCOMING[a.status] ?? capitalize(a.status),
     glyph: initials(clinic.name ?? "?"),
@@ -99,12 +126,12 @@ function fromBackend(a) {
   };
 }
 
-function loadSaved(key) {
+function loadSaved() {
   try {
-    const saved = JSON.parse(localStorage.getItem(key));
-    return Array.isArray(saved) ? saved : USE_BACKEND ? [] : appointmentList.upcoming;
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return Array.isArray(saved) ? saved : appointmentList.upcoming;
   } catch {
-    return USE_BACKEND ? [] : appointmentList.upcoming;
+    return appointmentList.upcoming;
   }
 }
 
@@ -114,31 +141,39 @@ const AppointmentsContext = createContext(null);
 
 export function AppointmentsProvider({ children }) {
   const { session, signedIn } = useSession();
-  // Backend on: this browser's own bookings are kept per account.
-  const account = USE_BACKEND ? (signedIn ? session?.userId ?? session?.email : null) : "local";
-  const key = USE_BACKEND ? `${STORAGE_KEY}:${account}` : STORAGE_KEY;
-  // This browser's bookings, tagged with the storage key (account) they belong to.
-  const [store, setStore] = useState(() => ({ key, list: loadSaved(key) }));
-  if (store.key !== key) setStore({ key, list: loadSaved(key) }); // another account signed in
-  const local = store.key === key ? store.list : [];
-  const setLocal = (update) => setStore((s) => ({ ...s, list: typeof update === "function" ? update(s.list) : update }));
-  const [remote, setRemote] = useState([]);
+  const account = signedIn ? session?.userId ?? session?.email : null;
+  const [local, setLocal] = useState(() => (USE_BACKEND ? [] : loadSaved())); // backend off
+  const [booked, setBooked] = useState([]); // backend on: /api/bookings
+  const [agent, setAgent] = useState([]); // backend on: /api/appointments
   const [loaded, setLoaded] = useState(!USE_BACKEND);
   const past = USE_BACKEND ? [] : appointmentList.past;
 
   useEffect(() => {
+    if (USE_BACKEND) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [local]);
+
+  // Backend on: load the signed-in account's bookings and agent appointments.
+  useEffect(() => {
     if (!USE_BACKEND) return;
-    setRemote([]);
+    setBooked([]);
+    setAgent([]);
     if (!account) {
       setLoaded(true);
       return;
     }
     let cancelled = false;
     setLoaded(false);
-    getAppointments()
-      .then((list) => !cancelled && setRemote(list.filter((a) => a.status in UPCOMING).map(fromBackend)))
-      .catch(() => {
-        /* keep what we have if the backend is unreachable */
+    Promise.allSettled([getBookings(), getAppointments()])
+      .then(([bookings, appointments]) => {
+        if (cancelled) return;
+        if (bookings.status === "fulfilled") setBooked(bookings.value.map(fromBooking));
+        if (appointments.status === "fulfilled")
+          setAgent(appointments.value.filter((a) => a.status in UPCOMING).map(fromAgent));
       })
       .finally(() => !cancelled && setLoaded(true));
     return () => {
@@ -146,41 +181,46 @@ export function AppointmentsProvider({ children }) {
     };
   }, [account]);
 
-  // Saved under the key the list belongs to, so one account never overwrites another.
-  useEffect(() => {
-    if (USE_BACKEND && store.key.endsWith(":null")) return; // signed out: nothing to keep
-    try {
-      localStorage.setItem(store.key, JSON.stringify(store.list));
-    } catch {
-      /* storage unavailable */
-    }
-  }, [store]);
+  const upcoming = (USE_BACKEND ? [...agent, ...booked] : local).slice().sort(bySlot);
 
-  const upcoming = [...remote, ...local].sort(bySlot);
-
-  // Books with a provider the user picked. Kept in this browser in both modes.
+  // Books with a provider the user picked. Throws if the backend refuses.
   const bookVisit = async (provider, slot = null, note) => {
+    if (USE_BACKEND) {
+      const { name, specialty, clinic, address, phone, glyph, distance } = provider;
+      const res = await bookAppointment({
+        providerId: provider.id,
+        slot,
+        note: note ?? provider.reason,
+        provider: { name, specialty, clinic, address, phone, glyph, distance },
+      });
+      const appt = fromBooking(res);
+      setBooked((list) => (list.some((a) => a.id === appt.id) ? list : [...list, appt]));
+      return appt;
+    }
     const appt = toAppointment(provider, slot, note);
-    setLocal((list) => (list.some((a) => a.id === appt.id) ? list : [...list, appt].sort(bySlot)));
+    setLocal((list) => (list.some((a) => a.id === appt.id) ? list : [...list, appt]));
     return appt;
   };
 
   // Throws if the backend refuses, so the confirm dialog can show the error.
   const cancelVisit = async (appointmentId) => {
-    if (remote.some((a) => a.id === appointmentId)) {
+    if (agent.some((a) => a.id === appointmentId)) {
       await cancelAppointment(appointmentId);
-      setRemote((list) => list.filter((a) => a.id !== appointmentId));
-      return;
+      setAgent((list) => list.filter((a) => a.id !== appointmentId));
+    } else if (booked.some((a) => a.id === appointmentId)) {
+      await cancelBooking(appointmentId);
+      setBooked((list) => list.filter((a) => a.id !== appointmentId));
+    } else {
+      setLocal((list) => list.filter((a) => a.id !== appointmentId));
     }
-    setLocal((list) => list.filter((a) => a.id !== appointmentId));
   };
 
   // Approve an appointment the backend's agent is waiting on (status "Needs your approval").
   const approveVisit = async (appointmentId) => {
     const updated = await approveAppointment(appointmentId);
-    setRemote((list) =>
+    setAgent((list) =>
       UPCOMING[updated.status]
-        ? list.map((a) => (a.id === appointmentId ? fromBackend(updated) : a))
+        ? list.map((a) => (a.id === appointmentId ? fromAgent(updated) : a))
         : list.filter((a) => a.id !== appointmentId)
     );
   };

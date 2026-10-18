@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { DEMO_ACCOUNT, USE_BACKEND } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
+import useGoogleSignIn from "../hooks/useGoogleSignIn.js";
 import HeartDropLogo from "./HeartDropLogo.jsx";
 
 // Sign-in pop-up over the landing page, opened by its "Log in" or "Sign up"
-// buttons: email and password for your own account (plus Google and Apple
-// while the backend is off, as it has no sign-in for them), or continue as a
-// guest (nothing tailored). In dev builds a "Demo login" signs straight in as
+// buttons: email and password for your own account, Google's own "Sign in
+// with Google" button when the backend has Google set up (useGoogleSignIn; this
+// pop-up lives on the landing page, so it also starts Google's One Tap, which
+// signs a returning user straight in), or continue as a guest (nothing
+// tailored). Without the backend the Google and Apple buttons are stand-ins. In dev builds a "Demo login" signs straight in as
 // the demo patient. Esc, the close button or a click outside returns to the
 // landing page. Native <dialog> like DetailSheet.
 const DEMO_EMAIL = USE_BACKEND ? DEMO_ACCOUNT.email : "micky.larson@example.com";
@@ -48,6 +51,8 @@ export default function LoginDialog() {
   const ref = useRef(null);
   const inputRef = useRef(null);
   const passwordRef = useRef(null);
+  const googleRef = useRef(null);
+  const google = useGoogleSignIn({ oneTap: true });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldError, setFieldError] = useState(null); // { field: "email" | "password", text }
@@ -101,6 +106,11 @@ export default function LoginDialog() {
       setBusy(null);
     }
   };
+
+  // Google draws its button into the pop-up each time it opens (and when switching log in / sign up).
+  useEffect(() => {
+    if (open && google.available) google.renderButton(googleRef.current, mode === "signup" ? "signup_with" : "continue_with");
+  }, [open, mode, google.available, google.renderButton]);
 
   const switchMode = () => {
     setError("");
@@ -211,7 +221,27 @@ export default function LoginDialog() {
           {busy === "email" ? working : copy.submit}
         </button>
 
-        {/* The backend has no Google or Apple sign-in, so these show only without it */}
+        {/* Backend on: Google's own button (Apple needs a paid developer account, so it's not offered) */}
+        {USE_BACKEND && google.available && (
+          <>
+            <p className="login-or" aria-hidden="true">
+              <span>or</span>
+            </p>
+            <div ref={googleRef} className="login-google" />
+            {google.busy && (
+              <p className="login-google-status" role="status">
+                Signing in with Google…
+              </p>
+            )}
+            {google.error && (
+              <p className="field-error" role="alert">
+                {google.error}
+              </p>
+            )}
+          </>
+        )}
+
+        {/* Backend off: stand-in buttons that just record the choice */}
         {!USE_BACKEND && (
           <>
             <p className="login-or" aria-hidden="true">

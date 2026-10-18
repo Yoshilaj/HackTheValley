@@ -4,8 +4,9 @@
 
 // One switch for the whole app. Off: everything runs on placeholder data kept
 // in this browser. On: sign-in, profile, risk, chat, notifications,
-// appointments, medications (with refills and dose tick-offs) and blood
-// pressure / resting heart rate use the backend. Set VITE_USE_BACKEND=true in
+// appointments and bookings, the clinic directory and recommendations,
+// medications (with refills and dose tick-offs) and blood pressure / resting
+// heart rate use the backend. Set VITE_USE_BACKEND=true in
 // frontend/.env.local (and in Vercel's settings).
 export const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === "true";
 
@@ -70,6 +71,17 @@ export function login(email, password) {
 
 export function signup(email, password, displayName) {
   return post("/api/auth/signup", { email, password, display_name: displayName || undefined });
+}
+
+// Sign in with Google. The config says whether it's set up and gives the public
+// OAuth client id for Google Identity Services; the credential is the ID token
+// Google hands back. Returns { access_token, user_id } like login.
+export function getGoogleConfig() {
+  return request("/api/auth/google/config");
+}
+
+export function loginWithGoogle(credential) {
+  return post("/api/auth/google", { credential });
 }
 
 export function getHealth() {
@@ -194,29 +206,40 @@ export function saveDoses(day, taken) {
   return request(`/api/doses/${day}`, { method: "PUT", body: JSON.stringify({ taken }) });
 }
 
+// ---- Clinics and visits you book yourself. Clinics come nearest first (to the
+// shared location, else the profile address), each with open times worked out
+// from its opening hours: [{ id, type, name, specialty, clinic, address, phone,
+// website, hours, distance, distance_km, glyph, slots: [local ISO time], next_slot }].
+const near = ({ lat, lng } = {}) => (lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "");
+
+export function getProviders(location) {
+  return request(`/api/providers${near(location)}`);
+}
+
+// The nearest clinic for each follow-up finding, as above plus { reason }.
+export function getRecommendations(location) {
+  return request(`/api/recommendations${near(location)}`);
+}
+
+// Your upcoming bookings: [{ id, provider_id, provider: { name, specialty, clinic,
+// address, phone, glyph, distance }, slot, slot_label, note, status, created_at }].
+export function getBookings() {
+  return request("/api/bookings");
+}
+
+// Book with a provider at a time (slot: local ISO time, or omit for next available).
+// provider: details to remember when it isn't in the backend's directory.
+export function bookAppointment({ providerId, slot, note, provider }) {
+  return post("/api/bookings", { provider_id: providerId, slot: slot ?? undefined, note: note || undefined, provider });
+}
+
+export function cancelBooking(id) {
+  return request(`/api/bookings/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 // ---------------------------------------------------------------------------
-// Planned endpoints the backend doesn't have yet. These features keep their
-// data in this browser until the endpoints exist (each has its own switch).
-
-// Specialists/doctors/clinics near the user, recommended from their chat history.
-// Expected response: [{ id, name, specialty, clinic, distance, distanceKm, nextSlot, reason, slots: [local ISO time] }]
-export function getRecommendations({ lat, lng } = {}) {
-  const query = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
-  return request(`/api/recommendations${query}`);
-}
-
-// Doctors, clinics and hospitals the user can book with. Expected response
-// (every field but id/name optional): [{ id, type, name, specialty, clinic,
-// address, phone, website, hours, distance, distanceKm, acceptingNew, languages, glyph, slots }]
-export function getProviders({ lat, lng } = {}) {
-  const query = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
-  return request(`/api/providers${query}`);
-}
-
-// Book a visit with a chosen provider and time (slot: local ISO time, optional).
-export function bookAppointment(providerId, slot) {
-  return post("/api/bookings", slot ? { providerId, slot } : { providerId });
-}
+// Planned endpoints the backend doesn't have yet. These features run in this
+// browser until the endpoints exist (each has its own switch).
 
 // Pick the best appointment for a free-text description. The backend calls
 // Gemini (GEMINI_API_KEY lives on the server only). Request:

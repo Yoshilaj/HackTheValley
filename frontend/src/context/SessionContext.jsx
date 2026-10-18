@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { DEMO_ACCOUNT, SIGNED_OUT_EVENT, USE_BACKEND, getToken, login, setToken, signup } from "../api/client.js";
+import { DEMO_ACCOUNT, SIGNED_OUT_EVENT, USE_BACKEND, getToken, login, loginWithGoogle, setToken, signup } from "../api/client.js";
 import useStoredState from "../hooks/useStoredState.js";
 
 // Who is using the app. Until there is a session the landing page shows, and
@@ -8,9 +8,9 @@ import useStoredState from "../hooks/useStoredState.js";
 //   signed in - their own account; the app shows their personal health data
 //   guest     - anonymous; can browse, nothing is tailored to them
 // With the backend on (USE_BACKEND), signing in checks the email and password
-// with /api/auth and keeps the returned token; Google and Apple aren't offered
-// because the backend has no sign-in for them. With it off, signing in just
-// records the email or provider and the app shows the demo patient.
+// with /api/auth and keeps the returned token, and Google sign-in (useGoogleSignIn)
+// sends Google's ID token to /api/auth/google; Apple isn't offered. With it off,
+// signing in just records the email or provider and the app shows the demo patient.
 const SessionContext = createContext(null);
 
 export function SessionProvider({ children }) {
@@ -46,14 +46,32 @@ export function SessionProvider({ children }) {
     setSession({ method, email: email ?? null, signedInAt: Date.now() });
   };
 
+  // Google Identity Services handed back an ID token (useGoogleSignIn). The
+  // backend verifies it; the email is read from it only to show who's signed in.
+  const signInWithGoogle = async (credential) => {
+    const res = await loginWithGoogle(credential);
+    let email = null;
+    try {
+      const part = credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      email = JSON.parse(atob(part)).email ?? null;
+    } catch {
+      /* display only */
+    }
+    setToken(res.access_token);
+    setAuthPrompt(null);
+    setSession({ method: "google", email, userId: res.user_id, signedInAt: Date.now() });
+  };
+
   const continueAsGuest = () => {
     setToken(null);
     setAuthPrompt(null);
     setSession({ guest: true, startedAt: Date.now() });
   };
 
-  // Back to the landing page.
+  // Back to the landing page. Google's One Tap stops picking the account
+  // automatically, or it would sign straight back in.
   const signOut = () => {
+    window.google?.accounts?.id?.disableAutoSelect();
     setToken(null);
     setAuthPrompt(null);
     setSession(null);
@@ -75,6 +93,7 @@ export function SessionProvider({ children }) {
         signedIn,
         isGuest: !signedIn,
         signIn,
+        signInWithGoogle,
         continueAsGuest,
         signOut,
         requestSignIn,
