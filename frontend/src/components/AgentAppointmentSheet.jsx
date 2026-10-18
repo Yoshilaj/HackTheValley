@@ -24,14 +24,19 @@ const SPECIALIST = {
   hospital: "a hospital clinic",
 };
 const CHANNEL = { web: "its online booking form", email: "e-mail", phone: "phone (an AI assistant calls the front desk)" };
+// From your profile (kept current: saving the profile updates a pending request).
 const SHARED = [
   ["name", "Name"],
   ["date_of_birth", "Date of birth"],
+  ["sex", "Sex (as on your health card)"],
   ["phone", "Phone"],
   ["email", "E-mail"],
+  ["address", "Address"],
   ["postal_code", "Postal code"],
   ["reason_category", "Reason for the visit"],
 ];
+const SEX = { male: "Male", female: "Female", other: "Other", prefer_not: "Prefer not to say" };
+const sharedValue = (k, v) => (k === "sex" ? SEX[v] ?? v : String(v));
 const PROFILE_FIELDS = {
   first_name: "legal first name",
   last_name: "legal last name",
@@ -196,7 +201,7 @@ function ApprovalView({ a, onClose, onApproved }) {
               {SHARED.filter(([k]) => shared[k]).map(([k, label]) => (
                 <li key={k}>
                   <span>{label}</span>
-                  {String(shared[k])}
+                  {sharedValue(k, shared[k])}
                 </li>
               ))}
               {shared.report_url && (

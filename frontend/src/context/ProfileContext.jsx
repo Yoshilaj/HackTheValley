@@ -6,29 +6,48 @@ import useStoredState from "../hooks/useStoredState.js";
 
 // The signed-in user's health profile, editable from the profile sheet:
 // { fullName, dateOfBirth (YYYY-MM-DD), healthCardLast4, allergies: [],
-//   conditions: [], emergencyContact: { name, relation, phone } | null }.
+//   conditions: [], emergencyContact: { name, relation, phone } | null,
+//   sex, phone, email, street, city, province, postalCode }.
 // The first name and initials are worked out from the full name, so a rename
-// shows in the greeting and avatar too.
+// shows in the greeting and avatar too. Name, date of birth, sex and the
+// contact and address fields are what a clinic receives when booking.
 //
 // Backend off: everything is kept in this browser, starting from the demo patient.
-// Backend on: name, date of birth, emergency contact, allergies and conditions
-// come from and save to /api/profile. The backend deliberately has no
+// Backend on: everything but the health card comes from and saves to
+// /api/profile (email: the contact e-mail, else the account's). Saving fires
+// PROFILE_SAVED_EVENT so pending booking requests reload with the new
+// details. The backend deliberately has no
 // health-card field (the card is brought to the visit), so that stays in this
 // browser and is merged in. Allergy/condition lists saved in this browser
 // before the backend had them are shown until the first save moves them over.
 const ProfileContext = createContext(null);
 
-const EMPTY = { fullName: "", dateOfBirth: "", healthCardLast4: "", allergies: [], conditions: [], emergencyContact: null };
+export const PROFILE_SAVED_EVENT = "caresync:profile-saved";
+
+// Booking details: what a clinic asks for, all plain strings ("" = not given).
+const CONTACT_FIELDS = ["sex", "phone", "email", "street", "city", "province", "postalCode"];
+const NO_CONTACT = Object.fromEntries(CONTACT_FIELDS.map((k) => [k, ""]));
+
+const EMPTY = {
+  fullName: "",
+  dateOfBirth: "",
+  healthCardLast4: "",
+  allergies: [],
+  conditions: [],
+  emergencyContact: null,
+  ...NO_CONTACT,
+};
 const LOCAL_ONLY = ({ healthCardLast4, allergies, conditions }) => ({ healthCardLast4, allergies, conditions });
 const list = (v) => (Array.isArray(v) ? v : undefined); // undefined: the backend has none saved yet
 
-const editable = ({ fullName, dateOfBirth, healthCardLast4, allergies, conditions, emergencyContact }) => ({
-  fullName,
-  dateOfBirth,
-  healthCardLast4,
-  allergies,
-  conditions,
-  emergencyContact: emergencyContact ?? null,
+const editable = (p) => ({
+  fullName: p.fullName,
+  dateOfBirth: p.dateOfBirth,
+  healthCardLast4: p.healthCardLast4,
+  allergies: p.allergies,
+  conditions: p.conditions,
+  emergencyContact: p.emergencyContact ?? null,
+  ...Object.fromEntries(CONTACT_FIELDS.map((k) => [k, p[k] ?? ""])),
 });
 
 function withDerived(p) {
@@ -46,6 +65,13 @@ function fromBackend(p, email) {
     fullName,
     dateOfBirth: p.date_of_birth ?? "",
     emergencyContact: c?.name ? { name: c.name, relation: c.relation ?? "", phone: c.phone ?? "" } : null,
+    sex: p.sex ?? "",
+    phone: p.phone ?? "",
+    email: p.contact_email || email || "",
+    street: p.street ?? "",
+    city: p.city ?? "",
+    province: p.province ?? "",
+    postalCode: p.postal_code ?? "",
     // Left out when the backend has never stored them, so the browser's lists show instead.
     ...(list(p.allergies) && { allergies: p.allergies }),
     ...(list(p.conditions) && { conditions: p.conditions }),
@@ -64,6 +90,13 @@ function toBackend(p, previousContact) {
     emergency_contact: p.emergencyContact ? { ...previousContact, ...p.emergencyContact } : null,
     allergies: p.allergies,
     conditions: p.conditions,
+    sex: p.sex || null,
+    phone: p.phone || null,
+    contact_email: p.email || null,
+    street: p.street || null,
+    city: p.city || null,
+    province: p.province || null,
+    postal_code: p.postalCode || null,
   };
 }
 
@@ -92,9 +125,11 @@ export function ProfileProvider({ children }) {
     ? withDerived({
         ...EMPTY,
         ...(stored ? LOCAL_ONLY({ ...EMPTY, ...stored }) : {}),
-        ...(remote ? fromBackend(remote, session?.email) : { fullName: (session?.email ?? "").split("@")[0] }),
+        ...(remote
+          ? fromBackend(remote, session?.email)
+          : { fullName: (session?.email ?? "").split("@")[0], email: session?.email ?? "" }),
       })
-    : withDerived(stored ?? editable(basePatient));
+    : withDerived({ ...EMPTY, ...(stored ?? editable(basePatient)) });
 
   // Throws if the backend refuses (e.g. a phone number it can't read), so the
   // sheet can show the error and keep the draft.
@@ -104,6 +139,7 @@ export function ProfileProvider({ children }) {
       const saved = await saveProfile(toBackend(clean, remote?.emergency_contact));
       setRemote(saved);
       setStored(LOCAL_ONLY(clean));
+      window.dispatchEvent(new Event(PROFILE_SAVED_EVENT));
       return;
     }
     setStored(clean);

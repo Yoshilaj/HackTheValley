@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import {
   USE_BACKEND,
   approveAppointment,
+  startAutoBooking,
   bookAppointment,
   cancelAppointment,
   cancelBooking,
@@ -11,6 +12,7 @@ import {
   getBookings,
 } from "../api/client.js";
 import { useSession } from "./SessionContext.jsx";
+import { PROFILE_SAVED_EVENT } from "./ProfileContext.jsx";
 import { appointmentList } from "../data/placeholder.js";
 import { describeSlot } from "../utils/slots.js";
 
@@ -208,10 +210,13 @@ export function AppointmentsProvider({ children }) {
     const onFocus = () => document.visibilityState === "visible" && refresh();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
+    // A profile edit changes what a pending request says the clinic receives.
+    window.addEventListener(PROFILE_SAVED_EVENT, refresh);
     return () => {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener(PROFILE_SAVED_EVENT, refresh);
     };
   }, [account, refresh]);
 
@@ -271,8 +276,21 @@ export function AppointmentsProvider({ children }) {
     return mapped;
   };
 
-  // Approve an appointment the backend's agent is waiting on (status "Needs your approval").
-  const approveVisit = async (appointmentId) => applyUpdate(appointmentId, await approveAppointment(appointmentId));
+  // Approve an appointment the backend's agent is waiting on (status "Needs your
+  // approval"). channel: reach the clinic only by "web" | "email" | "phone".
+  const approveVisit = async (appointmentId, channel) =>
+    applyUpdate(appointmentId, await approveAppointment(appointmentId, channel));
+
+  // The high-risk pop-up: have the agent plan a request for a pathway (or get the
+  // active one), add it to Upcoming, and return the backend record.
+  const startAutoVisit = async (pathway) => {
+    const appt = await startAutoBooking(pathway);
+    if (UPCOMING[appt.status]) {
+      const mapped = fromAgent(appt);
+      setAgent((list) => [mapped, ...list.filter((a) => a.id !== appt.id)]);
+    }
+    return appt;
+  };
 
   // "Not now" on the approval card: nothing is sent, the request is closed.
   const declineVisit = async (appointmentId) => applyUpdate(appointmentId, await declineAppointment(appointmentId));
@@ -300,7 +318,20 @@ export function AppointmentsProvider({ children }) {
 
   return (
     <AppointmentsContext.Provider
-      value={{ upcoming, past, loaded, bookVisit, cancelVisit, approveVisit, declineVisit, calendarDecision, refresh, agentById, isBooked }}
+      value={{
+        upcoming,
+        past,
+        loaded,
+        bookVisit,
+        cancelVisit,
+        approveVisit,
+        declineVisit,
+        startAutoVisit,
+        calendarDecision,
+        refresh,
+        agentById,
+        isBooked,
+      }}
     >
       {children}
     </AppointmentsContext.Provider>

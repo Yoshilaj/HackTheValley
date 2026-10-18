@@ -4,7 +4,6 @@ import useNotifications from "../hooks/useNotifications.js";
 import { timeAgo } from "../utils/dates.js";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
-import { slotLabel } from "../utils/slots.js";
 
 const ICONS = {
   appointment: (
@@ -30,18 +29,15 @@ export default function NotificationsMenu() {
   const wrapRef = useRef(null);
   const btnRef = useRef(null);
   const { pathname } = useLocation();
-  const { alert, openPrompt, markAlertRead } = useCareAlert();
+  const { alert, alertText, openPrompt, markAlertRead } = useCareAlert();
   const { isGuest } = useSession();
 
-  // The held visit from a high risk score sits on top and opens the pop-up.
+  // The high-risk alert (the agent's booking, or the held visit) sits on top and opens the pop-up.
   const alertItem = alert && {
     id: "care-alert",
     kind: "alert",
-    title: alert.status === "confirmed" ? "Appointment confirmed" : "Flagged for follow-up",
-    body:
-      alert.status === "confirmed"
-        ? `${alert.rec.name}, ${slotLabel(alert.slot)}`
-        : `Visit held with ${alert.rec.name}, ${slotLabel(alert.slot)}. Confirm to book.`,
+    title: alertText.title,
+    body: alertText.body,
     time: timeAgo(alert.createdAt),
     unread: !alert.read,
   };

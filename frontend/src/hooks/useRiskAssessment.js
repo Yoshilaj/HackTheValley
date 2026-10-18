@@ -13,6 +13,8 @@ import { riskAssessment as placeholder } from "../data/placeholder.js";
 //   overall score = the highest follow-up priority
 //   conditions    = cardio (with its %), cognitive and Parkinson's (findings only)
 //   suspected     = the highest-priority pathway with a finding (drives the 85+ hold)
+//   bookingPathway = the highest of the three condition bars (cardio, cognitive,
+//                    parkinsons): the pathway the 85+ auto-booking asks the agent for
 
 const clamp = (n) => Math.min(100, Math.max(0, Math.round(n)));
 
@@ -24,7 +26,7 @@ export function riskLevel(score) {
   return "Very high";
 }
 
-const PATHWAYS = {
+export const PATHWAYS = {
   cardio: { id: "cardio", name: "Stroke / heart disease", outcome: "have a heart attack or stroke", specialty: "Cardiology" },
   cognitive: { id: "alzheimers", name: "Alzheimer's disease", outcome: "develop dementia", specialty: "Memory clinic" },
   parkinsons: { id: "parkinsons", name: "Parkinson's disease", outcome: "develop Parkinson's disease", specialty: "Neurology" },
@@ -82,8 +84,11 @@ function toAssessment(cards, chatCount) {
     .map((c) => c.trend?.at(-2)?.priority_score)
     .filter((n) => Number.isFinite(n));
   const flagged = top && top.score > 0 && PATHWAYS[top.pathway];
+  // The highest of the three condition bars: what the 85+ auto-booking books for.
+  const bar = scored.filter((c) => PATHWAYS[c.pathway]).reduce((a, b) => (!a || b.score > a.score ? b : a), null);
   return {
     score: clamp(top?.score ?? 0),
+    bookingPathway: bar?.pathway ?? "cardio",
     previous: lastWeek.length ? { score: Math.max(...lastWeek) } : null,
     updatedAt: Date.now(),
     basis: { chats: chatCount, diagnoses: 0 },

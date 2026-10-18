@@ -182,14 +182,8 @@ export default function HistorySidebar({ collapsed, onToggle }) {
         <SideNav collapsed={collapsed} />
         <div className="history-divider" role="presentation" />
 
+        {/* A new chat starts from "CareSync" in the main navigation above. */}
         <nav className="history-actions" aria-label="Chat actions">
-          <Link to="/chat" className="history-row" title="New chat">
-            <Icon>
-              <path d="M12 20h8M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
-            </Icon>
-            <span className="history-label">New chat</span>
-          </Link>
-
           {collapsed ? (
             <>
               <button type="button" className="history-row" title="Search chats" aria-label="Search chats" onClick={openSearch}>
@@ -248,7 +242,7 @@ export default function HistorySidebar({ collapsed, onToggle }) {
             </div>
 
             <nav className="history-list" aria-label="Past chats">
-              {chats.length === 0 && <p className="history-empty">No conversations yet. Start one with "New chat".</p>}
+              {chats.length === 0 && <p className="history-empty">No conversations yet. Start one from CareSync above.</p>}
               {chats.length > 0 && groups.length === 0 && <p className="history-empty">No chats match "{query}".</p>}
 
               {groups.map((g) => (

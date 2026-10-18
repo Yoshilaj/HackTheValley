@@ -22,4 +22,3 @@
   background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
   border: 1px solid var(--border); box-shadow: inset 3px 0 0 var(--danger);
 }
-.chat-page .care-banner.done { box-shadow: none; }

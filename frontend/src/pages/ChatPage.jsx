@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useChatHistory } from "../context/ChatHistoryContext.jsx";
+import AssistantReply, { SourceLinks } from "../components/AssistantReply.jsx";
 import Composer, { ASSISTANT_HINTS, FileIcon, formatSize } from "../components/Composer.jsx";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
 import useMedications from "../hooks/useMedications.js";
 import { useProfile } from "../context/ProfileContext.jsx";
 import useVitals from "../hooks/useVitals.js";
-import { slotLabel } from "../utils/slots.js";
 import { conditionLevel } from "../utils/risk.js";
 import "../styles/chat-flat.css";
 
@@ -39,7 +39,7 @@ export default function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { chats, ready, pending, errors, sendMessage, retry, loadMessages } = useChatHistory();
-  const { alert, openPrompt, risk } = useCareAlert();
+  const { alert, alertText, openPrompt, risk } = useCareAlert();
   const { signedIn, requestSignIn } = useSession();
   const { profile: patient } = useProfile();
   const { vitals } = useVitals();
@@ -54,11 +54,33 @@ export default function ChatPage() {
   const failed = Boolean(id && errors[id]);
   const needsSignIn = Boolean(id && errors[id]?.signIn);
   const messageCount = chat ? chat.messages.length : 0;
+  // The reply's own bubble shows progress, so the typing dots step aside once it appears.
+  const replying = Boolean(chat?.messages.at(-1)?.streaming);
 
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [id, messageCount, loading, failed]);
+
+  // Follow a reply as it types out, unless the user has scrolled up to read.
+  const hasLog = Boolean(chat);
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el) return undefined;
+    let pinned = true;
+    const onScroll = () => {
+      pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    };
+    const follow = new MutationObserver(() => {
+      if (pinned) el.scrollTop = el.scrollHeight;
+    });
+    el.addEventListener("scroll", onScroll);
+    follow.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      follow.disconnect();
+    };
+  }, [id, hasLog]);
 
   // A conversation saved on the server loads its messages the first time it's opened.
   useEffect(() => {
@@ -117,32 +139,26 @@ export default function ChatPage() {
         </h1>
       )}
 
-      {alert &&
-        (alert.status === "confirmed" ? (
-          <p className="care-banner done" role="status">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 12.5l4.5 4.5L19 7.5" />
+      {/* Only while the alert needs a decision; once booked or sent it's in Appointments. */}
+      {alert && ["pending", "planning", "consent", "choose"].includes(alert.status) && (
+        <section className="care-banner" aria-label="Follow-up needed">
+          <span className="care-banner-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 12h4l2-5 4 10 2-5h6" />
             </svg>
-            Visit confirmed with {alert.rec.name}, {slotLabel(alert.slot)} at {alert.rec.clinic}.
-          </p>
-        ) : (
-          <section className="care-banner" aria-label="Held appointment">
-            <span className="care-banner-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="M3 12h4l2-5 4 10 2-5h6" />
-              </svg>
-            </span>
-            <div>
-              <h2>Flagged for follow-up</h2>
-              <p>
-                Visit held with {alert.rec.name} ({alert.rec.specialty}), {slotLabel(alert.slot)}. {alert.suspected.why}
-              </p>
-            </div>
-            <button type="button" className="btn-primary" onClick={openPrompt} aria-haspopup="dialog">
-              Review & confirm
-            </button>
-          </section>
-        ))}
+          </span>
+          <div>
+            <h2>{alertText.title}</h2>
+            <p>
+              {alertText.body}
+              {alert.kind !== "agent" && ` ${alert.suspected.why}`}
+            </p>
+          </div>
+          <button type="button" className="btn-primary" onClick={openPrompt} aria-haspopup="dialog">
+            {alert.kind === "agent" ? "Review" : "Review & confirm"}
+          </button>
+        </section>
+      )}
 
       <section
         className={`card chat-card ${chat ? "" : "start"} ${dragging ? "dragging" : ""}`}
@@ -175,18 +191,18 @@ export default function ChatPage() {
                   ))}
                 </ul>
               )}
-              {m.text && <p>{m.text}</p>}
-              {m.sources?.length > 0 && (
-                <ul className="msg-sources" aria-label="Sources">
-                  {m.sources.map((s) => (
-                    <li key={s}>{s}</li>
-                  ))}
-                </ul>
+              {m.typed ? (
+                <AssistantReply message={m} />
+              ) : (
+                <>
+                  {m.text && <p>{m.text}</p>}
+                  <SourceLinks text={m.text} sources={m.sources} />
+                </>
               )}
             </div>
           ))}
 
-          {loading && (
+          {loading && !replying && (
             <div className="msg assistant typing" role="status" aria-label="Assistant is typing">
               <span />
               <span />

@@ -275,7 +275,8 @@ h2 sup { color: var(--muted); }
   background: var(--glass-bg-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-edge); box-shadow: var(--glass-shadow);
 }
-.dev-risk-pill { min-height: 44px; padding: 0 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dev-risk-pill { min-height: 44px; padding: 0 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: grab; touch-action: none; user-select: none; }
+.dev-risk-pill:active { cursor: grabbing; }
 .dev-risk-panel { width: 248px; padding: 16px; border-radius: var(--radius); display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
 .dev-risk-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; }
 .dev-risk-head output { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }

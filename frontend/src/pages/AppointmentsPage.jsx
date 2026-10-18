@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import useRecommendations from "../hooks/useRecommendations.js";
+import useRecommendations, { distanceNote } from "../hooks/useRecommendations.js";
 import useProviders from "../hooks/useProviders.js";
 import { getAppointment } from "../api/client.js";
 import BookVisitSheet from "../components/BookVisitSheet.jsx";
@@ -306,7 +306,7 @@ export default function AppointmentsPage() {
   const { hash, key, search } = useLocation();
   const navigate = useNavigate();
   const recRef = useRef(null);
-  const { items, location, locate, locating, locError } = useRecommendations();
+  const { items, location, locate, locating, locError, distanceFrom } = useRecommendations();
   const { providers, loading: providersLoading } = useProviders(location);
   const { upcoming, past, isBooked, loaded, agentById } = useAppointments();
   const [bookOpen, setBookOpen] = useState(false);
@@ -422,6 +422,7 @@ export default function AppointmentsPage() {
         onClose={() => setBookOpen(false)}
         providers={bookable}
         location={location}
+        distanceFrom={distanceFrom}
         locate={locate}
         locating={locating}
       />
@@ -477,12 +478,18 @@ export default function AppointmentsPage() {
                 {locating ? "Finding you…" : location ? "Near your location" : "Use my location"}
               </button>
             </div>
+            <p className="appt-meta">{distanceNote(distanceFrom, location)}</p>
             {locError && (
               <p className="file-error" role="alert">
                 {locError}
               </p>
             )}
-            {openRecs.length === 0 ? (
+            {items.length === 0 && !distanceFrom ? (
+              <div className="card empty-state">
+                <p>CareSync needs a starting point to find clinics near you.</p>
+                <p className="appt-meta">Add your address in your profile, or use your location.</p>
+              </div>
+            ) : openRecs.length === 0 ? (
               <div className="card empty-state">
                 <p>You've booked all your recommendations.</p>
                 <p className="appt-meta">CareSync will suggest more as it learns from your chats.</p>

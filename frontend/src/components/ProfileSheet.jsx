@@ -6,10 +6,48 @@ import { CareTeamList } from "./CareTeamSheet.jsx";
 // Health profile behind the avatar menu: who the user is, what clinicians need
 // to know at a glance, and their care team. "Edit" turns the details into a
 // form: change the name, birth date or health card, add or remove allergies
-// and conditions, and add, change or remove the emergency contact. Nothing is
-// saved until "Save"; Cancel or closing the sheet discards the draft.
+// and conditions, the contact and address details a clinic needs when booking,
+// and add, change or remove the emergency contact. Nothing is saved until
+// "Save"; Cancel or closing the sheet discards the draft.
 const PHONE = /^[\d\s()+.-]{7,}$/;
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d$/i; // Canadian, A1A 1A1
 const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local
+
+const SEX_OPTIONS = [
+  ["male", "Male"],
+  ["female", "Female"],
+  ["other", "Other"],
+  ["prefer_not", "Prefer not to say"],
+];
+const PROVINCES = [
+  ["AB", "Alberta"],
+  ["BC", "British Columbia"],
+  ["MB", "Manitoba"],
+  ["NB", "New Brunswick"],
+  ["NL", "Newfoundland and Labrador"],
+  ["NS", "Nova Scotia"],
+  ["NT", "Northwest Territories"],
+  ["NU", "Nunavut"],
+  ["ON", "Ontario"],
+  ["PE", "Prince Edward Island"],
+  ["QC", "Quebec"],
+  ["SK", "Saskatchewan"],
+  ["YT", "Yukon"],
+];
+const CONTACT_FIELDS = ["sex", "phone", "email", "street", "city", "province", "postalCode"];
+
+// "m5h2n2" -> "M5H 2N2"
+const formatPostal = (v) => {
+  const s = v.replace(/[\s-]/g, "").toUpperCase();
+  return s.length === 6 ? `${s.slice(0, 3)} ${s.slice(3)}` : v.trim().toUpperCase();
+};
+
+// "100 Queen St W, Toronto, ON M5H 2N2" from whichever parts are filled in.
+function addressLine(p) {
+  const tail = [p.province, p.postalCode].filter(Boolean).join(" ");
+  return [p.street, p.city, tail].filter(Boolean).join(", ");
+}
 
 function formatBorn(dateOfBirth) {
   const d = new Date(`${dateOfBirth}T00:00`);
@@ -22,6 +60,9 @@ function validate(d) {
   if (!d.dateOfBirth) errors.dateOfBirth = "Enter your date of birth.";
   else if (d.dateOfBirth > today() || d.dateOfBirth < "1900-01-01") errors.dateOfBirth = "Enter a real date of birth.";
   if (d.healthCardLast4 && !/^\d{4}$/.test(d.healthCardLast4)) errors.healthCardLast4 = "Enter the last 4 digits of your health card.";
+  if (d.phone && !PHONE.test(d.phone)) errors.phone = "Enter a phone number, like (416) 555-0187.";
+  if (d.email && !EMAIL.test(d.email)) errors.email = "Enter an e-mail address, like name@example.com.";
+  if (d.postalCode && !POSTAL.test(d.postalCode)) errors.postalCode = "Enter a Canadian postal code, like M5H 2N2.";
   const c = d.emergencyContact;
   if (c) {
     if (!c.name.trim()) errors.contactName = "Enter your contact's name.";
@@ -114,6 +155,7 @@ export default function ProfileSheet({ open, onClose }) {
       allergies: [...profile.allergies],
       conditions: [...profile.conditions],
       emergencyContact: profile.emergencyContact ? { ...profile.emergencyContact } : null,
+      ...Object.fromEntries(CONTACT_FIELDS.map((k) => [k, profile[k] ?? ""])),
     });
     setPending({ allergies: "", conditions: "" });
     setErrors({});
@@ -149,6 +191,11 @@ export default function ProfileSheet({ open, onClose }) {
       ...draft,
       fullName: draft.fullName.trim().replace(/\s+/g, " "),
       healthCardLast4: draft.healthCardLast4.trim(),
+      phone: draft.phone.trim(),
+      email: draft.email.trim(),
+      street: draft.street.trim(),
+      city: draft.city.trim(),
+      postalCode: draft.postalCode.trim() && formatPostal(draft.postalCode),
       allergies: withPending(draft.allergies, pending.allergies),
       conditions: withPending(draft.conditions, pending.conditions),
       emergencyContact: draft.emergencyContact && {
@@ -172,7 +219,7 @@ export default function ProfileSheet({ open, onClose }) {
     } catch (e) {
       setSaveError(
         e?.status === 422
-          ? "Some details weren't accepted. Check the phone number (like +1 416-555-0187) and the date of birth."
+          ? "Some details weren't accepted. Check the phone numbers (like +1 416-555-0187), the e-mail, the postal code and the date of birth."
           : "Couldn't save your changes. Check your connection and try again."
       );
     } finally {
@@ -308,6 +355,115 @@ export default function ProfileSheet({ open, onClose }) {
                 />
               </section>
 
+              <section className="profile-section" aria-labelledby="profile-edit-booking">
+                <h3 id="profile-edit-booking" className="sheet-sub">
+                  Contact and address
+                </h3>
+                <p className="autobook-note">
+                  Clinics ask for these when you book. CareSync shares them with a clinic only after you approve a
+                  request.
+                </p>
+                <div className="profile-row">
+                  <div className="form-field">
+                    <label htmlFor="profile-phone">Phone</label>
+                    <input
+                      id="profile-phone"
+                      className="text-input"
+                      type="tel"
+                      autoComplete="tel"
+                      placeholder="(416) 555-0187"
+                      value={draft.phone}
+                      onChange={(e) => set("phone", e.target.value)}
+                      {...invalid("phone")}
+                    />
+                    {err("phone")}
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="profile-sex">Sex (as on your health card)</label>
+                    <select
+                      id="profile-sex"
+                      className="text-input"
+                      value={draft.sex}
+                      onChange={(e) => set("sex", e.target.value)}
+                    >
+                      <option value="">Not given</option>
+                      {SEX_OPTIONS.map(([v, label]) => (
+                        <option key={v} value={v}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="form-field">
+                  <label htmlFor="profile-email">E-mail</label>
+                  <input
+                    id="profile-email"
+                    className="text-input"
+                    type="email"
+                    autoComplete="email"
+                    value={draft.email}
+                    onChange={(e) => set("email", e.target.value)}
+                    {...invalid("email")}
+                  />
+                  {err("email")}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="profile-street">Street address</label>
+                  <input
+                    id="profile-street"
+                    className="text-input"
+                    autoComplete="street-address"
+                    placeholder="100 Queen St W, Unit 4"
+                    value={draft.street}
+                    onChange={(e) => set("street", e.target.value)}
+                  />
+                </div>
+                <div className="profile-row">
+                  <div className="form-field">
+                    <label htmlFor="profile-city">City</label>
+                    <input
+                      id="profile-city"
+                      className="text-input"
+                      autoComplete="address-level2"
+                      value={draft.city}
+                      onChange={(e) => set("city", e.target.value)}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="profile-province">Province</label>
+                    <select
+                      id="profile-province"
+                      className="text-input"
+                      autoComplete="address-level1"
+                      value={draft.province}
+                      onChange={(e) => set("province", e.target.value)}
+                    >
+                      <option value="">Choose…</option>
+                      {PROVINCES.map(([code, name]) => (
+                        <option key={code} value={code}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="form-field profile-postal">
+                  <label htmlFor="profile-postal">Postal code</label>
+                  <input
+                    id="profile-postal"
+                    className="text-input"
+                    autoComplete="postal-code"
+                    placeholder="M5H 2N2"
+                    maxLength={7}
+                    value={draft.postalCode}
+                    onChange={(e) => set("postalCode", e.target.value)}
+                    {...invalid("postalCode")}
+                  />
+                  {err("postalCode")}
+                </div>
+              </section>
+
               <section className="profile-section" aria-labelledby="profile-edit-contact">
                 <h3 id="profile-edit-contact" className="sheet-sub">
                   Emergency contact
@@ -405,6 +561,30 @@ export default function ProfileSheet({ open, onClose }) {
                 <div>
                   <dt>Conditions</dt>
                   <dd>{profile.conditions.length ? profile.conditions.join(", ") : "None recorded"}</dd>
+                </div>
+                <div>
+                  <dt>Sex</dt>
+                  <dd>{SEX_OPTIONS.find(([v]) => v === profile.sex)?.[1] ?? "Not given"}</dd>
+                </div>
+                <div>
+                  <dt>Phone</dt>
+                  <dd>
+                    {profile.phone ? (
+                      <a className="inline-link" href={`tel:${profile.phone.replace(/[^\d+]/g, "")}`}>
+                        {profile.phone}
+                      </a>
+                    ) : (
+                      "Not added"
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>E-mail</dt>
+                  <dd>{profile.email || "Not added"}</dd>
+                </div>
+                <div>
+                  <dt>Address</dt>
+                  <dd>{addressLine(profile) || "Not added"}</dd>
                 </div>
                 <div>
                   <dt>Emergency contact</dt>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppointments } from "../context/AppointmentsContext.jsx";
 import { describeSlot } from "../utils/slots.js";
 import { pickVisit } from "../utils/visitMatch.js";
+import { distanceNote } from "../hooks/useRecommendations.js";
 
 // "Let CareSync book a visit": a liquid glass sheet in steps.
 //   prefs   - optional days, time of day, max distance, and a free-text
@@ -66,7 +67,7 @@ function BackButton({ onClick, children }) {
 }
 
 // providers: recommendations plus directory entries; any with `slots` become openings.
-export default function BookVisitSheet({ open, onClose, providers, location, locate, locating }) {
+export default function BookVisitSheet({ open, onClose, providers, location, distanceFrom, locate, locating }) {
   const ref = useRef(null);
   const { bookVisit } = useAppointments();
   const [step, setStep] = useState("prefs");
@@ -224,7 +225,7 @@ export default function BookVisitSheet({ open, onClose, providers, location, loc
                 ))}
               </div>
               <div className="book-from">
-                <span>Measured from {location ? "your current location" : "your home address"}</span>
+                <span>{distanceNote(distanceFrom, location)}</span>
                 {!location && (
                   <button type="button" className="book-link" onClick={locate} disabled={locating}>
                     {locating ? "Finding you…" : "Use my location"}

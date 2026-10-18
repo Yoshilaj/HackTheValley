@@ -127,7 +127,9 @@
 
 /* chat page */
 .chat-card { display: flex; flex-direction: column; height: min(640px, calc(100dvh - 220px)); min-height: 420px; padding: 16px 20px 20px; }
-.chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 12px; }
+/* Scrolls (wheel, touch, keys) with its scrollbar hidden, so only the page's scrollbar shows */
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 12px; scrollbar-width: none; -ms-overflow-style: none; }
+.chat-log::-webkit-scrollbar { display: none; }
 .chat-loading { margin: auto; font-size: 15px; color: var(--muted); }
 .chat-hello { font-size: 24px; font-weight: 700; }
 .chat-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -157,7 +159,12 @@
 .msg.assistant { align-self: flex-start; background: #e9e9eb; color: var(--text); border-bottom-left-radius: 6px; }
 .msg.error { background: var(--warn-bg); color: var(--warn-ink); }
 .msg-sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.msg-sources li { font-size: 12px; font-weight: 500; padding: 2px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.7); color: var(--primary); }
+.msg-sources li { font-size: 12px; font-weight: 500; border-radius: 999px; background: rgba(255, 255, 255, 0.7); }
+.msg-sources a { display: inline-flex; align-items: center; gap: 4px; padding: 2px 12px; border-radius: inherit; color: var(--primary); text-decoration: none; }
+.msg-sources a:hover { text-decoration: underline; }
+.msg-sources a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.msg-sources svg { width: 12px; height: 12px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.msg-source-n { color: var(--muted); }
 .msg-retry { margin-top: 8px; min-height: 44px; padding: 0 16px; border-radius: var(--radius-sm); border: 1px solid var(--warn-ink); color: var(--warn-ink); font-size: 15px; font-weight: 600; }
 
 .typing { display: flex; gap: 4px; padding: 16px; }
@@ -165,6 +172,17 @@
 .typing span:nth-child(2) { animation-delay: 0.15s; }
 .typing span:nth-child(3) { animation-delay: 0.3s; }
 @keyframes chat-dot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+/* Streaming reply: what the assistant is doing until the first words, its thinking, then a typing caret */
+.reply-stage { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
+.reply-pulse { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--primary); animation: reply-pulse 1.2s infinite ease-in-out; }
+@keyframes reply-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.8); } 50% { opacity: 1; transform: none; } }
+.reply-thinking { margin-top: 4px; font-size: 13px; line-height: 1.45; font-style: italic; color: var(--muted); }
+.reply-thought { margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+.reply-thought summary { width: fit-content; cursor: pointer; }
+.reply-thought p { margin-top: 4px; font-style: italic; }
+.reply-caret { height: 1em; vertical-align: -0.15em; }
+@media (prefers-reduced-motion: reduce) { .reply-pulse { animation: none; } }
 
 .chat-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
 

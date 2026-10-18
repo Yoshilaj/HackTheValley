@@ -5,12 +5,15 @@ import {
   getConversationMessages,
   getConversations,
   sendChat,
+  streamChat,
   uploadDocument,
 } from "../api/client.js";
 import { useSession } from "./SessionContext.jsx";
 
 // Conversations: { id, remoteId?, title, createdAt, updatedAt, loaded,
-//                  messages: [{ id, role, text, sources?, attachments? }] }
+//                  messages: [{ id, role, text, sources?: [{ n, title, year, url }], attachments? }] }
+// A reply being written also has typed (show it typing out), streaming,
+// stage ("searching" | "thinking") and thinking (the model's thinking so far).
 // sendMessage(id, text, files?) - id null starts a new conversation.
 //
 // Backend off: kept in this browser (localStorage), shared by whoever uses it.
@@ -73,8 +76,9 @@ async function uploadAttachments(files) {
   return lines;
 }
 
-// Backend source { n, title, url } -> the short label shown under a reply.
-const sourceLabel = (s) => (typeof s === "string" ? s : s?.title ?? "");
+// Backend source -> { n, title, year, url }: n matches the [n] markers in the
+// answer, url is the original publication. Older title-only sources are dropped.
+const sourceRef = (s) => (s && typeof s === "object" ? { n: s.n, title: s.title, year: s.year, url: s.url } : null);
 
 function fromServerConversation(c) {
   return {
@@ -93,7 +97,7 @@ function fromServerMessage(m) {
     id: m.id,
     role: m.role,
     text: m.content,
-    sources: (m.sources ?? []).map(sourceLabel).filter(Boolean),
+    sources: (m.sources ?? []).map(sourceRef).filter(Boolean),
   };
 }
 
@@ -112,7 +116,13 @@ export function ChatHistoryProvider({ children }) {
   useEffect(() => {
     if (USE_BACKEND) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(chats.map(({ loaded: _l, ...c }) => c)));
+      // A reply still streaming isn't kept (after a reload it would never finish),
+      // and finished ones are shown whole next time rather than typed out again.
+      const saved = chats.map(({ loaded: _l, ...c }) => ({
+        ...c,
+        messages: c.messages.filter((m) => !m.streaming).map(({ typed: _t, thinking: _th, stage: _s, ...m }) => m),
+      }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch {
       /* storage unavailable: history just won't persist */
     }
@@ -147,6 +157,13 @@ export function ChatHistoryProvider({ children }) {
 
   const addMessage = useCallback(
     (id, message) => patchChat(id, (c) => ({ ...c, updatedAt: Date.now(), messages: [...c.messages, message] })),
+    [patchChat]
+  );
+
+  // fn(message) returns the fields to change.
+  const patchMessage = useCallback(
+    (id, messageId, fn) =>
+      patchChat(id, (c) => ({ ...c, messages: c.messages.map((m) => (m.id === messageId ? { ...m, ...fn(m) } : m)) })),
     [patchChat]
   );
 
@@ -187,22 +204,48 @@ export function ChatHistoryProvider({ children }) {
         // The backend takes at most 4000 characters per message.
         const named = (note ? `${text}\n\n${note}`.trim() : text).slice(0, 4000);
         const remoteId = chatsRef.current.find((c) => c.id === id)?.remoteId;
-        const res = await sendChat(named, { conversationId: remoteId, newConversation: USE_BACKEND && !remoteId });
+        const options = { conversationId: remoteId, newConversation: USE_BACKEND && !remoteId };
+        // The reply appears with the first event and fills in as it streams.
+        const live = { id: makeId(), role: "assistant", text: "", typed: true, streaming: true, thinking: "" };
+        let started = false;
+        const onEvent = (ev) => {
+          if (!started) {
+            started = true;
+            addMessage(id, live);
+          }
+          patchMessage(id, live.id, (m) => {
+            if (ev.type === "status") return { stage: ev.stage };
+            if (ev.type === "thought") return { thinking: m.thinking + ev.text };
+            if (ev.type === "delta") return { text: m.text + ev.text };
+            if (ev.type === "answer") return { text: ev.answer, sources: ev.sources.map(sourceRef).filter(Boolean) };
+            return {};
+          });
+        };
+        let res;
+        try {
+          res = await streamChat(named, options, onEvent);
+        } catch (err) {
+          // A backend without the stream endpoint: ask the plain way, typed out at the end.
+          if (started || ![404, 405].includes(err?.status)) throw err;
+          res = await sendChat(named, options);
+          addMessage(id, live);
+        }
         if (res.conversation_id && !remoteId) patchChat(id, (c) => ({ ...c, remoteId: res.conversation_id }));
-        addMessage(id, {
-          id: makeId(),
-          role: "assistant",
+        patchMessage(id, live.id, () => ({
           text: res.answer,
-          sources: (res.sources ?? []).map(sourceLabel).filter(Boolean),
-        });
+          sources: (res.sources ?? []).map(sourceRef).filter(Boolean),
+          streaming: false,
+        }));
       } catch (err) {
+        // Drop a half-streamed reply; the error bubble offers a retry.
+        patchChat(id, (c) => ({ ...c, messages: c.messages.filter((m) => !m.streaming) }));
         setErrors((e) => ({ ...e, [id]: { text, files, signIn: Boolean(err?.signIn), note } }));
       } finally {
         busy.current.delete(id);
         setPending((p) => without(p, id));
       }
     },
-    [account, addMessage, patchChat]
+    [account, addMessage, patchChat, patchMessage]
   );
 
   // Sends a message; pass id = null to start a new conversation. Returns the conversation id.

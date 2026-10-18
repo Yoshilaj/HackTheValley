@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AUTO_BOOK_THRESHOLD, useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
 import useStoredState from "../hooks/useStoredState.js";
@@ -11,7 +11,28 @@ import useStoredState from "../hooks/useStoredState.js";
 //               running on.
 // The slider commits on release so dragging past the threshold doesn't fire
 // the pop-up mid-drag. The chosen view is remembered in this browser.
+// The button can be dragged anywhere, even mostly off screen (a strip stays
+// visible to drag it back); a click without dragging opens the panel. Where it
+// sits is remembered too.
 const PRESETS = [14, 50, 88];
+const KEEP_VISIBLE = 16; // px of the button that stay on screen
+const DRAG_START = 4; // px of movement before a press counts as a drag
+
+// Keeps `offset` (from the button's home corner) leaving KEEP_VISIBLE px on screen.
+function clamp(offset, home, size) {
+  const limit = (v, homeStart, length, viewport) =>
+    Math.min(viewport - KEEP_VISIBLE - homeStart, Math.max(KEEP_VISIBLE - length - homeStart, v));
+  return {
+    x: limit(offset.x, home.x, size.w, window.innerWidth),
+    y: limit(offset.y, home.y, size.h, window.innerHeight),
+  };
+}
+
+// Position of the button with no offset, and its size.
+function measure(el, offset) {
+  const r = el.getBoundingClientRect();
+  return { home: { x: r.left - offset.x, y: r.top - offset.y }, size: { w: r.width, h: r.height } };
+}
 
 export default function DevRiskControl() {
   const { risk, devScore, setDevScore, resetAlert } = useCareAlert();
@@ -22,14 +43,67 @@ export default function DevRiskControl() {
   const value = draft ?? risk.score;
   const who = session?.guest ? "Guest" : session?.email ?? (session ? `Signed in with ${session.method}` : "Signed out");
 
+  const [offset, setOffset] = useStoredState("caresync-dev-offset", { x: 0, y: 0 });
+  const pillRef = useRef(null);
+  const drag = useRef(null);
+  const dragged = useRef(false);
+
   const commit = () => {
     if (draft == null) return;
     setDevScore(draft);
     setDraft(null);
   };
 
+  // A smaller window can't strand the button off screen.
+  const refit = useCallback(() => {
+    if (!pillRef.current) return;
+    setOffset((o) => {
+      const { home, size } = measure(pillRef.current, o);
+      const next = clamp(o, home, size);
+      return next.x === o.x && next.y === o.y ? o : next;
+    });
+  }, [setOffset]);
+
+  useEffect(() => {
+    refit();
+    window.addEventListener("resize", refit);
+    return () => window.removeEventListener("resize", refit);
+  }, [refit]);
+
+  const onPointerDown = (e) => {
+    if (e.button !== 0) return;
+    drag.current = { startX: e.clientX, startY: e.clientY, from: offset, moved: false, ...measure(pillRef.current, offset) };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < DRAG_START) return;
+    d.moved = true;
+    setOffset(clamp({ x: d.from.x + dx, y: d.from.y + dy }, d.home, d.size));
+  };
+
+  const onPointerUp = () => {
+    dragged.current = Boolean(drag.current?.moved); // the click that follows a drag doesn't toggle the panel
+    drag.current = null;
+  };
+
+  const onClick = () => {
+    if (dragged.current) {
+      dragged.current = false;
+      return;
+    }
+    setOpen((o) => !o);
+  };
+
   return (
-    <div className={`dev-risk ${view === "user" ? "user-view" : ""}`}>
+    <div
+      className={`dev-risk ${view === "user" ? "user-view" : ""}`}
+      style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
+    >
       {open && (
         <div className="dev-risk-panel" role="group" aria-label="Developer access">
           <div className="dev-view-toggle" role="group" aria-label="View">
@@ -105,7 +179,18 @@ export default function DevRiskControl() {
           )}
         </div>
       )}
-      <button type="button" className="dev-risk-pill" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button
+        ref={pillRef}
+        type="button"
+        className="dev-risk-pill"
+        aria-expanded={open}
+        title="Drag to move"
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
         Dev access
       </button>
     </div>

@@ -203,6 +203,22 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .autobook-note { font-size: 12px; color: var(--muted); text-align: center; }
 .autobook-sheet .book-check { width: 48px; height: 48px; margin-bottom: 8px; }
 .autobook-sheet .book-check svg { width: 26px; height: 26px; }
+/* AI booking: progress while the agent plans, the proposed times, and the three channel choices */
+.autobook-progress { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--primary-soft); font-size: 15px; }
+.autobook-time { font-weight: 500; }
+.autobook-channels { display: flex; flex-direction: column; gap: 8px; border: 0; padding: 0; margin: 0; }
+.autobook-channels legend { margin-bottom: 8px; font-size: 15px; font-weight: 600; }
+.autobook-channel {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); cursor: pointer; transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+.autobook-channel:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); }
+.autobook-channel:has(input:focus-visible) { box-shadow: 0 0 0 3px rgba(21, 91, 208, 0.25); }
+.autobook-channel input { margin-top: 3px; accent-color: var(--primary); }
+.autobook-channel span { display: flex; flex-direction: column; gap: 2px; }
+.autobook-channel strong { font-size: 15px; }
+.autobook-channel small { font-size: 13px; color: var(--muted); }
+.autobook-channel.off { cursor: not-allowed; opacity: 0.6; }
 
 /* high-risk held visit: banner on the CareSync page */
 .care-banner {
@@ -213,9 +229,7 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .care-banner h2 { font-size: 17px; }
 .care-banner p { font-size: 14px; color: var(--muted); }
 .care-banner-icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: #fde7e9; color: var(--danger); }
-.care-banner-icon svg, .care-banner.done svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.care-banner.done { display: flex; gap: 8px; padding: 12px 16px; box-shadow: var(--glass-shadow); font-size: 15px; font-weight: 500; color: var(--ok-ink); }
-.care-banner.done svg { flex: none; }
+.care-banner-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Done step when it is the sheet body itself: keep the sheet's padding */
 .sheet-body.book-done { padding: 24px; }
@@ -272,6 +286,7 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .profile-form { display: flex; flex-direction: column; gap: 24px; }
 .profile-form .profile-section { gap: 14px; }
 .profile-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.profile-postal .text-input { max-width: 160px; }
 .profile-list { margin: 0; padding: 0; border: 0; }
 .profile-list legend { padding: 0; margin-bottom: 6px; font-size: 15px; font-weight: 600; }
 .profile-none { font-size: 14px; color: var(--muted); }

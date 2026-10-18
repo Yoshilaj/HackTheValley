@@ -46,7 +46,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options = {}) {
+async function send(path, options = {}) {
   const token = getToken();
   const headers = { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }) };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -59,6 +59,11 @@ async function request(path, options = {}) {
     }
     throw new ApiError(`${options.method || "GET"} ${path} failed: ${res.status}`, res.status, body?.detail);
   }
+  return res;
+}
+
+async function request(path, options = {}) {
+  const res = await send(path, options);
   return res.status === 204 ? null : res.json();
 }
 
@@ -114,6 +119,36 @@ export function sendChat(message, { conversationId, newConversation = false } = 
   return post("/api/chat", { message, conversation_id: conversationId ?? undefined, new_conversation: newConversation });
 }
 
+// sendChat, streamed: onEvent gets each event while the answer is written -
+// { type: "status", stage: "searching" | "thinking" }, { type: "thought", text }
+// (the model's thinking), { type: "delta", text } (more of the answer) and
+// { type: "answer", answer, sources } (the final text). Resolves to the "done"
+// event, which has the same fields as sendChat's reply.
+export async function streamChat(message, { conversationId, newConversation = false } = {}, onEvent = () => {}) {
+  const path = "/api/chat/stream";
+  const res = await send(path, {
+    method: "POST",
+    body: JSON.stringify({ message, conversation_id: conversationId ?? undefined, new_conversation: newConversation }),
+  });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type === "error") throw new ApiError(`POST ${path} failed: ${event.status}`, event.status, event.detail);
+      if (event.type === "done") return event;
+      onEvent(event);
+    }
+    if (done) throw new ApiError(`POST ${path} ended early`, 0);
+  }
+}
+
 // The signed-in user's conversations, newest first: [{ id, title, created_at, updated_at, message_count }].
 export function getConversations() {
   return request("/api/chat/conversations");
@@ -162,8 +197,25 @@ export function getAppointment(id) {
   return request(`/api/appointments/${encodeURIComponent(id)}`);
 }
 
-export function approveAppointment(id) {
-  return post(`/api/appointments/${encodeURIComponent(id)}/approve`);
+// channel (optional): "web" | "email" | "phone" - contact the clinic only that
+// way; it must be one the approval card lists as available.
+export function approveAppointment(id, channel) {
+  return post(`/api/appointments/${encodeURIComponent(id)}/approve`, channel ? { channel } : null);
+}
+
+// The high-risk pop-up: the booking agent's request for a pathway ("cardio" |
+// "cognitive" | "parkinsons"), reused if one is active. Comes back
+// awaiting_approval with approval.channel_plan: [{ channel, available, reason,
+// target }] for web, email and phone. Errors: 404 no assessment for that
+// pathway, 403 sharing with clinics not allowed yet, 409 emergency.
+export function startAutoBooking(pathway) {
+  return post("/api/appointments/auto", { pathway });
+}
+
+// Consent: purpose "share_with_clinic" lets the booking agent send the clinic
+// your contact details and the report link.
+export function grantConsent(purpose) {
+  return post("/api/consent", { purpose, granted: true });
 }
 
 // "Not now" on the approval card: the request is cancelled, nothing is sent.
