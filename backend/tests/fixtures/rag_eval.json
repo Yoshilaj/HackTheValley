@@ -1,39 +1,1403 @@
 {
- "about": "RAG retrieval evaluation set (scripts/eval_rag.py, tests/test_rag_eval.py). Each case: the user question as typed in chat; `sources` = acceptable source ids (a hit = any of them retrieved); `terms` = optional strings of which at least one must appear in the packed passages; `expect_empty` = nothing in the corpus answers it, so retrieval should return no passages. Pathway is inferred exactly as chat does (rag_service.infer_pathway).",
+ "about": "RAG retrieval evaluation set (scripts/eval_rag.py, tests/test_rag_eval.py). Each case: the user question as typed in chat; `sources` = acceptable source ids (a hit = any of them retrieved); `terms` = optional strings of which at least one must appear in the packed passages; `expect_empty` = nothing in the corpus answers it, so retrieval should return no passages. Pathway is inferred exactly as chat does (rag_service.infer_pathway). `tags` group cases in the report: core (one per covered topic), lay (everyday wording), fact (a specific number or criterion must appear), cross (spans two pathways), holdout (lay questions written by a separate agent that never saw app.rag.lexicon, so they measure the expansion fairly), off_topic and near_miss (health-sounding but not covered; must abstain).",
  "cases": [
-  {"id": "bp_home_threshold", "question": "What home blood pressure average counts as high in Canada?", "sources": ["src_hypertension_canada_2020"], "terms": ["135/85", "135"]},
-  {"id": "bp_measure_home", "question": "How should I measure my blood pressure at home?", "sources": ["src_hypertension_canada_2020"]},
-  {"id": "bp_lifestyle", "question": "What lifestyle changes help lower blood pressure?", "sources": ["src_hypertension_canada_2020", "src_csbpr_secondary_prevention_2020"]},
-  {"id": "bp_target_after_stroke", "question": "What blood pressure target is recommended after a stroke?", "sources": ["src_csbpr_secondary_prevention_2020"], "terms": ["130/80", "130"]},
-  {"id": "irn_meaning", "question": "What does an irregular rhythm notification on my Apple Watch mean?", "sources": ["src_apple_irn_support"]},
-  {"id": "irn_missing", "question": "Why am I not getting irregular rhythm notifications on my watch?", "sources": ["src_apple_irn_support"], "terms": ["Low Power Mode"]},
-  {"id": "ecg_inconclusive", "question": "My Apple Watch ECG result said inconclusive. What does that mean?", "sources": ["src_apple_ecg_support"], "terms": ["Inconclusive"]},
-  {"id": "ecg_afib_result", "question": "What should I do if the ECG app shows atrial fibrillation?", "sources": ["src_apple_ecg_support", "src_apple_irn_support", "src_ccs_af_2020"]},
-  {"id": "af_stroke_risk", "question": "How is stroke risk assessed in someone with atrial fibrillation?", "sources": ["src_ccs_af_2020"], "terms": ["CHADS"]},
-  {"id": "af_screening", "question": "Should people over 65 be screened for atrial fibrillation?", "sources": ["src_ccs_af_2020"]},
-  {"id": "af_anticoagulants", "question": "Which blood thinners are recommended for atrial fibrillation?", "sources": ["src_ccs_af_2020"]},
-  {"id": "ldl_after_stroke", "question": "What LDL cholesterol target is recommended after a stroke?", "sources": ["src_csbpr_secondary_prevention_2020", "src_ccs_lipids_2021"], "terms": ["1.8 mmol"]},
-  {"id": "lipid_screening", "question": "Who should have their cholesterol checked?", "sources": ["src_ccs_lipids_2021"]},
-  {"id": "lpa", "question": "Should I get my lipoprotein(a) measured?", "sources": ["src_ccs_lipids_2021"], "terms": ["Lp(a)", "lipoprotein(a)"]},
-  {"id": "framingham", "question": "How is the Framingham 10-year cardiovascular risk calculated?", "sources": ["src_framingham2008", "src_ccs_lipids_2021"]},
-  {"id": "hearo", "question": "Can daily voice recordings detect heart failure getting worse?", "sources": ["src_cordio_hearo"]},
-  {"id": "story_recall_ad", "question": "Can a story recall test detect early Alzheimer's disease?", "sources": ["src_asrt_jmir_2022", "src_storyteller_adni4_2024"]},
-  {"id": "remote_memory_tests", "question": "Are remote automated memory tests as good as in-person testing?", "sources": ["src_asrt_jmir_2022", "src_storyteller_adni4_2024", "src_dcr_primary_care_2025"]},
-  {"id": "dcr_vs_moca", "question": "How does the Digital Clock and Recall test compare with the MoCA?", "sources": ["src_dcr_primary_care_2025"], "terms": ["MOCA", "MoCA"]},
-  {"id": "dementia_lifestyle", "question": "What lifestyle changes reduce the risk of dementia?", "sources": ["src_csbpr_vci_2024"]},
-  {"id": "bp_and_memory", "question": "Does controlling blood pressure help protect memory and thinking?", "sources": ["src_csbpr_vci_2024"]},
-  {"id": "storyteller_adni4", "question": "What is Storyteller and how was it used in ADNI4?", "sources": ["src_storyteller_adni4_2024"]},
-  {"id": "speech_amyloid", "question": "Can speech predict amyloid status in the brain?", "sources": ["src_asrt_jmir_2022", "src_storyteller_adni4_2024"]},
-  {"id": "voice_pd_accuracy", "question": "How accurate is voice analysis for detecting Parkinson's disease?", "sources": ["src_voice_pd_review_2025"]},
-  {"id": "voice_pd_features", "question": "Which voice features like jitter and shimmer are used to detect Parkinson's?", "sources": ["src_voice_pd_review_2025", "src_little2008_uci"], "terms": ["jitter"]},
-  {"id": "voice_pd_limits", "question": "What are the limitations of voice-based Parkinson's detection studies?", "sources": ["src_voice_pd_review_2025", "src_little2008_uci"]},
-  {"id": "watch_pd_tremor", "question": "Can an Apple Watch track Parkinson's tremor?", "sources": ["src_strivepd_screener"]},
-  {"id": "uci_dataset", "question": "How many recordings and people are in the UCI Parkinson's voice dataset?", "sources": ["src_little2008_uci", "src_voice_pd_review_2025"], "terms": ["195"]},
-  {"id": "neg_sleep", "question": "How much sleep do I need each night?", "expect_empty": true},
-  {"id": "neg_recipe", "question": "What's a good recipe for banana bread?", "expect_empty": true},
-  {"id": "neg_iphone", "question": "How do I reset my iPhone passcode?", "expect_empty": true},
-  {"id": "neg_capital", "question": "What is the capital of France?", "expect_empty": true},
-  {"id": "neg_ibuprofen", "question": "Is ibuprofen safe for back pain?", "expect_empty": true},
-  {"id": "neg_ankle", "question": "How do I treat a sprained ankle?", "expect_empty": true}
+  {
+   "id": "bp_home_threshold",
+   "question": "What home blood pressure average counts as high in Canada?",
+   "sources": [
+    "src_hypertension_canada_2020"
+   ],
+   "terms": [
+    "135/85",
+    "135"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "bp_measure_home",
+   "question": "How should I measure my blood pressure at home?",
+   "sources": [
+    "src_hypertension_canada_2020"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "bp_lifestyle",
+   "question": "What lifestyle changes help lower blood pressure?",
+   "sources": [
+    "src_hypertension_canada_2020",
+    "src_csbpr_secondary_prevention_2020"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "bp_target_after_stroke",
+   "question": "What blood pressure target is recommended after a stroke?",
+   "sources": [
+    "src_csbpr_secondary_prevention_2020"
+   ],
+   "terms": [
+    "130/80",
+    "130"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "irn_meaning",
+   "question": "What does an irregular rhythm notification on my Apple Watch mean?",
+   "sources": [
+    "src_apple_irn_support",
+    "src_apple_heart_study_2019"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "irn_missing",
+   "question": "Why am I not getting irregular rhythm notifications on my watch?",
+   "sources": [
+    "src_apple_irn_support"
+   ],
+   "terms": [
+    "Low Power Mode"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "ecg_inconclusive",
+   "question": "My Apple Watch ECG result said inconclusive. What does that mean?",
+   "sources": [
+    "src_apple_ecg_support"
+   ],
+   "terms": [
+    "Inconclusive"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "ecg_afib_result",
+   "question": "What should I do if the ECG app shows atrial fibrillation?",
+   "sources": [
+    "src_apple_ecg_support",
+    "src_apple_irn_support",
+    "src_ccs_af_2020"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "af_stroke_risk",
+   "question": "How is stroke risk assessed in someone with atrial fibrillation?",
+   "sources": [
+    "src_ccs_af_2020"
+   ],
+   "terms": [
+    "CHADS"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "af_screening",
+   "question": "Should people over 65 be screened for atrial fibrillation?",
+   "sources": [
+    "src_ccs_af_2020",
+    "src_tang_bp_af_review_2022",
+    "src_janik_omron_af_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "af_anticoagulants",
+   "question": "Which blood thinners are recommended for atrial fibrillation?",
+   "sources": [
+    "src_ccs_af_2020",
+    "src_csbpr_secondary_prevention_2020"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "ldl_after_stroke",
+   "question": "What LDL cholesterol target is recommended after a stroke?",
+   "sources": [
+    "src_csbpr_secondary_prevention_2020",
+    "src_ccs_lipids_2021"
+   ],
+   "terms": [
+    "1.8 mmol"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "lipid_screening",
+   "question": "Who should have their cholesterol checked?",
+   "sources": [
+    "src_ccs_lipids_2021"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "lpa",
+   "question": "Should I get my lipoprotein(a) measured?",
+   "sources": [
+    "src_ccs_lipids_2021"
+   ],
+   "terms": [
+    "Lp(a)",
+    "lipoprotein(a)"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "framingham",
+   "question": "How is the Framingham 10-year cardiovascular risk calculated?",
+   "sources": [
+    "src_framingham2008",
+    "src_ccs_lipids_2021"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "hearo",
+   "question": "Can daily voice recordings detect heart failure getting worse?",
+   "sources": [
+    "src_cordio_hearo"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "story_recall_ad",
+   "question": "Can a story recall test detect early Alzheimer's disease?",
+   "sources": [
+    "src_asrt_jmir_2022",
+    "src_storyteller_adni4_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "remote_memory_tests",
+   "question": "Are remote automated memory tests as good as in-person testing?",
+   "sources": [
+    "src_asrt_jmir_2022",
+    "src_storyteller_adni4_2024",
+    "src_dcr_primary_care_2025"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "dcr_vs_moca",
+   "question": "How does the Digital Clock and Recall test compare with the MoCA?",
+   "sources": [
+    "src_dcr_primary_care_2025"
+   ],
+   "terms": [
+    "MOCA",
+    "MoCA"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "dementia_lifestyle",
+   "question": "What lifestyle changes reduce the risk of dementia?",
+   "sources": [
+    "src_csbpr_vci_2024",
+    "src_lancet_dementia_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "bp_and_memory",
+   "question": "Does controlling blood pressure help protect memory and thinking?",
+   "sources": [
+    "src_csbpr_vci_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "storyteller_adni4",
+   "question": "What is Storyteller and how was it used in ADNI4?",
+   "sources": [
+    "src_storyteller_adni4_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "speech_amyloid",
+   "question": "Can speech predict amyloid status in the brain?",
+   "sources": [
+    "src_asrt_jmir_2022",
+    "src_storyteller_adni4_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "voice_pd_accuracy",
+   "question": "How accurate is voice analysis for detecting Parkinson's disease?",
+   "sources": [
+    "src_voice_pd_review_2025"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "voice_pd_features",
+   "question": "Which voice features like jitter and shimmer are used to detect Parkinson's?",
+   "sources": [
+    "src_voice_pd_review_2025",
+    "src_little2008_uci"
+   ],
+   "terms": [
+    "jitter"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "voice_pd_limits",
+   "question": "What are the limitations of voice-based Parkinson's detection studies?",
+   "sources": [
+    "src_voice_pd_review_2025",
+    "src_little2008_uci"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "watch_pd_tremor",
+   "question": "Can an Apple Watch track Parkinson's tremor?",
+   "sources": [
+    "src_strivepd_screener"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "uci_dataset",
+   "question": "How many recordings and people are in the UCI Parkinson's voice dataset?",
+   "sources": [
+    "src_little2008_uci",
+    "src_voice_pd_review_2025"
+   ],
+   "terms": [
+    "195"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "sleep_hours",
+   "question": "How much sleep do I need each night?",
+   "sources": [
+    "src_csep_adults_18_64",
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "7 to 9",
+    "7-9",
+    "7–9"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "sleep_older_adult",
+   "question": "How many hours of sleep should a 72-year-old get?",
+   "sources": [
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "7 to 8",
+    "7-8",
+    "7–8"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "activity_weekly",
+   "question": "How many minutes of moderate to vigorous physical activity per week are recommended for adults?",
+   "sources": [
+    "src_csep_adults_18_64",
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "150"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "sitting_time",
+   "question": "How many hours of sitting a day is too much?",
+   "sources": [
+    "src_csep_adults_18_64",
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "8 hours",
+    "8 h"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "omron_complete_ecg",
+   "question": "Can the OMRON Complete blood pressure monitor with built-in ECG detect atrial fibrillation?",
+   "sources": [
+    "src_senoo_omron_complete_2020",
+    "src_sakamoto_catch_af_2026"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "hcr7800t_pharmacy",
+   "question": "Has the OMRON HCR-7800T been used for atrial fibrillation screening in pharmacies?",
+   "sources": [
+    "src_sakamoto_catch_af_2026"
+   ],
+   "terms": [
+    "HCR-7800T"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "cuff_af_accuracy",
+   "question": "How accurate are automated blood pressure monitors at detecting atrial fibrillation?",
+   "sources": [
+    "src_tang_bp_af_review_2022",
+    "src_chan_microlife_af_2017",
+    "src_asada_omron_af_ml_2024",
+    "src_senoo_omron_complete_2020",
+    "src_janik_omron_af_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "cuff_af_algorithm",
+   "question": "How does a blood pressure cuff algorithm detect irregular pulse intervals for AFib screening?",
+   "sources": [
+    "src_asada_omron_af_ml_2024",
+    "src_tang_bp_af_review_2022",
+    "src_chan_microlife_af_2017",
+    "src_janik_omron_af_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "cuff_af_false_alarm",
+   "question": "If my blood pressure monitor flags possible atrial fibrillation, how often is it a false positive in primary care?",
+   "sources": [
+    "src_chan_microlife_af_2017",
+    "src_tang_bp_af_review_2022",
+    "src_asada_omron_af_ml_2024",
+    "src_ccs_af_2020",
+    "src_janik_omron_af_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "pd_core_signs",
+   "question": "What motor signs do doctors require to diagnose Parkinson's disease?",
+   "sources": [
+    "src_mds_pd_criteria_2015",
+    "src_canadian_pd_guideline_2019"
+   ],
+   "terms": [
+    "bradykinesia"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "pd_red_flags",
+   "question": "What red flags make a Parkinson's diagnosis less likely?",
+   "sources": [
+    "src_mds_pd_criteria_2015"
+   ],
+   "terms": [
+    "red flag"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "pd_referral",
+   "question": "Should someone with suspected Parkinson's disease be referred to a neurologist?",
+   "sources": [
+    "src_canadian_pd_guideline_2019"
+   ],
+   "terms": [
+    "neurologist"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "dementia_14_factors",
+   "question": "What are the modifiable risk factors for dementia?",
+   "sources": [
+    "src_lancet_dementia_2024",
+    "src_csbpr_vci_2024"
+   ],
+   "terms": [
+    "hearing"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "dementia_preventable_share",
+   "question": "What proportion of dementia cases could be prevented by addressing risk factors?",
+   "sources": [
+    "src_lancet_dementia_2024"
+   ],
+   "terms": [
+    "nearly half",
+    "45%"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "dementia_hearing_vision",
+   "question": "Does hearing loss or untreated vision loss raise dementia risk?",
+   "sources": [
+    "src_lancet_dementia_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "lay_home_bp_142",
+   "question": "My top number is around 142 when I check at home. Is that high?",
+   "sources": [
+    "src_hypertension_canada_2020"
+   ],
+   "terms": [
+    "135"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_watch_irregular",
+   "question": "My watch keeps telling me my heart rhythm is irregular. What does that mean?",
+   "sources": [
+    "src_apple_irn_support",
+    "src_apple_ecg_support",
+    "src_apple_heart_study_2019"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_blood_thinners",
+   "question": "What are blood thinners for and do I need one for AFib?",
+   "sources": [
+    "src_ccs_af_2020",
+    "src_csbpr_secondary_prevention_2020"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_forgetting_names",
+   "question": "I keep forgetting names lately. Should I get my memory checked?",
+   "sources": [
+    "src_csbpr_vci_2024",
+    "src_lancet_dementia_2024",
+    "src_dcr_primary_care_2025",
+    "src_asrt_jmir_2022",
+    "src_storyteller_adni4_2024"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_shaky_hands",
+   "question": "My hands shake when they're resting on my lap. Is that Parkinson's?",
+   "sources": [
+    "src_mds_pd_criteria_2015",
+    "src_canadian_pd_guideline_2019",
+    "src_strivepd_screener"
+   ],
+   "terms": [
+    "tremor"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_exercise_70",
+   "question": "How much exercise should a 70 year old be doing?",
+   "sources": [
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "150"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_sleep_6h_68",
+   "question": "I'm 68 and sleep about 6 hours. Is that enough?",
+   "sources": [
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "7 to 8",
+    "7–8",
+    "7-8"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_walking_bp",
+   "question": "Will walking more help bring my blood pressure down?",
+   "sources": [
+    "src_hypertension_canada_2020",
+    "src_csbpr_secondary_prevention_2020",
+    "src_csep_adults_18_64",
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "lay_cuff_afib",
+   "question": "Can my blood pressure cuff tell if I have AFib?",
+   "sources": [
+    "src_senoo_omron_complete_2020",
+    "src_asada_omron_af_ml_2024",
+    "src_sakamoto_catch_af_2026",
+    "src_chan_microlife_af_2017",
+    "src_tang_bp_af_review_2022",
+    "src_ccs_af_2020",
+    "src_janik_omron_af_2024"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "fact_chads65",
+   "question": "What is the CCS CHADS-65 algorithm?",
+   "sources": [
+    "src_ccs_af_2020"
+   ],
+   "terms": [
+    "CHADS-65"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_omron_complete_sens",
+   "question": "How sensitive was the OMRON Complete ECG at detecting atrial fibrillation?",
+   "sources": [
+    "src_senoo_omron_complete_2020"
+   ],
+   "terms": [
+    "100%"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_microlife_ppv",
+   "question": "What was the positive predictive value of Microlife AF screening in primary care?",
+   "sources": [
+    "src_chan_microlife_af_2017"
+   ],
+   "terms": [
+    "42"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_mds_exclusion",
+   "question": "What are the absolute exclusion criteria for Parkinson's disease?",
+   "sources": [
+    "src_mds_pd_criteria_2015"
+   ],
+   "terms": [
+    "exclusion"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_mds_supportive",
+   "question": "What supportive criteria help confirm a Parkinson's diagnosis?",
+   "sources": [
+    "src_mds_pd_criteria_2015"
+   ],
+   "terms": [
+    "levodopa",
+    "dopaminergic"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_lancet_new_factors",
+   "question": "Which dementia risk factors were newly added in the 2024 Lancet Commission?",
+   "sources": [
+    "src_lancet_dementia_2024"
+   ],
+   "terms": [
+    "vision"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_hearing_aids",
+   "question": "Do hearing aids lower the risk of dementia?",
+   "sources": [
+    "src_lancet_dementia_2024"
+   ],
+   "terms": [
+    "hearing aid"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_screen_time",
+   "question": "How much recreational screen time is recommended for adults?",
+   "sources": [
+    "src_csep_adults_18_64",
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "3 hours"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_pd_exercise",
+   "question": "Is exercise recommended for people with Parkinson's disease?",
+   "sources": [
+    "src_canadian_pd_guideline_2019"
+   ],
+   "terms": [
+    "exercise"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_pd_levodopa",
+   "question": "Is levodopa used as a first treatment for Parkinson's disease?",
+   "sources": [
+    "src_canadian_pd_guideline_2019"
+   ],
+   "terms": [
+    "levodopa"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_strength_training",
+   "question": "How often should older adults do muscle strengthening activities?",
+   "sources": [
+    "src_csep_adults_65_plus",
+    "src_csep_adults_18_64",
+    "src_csep_24h_adults_2020"
+   ],
+   "terms": [
+    "twice"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "fact_hcr_positive_rate",
+   "question": "What proportion of pharmacy ECG recordings were flagged as possible AF in the Catch AF project?",
+   "sources": [
+    "src_sakamoto_catch_af_2026"
+   ],
+   "terms": [
+    "2.29"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "cross_cholesterol_memory",
+   "question": "Can lowering my LDL cholesterol help protect my memory?",
+   "sources": [
+    "src_lancet_dementia_2024",
+    "src_csbpr_vci_2024",
+    "src_ccs_lipids_2021"
+   ],
+   "tags": [
+    "cross"
+   ]
+  },
+  {
+   "id": "cross_af_dementia",
+   "question": "Is atrial fibrillation linked to dementia or cognitive decline?",
+   "sources": [
+    "src_csbpr_vci_2024",
+    "src_lancet_dementia_2024",
+    "src_ccs_af_2020"
+   ],
+   "tags": [
+    "cross"
+   ]
+  },
+  {
+   "id": "cross_activity_dementia",
+   "question": "Does staying physically active lower my risk of dementia?",
+   "sources": [
+    "src_lancet_dementia_2024",
+    "src_csbpr_vci_2024",
+    "src_csep_24h_adults_2020"
+   ],
+   "tags": [
+    "cross"
+   ]
+  },
+  {
+   "id": "cross_sleep_memory",
+   "question": "Does poor sleep affect memory or dementia risk?",
+   "sources": [
+    "src_lancet_dementia_2024",
+    "src_csep_24h_adults_2020"
+   ],
+   "tags": [
+    "cross"
+   ]
+  },
+  {
+   "id": "cross_bp_stroke_dementia",
+   "question": "Why does controlling blood pressure matter for both stroke and dementia?",
+   "sources": [
+    "src_lancet_dementia_2024",
+    "src_csbpr_vci_2024",
+    "src_csbpr_secondary_prevention_2020",
+    "src_hypertension_canada_2020"
+   ],
+   "tags": [
+    "cross"
+   ]
+  },
+  {
+   "id": "ho_top_number_high",
+   "question": "my top number keeps coming up around 145 when i check at the drugstore, is that too high for someone my age?",
+   "sources": [
+    "src_hypertension_canada_2020"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_checking_bp_at_home",
+   "question": "whats the right way to take my blood pressure at home, how many times and what time of day",
+   "sources": [
+    "src_hypertension_canada_2020"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_pressure_after_stroke",
+   "question": "Dad had a mini stroke last spring. How low should his blood pressure be now so he doesn't have another one?",
+   "sources": [
+    "src_csbpr_secondary_prevention_2020",
+    "src_hypertension_canada_2020"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_heart_flutter_blood_thinner",
+   "question": "my heart does a fluttery skipping thing sometimes and my doctor mentioned blood thinners. why would i need those?",
+   "sources": [
+    "src_ccs_af_2020",
+    "src_csbpr_secondary_prevention_2020"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_watch_irregular_alert",
+   "question": "My watch buzzed and said something about an irregular heart rhythm. Should I be worried, and can I trust it?",
+   "sources": [
+    "src_apple_irn_support",
+    "src_apple_ecg_support",
+    "src_ccs_af_2020",
+    "src_apple_heart_study_2019"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_cuff_catches_afib",
+   "question": "can one of those home blood pressure machines also tell if i have afib? my sister said hers does",
+   "sources": [
+    "src_senoo_omron_complete_2020",
+    "src_asada_omron_af_ml_2024",
+    "src_sakamoto_catch_af_2026",
+    "src_chan_microlife_af_2017",
+    "src_tang_bp_af_review_2022",
+    "src_janik_omron_af_2024"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_bad_cholesterol_pills",
+   "question": "my bad cholesterol came back high and they want me on a statin. what number am i supposed to get it down to?",
+   "sources": [
+    "src_ccs_lipids_2021"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_chance_of_heart_attack",
+   "question": "is there a way to figure out my odds of having a heart attack in the next 10 years?",
+   "sources": [
+    "src_framingham2008",
+    "src_ccs_lipids_2021"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_how_much_sleep_older",
+   "question": "I'm 72 and only sleep about 6 hours a night. How much sleep should I actually be getting?",
+   "sources": [
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_how_much_walking",
+   "question": "how much exercise do i need in a week at my age, and do i have to do weights too? i mostly just walk the dog",
+   "sources": [
+    "src_csep_adults_65_plus",
+    "src_csep_24h_adults_2020",
+    "src_csep_adults_18_64",
+    "src_canadian_pd_guideline_2019"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_forgetting_things_prevent",
+   "question": "I keep forgetting things lately and my mom had dementia. Is there anything I can do to lower my chances?",
+   "sources": [
+    "src_lancet_dementia_2024",
+    "src_csbpr_vci_2024"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_memory_test_at_home",
+   "question": "is there some kind of memory test my mother could do at home on a tablet or phone instead of going in to the clinic?",
+   "sources": [
+    "src_asrt_jmir_2022",
+    "src_storyteller_adni4_2024",
+    "src_dcr_primary_care_2025"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "ho_hands_shake_parkinsons",
+   "question": "my hands shake when i'm resting and i feel slower than i used to. could that be parkinsons, and when should i see a specialist?",
+   "sources": [
+    "src_mds_pd_criteria_2015",
+    "src_canadian_pd_guideline_2019",
+    "src_strivepd_screener"
+   ],
+   "tags": [
+    "holdout",
+    "lay"
+   ]
+  },
+  {
+   "id": "htn25_target",
+   "question": "What blood pressure target does Hypertension Canada recommend for most adults on treatment?",
+   "sources": [
+    "src_hypertension_canada_2025",
+    "src_hypertension_canada_2020"
+   ],
+   "terms": [
+    "130"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "htn25_first_drug",
+   "question": "What medication should be started first for high blood pressure in primary care?",
+   "sources": [
+    "src_hypertension_canada_2025",
+    "src_hypertension_canada_2020"
+   ],
+   "terms": [
+    "single-pill",
+    "single pill"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "hf_pef_drugs",
+   "question": "Which medications are recommended for heart failure with preserved ejection fraction?",
+   "sources": [
+    "src_ccs_hf_2025"
+   ],
+   "terms": [
+    "SGLT2"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "hf_lay",
+   "question": "My doctor says my heart is stiff and I have heart failure. What pills help with that?",
+   "sources": [
+    "src_ccs_hf_2025"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "alcohol_weekly",
+   "question": "How many alcoholic drinks per week is considered low risk in Canada?",
+   "sources": [
+    "src_ccsa_alcohol_2023"
+   ],
+   "terms": [
+    "2 standard drinks"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "alcohol_bp",
+   "question": "Does drinking alcohol raise blood pressure?",
+   "sources": [
+    "src_ccsa_alcohol_2023",
+    "src_hypertension_canada_2020",
+    "src_hypertension_canada_2025",
+    "src_csbpr_secondary_prevention_2020"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "alcohol_dementia",
+   "question": "Does drinking alcohol increase my risk of dementia?",
+   "sources": [
+    "src_ccsa_alcohol_2023",
+    "src_lancet_dementia_2024"
+   ],
+   "tags": [
+    "cross"
+   ]
+  },
+  {
+   "id": "cccdtd5_mci",
+   "question": "How should mild cognitive impairment be followed up according to Canadian recommendations?",
+   "sources": [
+    "src_cccdtd5_2020",
+    "src_csbpr_vci_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "cccdtd5_prevention",
+   "question": "What does the Canadian dementia consensus recommend to reduce dementia risk?",
+   "sources": [
+    "src_cccdtd5_2020",
+    "src_lancet_dementia_2024",
+    "src_csbpr_vci_2024"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "tap_bradykinesia",
+   "question": "Can a smartphone finger tapping test measure slowness of movement in Parkinson's?",
+   "sources": [
+    "src_lee_finger_tapping_2016",
+    "src_amorn_tapping_ml_2025",
+    "src_arora_smartphone_pd_2015"
+   ],
+   "terms": [
+    "tapping"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "tap_severity_ml",
+   "question": "Can machine learning on finger tapping classify how severe Parkinson's disease is?",
+   "sources": [
+    "src_amorn_tapping_ml_2025",
+    "src_lee_finger_tapping_2016"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "smartphone_pd_monitor",
+   "question": "Can a smartphone be used to monitor Parkinson's symptoms at home?",
+   "sources": [
+    "src_arora_smartphone_pd_2015",
+    "src_lee_finger_tapping_2016",
+    "src_amorn_tapping_ml_2025",
+    "src_strivepd_screener",
+    "src_voice_pd_review_2025"
+   ],
+   "tags": [
+    "core"
+   ]
+  },
+  {
+   "id": "janik_intellisense_acc",
+   "question": "How accurate is the OMRON HEM-7371T1-AZ at detecting atrial fibrillation?",
+   "sources": [
+    "src_janik_omron_af_2024"
+   ],
+   "terms": [
+    "95.1"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "apple_heart_study_rate",
+   "question": "In the Apple Heart Study, what share of participants received an irregular pulse notification?",
+   "sources": [
+    "src_apple_heart_study_2019"
+   ],
+   "terms": [
+    "0.52"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "apple_heart_study_ppv",
+   "question": "How often was atrial fibrillation confirmed after an Apple Watch irregular pulse notification?",
+   "sources": [
+    "src_apple_heart_study_2019"
+   ],
+   "terms": [
+    "0.84",
+    "34%"
+   ],
+   "tags": [
+    "fact"
+   ]
+  },
+  {
+   "id": "lay_watch_trust",
+   "question": "Can I trust my smartwatch if it says I might have AFib?",
+   "sources": [
+    "src_apple_heart_study_2019",
+    "src_apple_irn_support",
+    "src_apple_ecg_support"
+   ],
+   "tags": [
+    "lay"
+   ]
+  },
+  {
+   "id": "neg_recipe",
+   "question": "What's a good recipe for banana bread?",
+   "expect_empty": true,
+   "tags": [
+    "off_topic"
+   ]
+  },
+  {
+   "id": "neg_iphone",
+   "question": "How do I reset my iPhone passcode?",
+   "expect_empty": true,
+   "tags": [
+    "off_topic"
+   ]
+  },
+  {
+   "id": "neg_capital",
+   "question": "What is the capital of France?",
+   "expect_empty": true,
+   "tags": [
+    "off_topic"
+   ]
+  },
+  {
+   "id": "neg_ibuprofen",
+   "question": "Is ibuprofen safe for back pain?",
+   "expect_empty": true,
+   "tags": [
+    "off_topic"
+   ]
+  },
+  {
+   "id": "neg_ankle",
+   "question": "How do I treat a sprained ankle?",
+   "expect_empty": true,
+   "tags": [
+    "off_topic"
+   ]
+  },
+  {
+   "id": "nm_migraine",
+   "question": "How do I treat a migraine?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_vaccines",
+   "question": "What vaccines should adults over 65 get?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_tsh",
+   "question": "What is the normal range for a TSH thyroid test?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_omron_bluetooth",
+   "question": "How do I pair my OMRON monitor with my phone over Bluetooth?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_acne",
+   "question": "What causes acne in adults?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_shoes",
+   "question": "What is the best running shoe for flat feet?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_taxes",
+   "question": "How do I file my taxes in Canada?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_poem",
+   "question": "Write me a poem about the ocean.",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_covid_test",
+   "question": "How accurate are rapid COVID-19 antigen tests?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "nm_knee",
+   "question": "Should I get surgery for knee osteoarthritis?",
+   "expect_empty": true,
+   "tags": [
+    "near_miss"
+   ]
+  },
+  {
+   "id": "ho_unans_shingles_vaccine",
+   "question": "should i get the shingles shot again if i had the old one years ago?",
+   "expect_empty": true,
+   "tags": [
+    "holdout",
+    "near_miss"
+   ]
+  },
+  {
+   "id": "ho_unans_knee_replacement",
+   "question": "how long does it take to get back to normal after a knee replacement?",
+   "expect_empty": true,
+   "tags": [
+    "holdout",
+    "near_miss"
+   ]
+  },
+  {
+   "id": "ho_unans_cataracts_driving",
+   "question": "my eye doctor says i have cataracts, can i still drive at night until the surgery?",
+   "expect_empty": true,
+   "tags": [
+    "holdout",
+    "near_miss"
+   ]
+  }
  ]
 }

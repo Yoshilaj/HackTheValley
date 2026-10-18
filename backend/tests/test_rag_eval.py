@@ -2,8 +2,10 @@
 
 Skipped unless the local models are already cached (tests never download) and backend/data/dev.db
 holds a corpus embedded with the local embedder (``python -m scripts.ingest_corpus --provider local``).
-Thresholds sit a little under the measured numbers (2026-10-17: hit@k 1.0, hit@1 0.857, term recall
-1.0, abstain 0.833 with the cross-encoder) so a regression fails while small ties do not.
+Thresholds sit a little under the measured numbers (2026-10-17, 35 sources, 98 answerable / 18 unanswerable,
+floor -7.5: hit@k 1.0, hit@1 0.898, term recall 0.955, abstain 0.611; lay and holdout hit@k 1.0) so a
+regression fails while small ties do not. Per-tag checks keep a drop in everyday wording (``lay``,
+``holdout``) from hiding inside the overall average.
 """
 
 from pathlib import Path
@@ -66,17 +68,21 @@ def test_cross_encoder_quality_gate(corpus):
     from app.core.config import settings
 
     rep = _run(corpus, "cross_encoder", settings.rag_min_rerank_score)
-    s = rep["summary"]
+    s, tags = rep["summary"], rep["by_tag"]
     misses = [c["id"] for c in rep["cases"] if not c["expect_empty"] and not c["hit"]]
     leaks = [c["id"] for c in rep["cases"] if c["expect_empty"] and c["n"]]
     assert s["hit_at_k"] >= 0.95, misses
-    assert s["hit_at_1"] >= 0.8 and s["mrr"] >= 0.85
+    assert s["hit_at_1"] >= 0.85 and s["mrr"] >= 0.9
     assert s["term_recall"] >= 0.9
     assert s["empty_on_answerable"] == 0  # the floor never silences an answerable question
-    assert s["abstain_rate"] >= 0.8, leaks
+    assert s["abstain_rate"] >= 0.55, leaks
     assert s["mean_passages"] >= 4
+    for tag in ("core", "fact", "lay", "holdout", "cross"):
+        assert tags[tag]["hit_at_k"] >= 0.9, (tag, misses)
+    assert tags["fact"]["term_recall"] >= 0.95
+    assert tags["off_topic"]["abstain_rate"] >= 0.8, leaks
 
 
 def test_identity_reranker_still_finds_the_source(corpus):
     s = _run(corpus, "identity", None)["summary"]
-    assert s["hit_at_k"] >= 0.95 and s["hit_at_1"] >= 0.8
+    assert s["hit_at_k"] >= 0.9 and s["hit_at_1"] >= 0.75

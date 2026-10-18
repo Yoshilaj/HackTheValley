@@ -53,6 +53,7 @@ def run_case(db, case: dict[str, Any], provider, reranker, k: int, min_score: fl
     terms = case.get("terms") or []
     return {
         "id": case["id"], "question": case["question"], "pathway": pathway, "ms": round(ms, 1),
+        "tags": list(case.get("tags") or []),
         "expect_empty": bool(case.get("expect_empty")),
         "n": len(hits), "tokens": sum(int(h.meta.get("tokens", 0)) for h in hits),
         "hit": bool(ranks), "hit1": bool(ranks) and ranks[0] == 1, "rr": 1 / ranks[0] if ranks else 0.0,
@@ -85,9 +86,29 @@ def summarise(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def by_tag(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per-tag counts: answerable tags get hit@k / hit@1 / term recall, unanswerable ones abstain rate."""
+    out: dict[str, dict[str, Any]] = {}
+    for tag in sorted({t for r in rows for t in r["tags"]}):
+        rs = [r for r in rows if tag in r["tags"]]
+        pos = [r for r in rs if not r["expect_empty"]]
+        termed = [r for r in pos if r["term_ok"] is not None]
+        row: dict[str, Any] = {"n": len(rs)}
+        if pos:
+            row.update(hit_at_k=round(sum(r["hit"] for r in pos) / len(pos), 3),
+                       hit_at_1=round(sum(r["hit1"] for r in pos) / len(pos), 3))
+        if termed:
+            row["term_recall"] = round(sum(r["term_ok"] for r in termed) / len(termed), 3)
+        if len(pos) < len(rs):
+            neg = [r for r in rs if r["expect_empty"]]
+            row["abstain_rate"] = round(sum(r["n"] == 0 for r in neg) / len(neg), 3)
+        out[tag] = row
+    return out
+
+
 def evaluate(db, cases, provider, reranker, k: int = 6, min_score: float | None = None) -> dict[str, Any]:
     rows = [run_case(db, c, provider, reranker, k, min_score) for c in cases]
-    return {"summary": summarise(rows), "cases": rows}
+    return {"summary": summarise(rows), "by_tag": by_tag(rows), "cases": rows}
 
 
 def calibrate(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -146,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
             for p in r["passages"]:
                 print(f"          [{p['n']}] {p['score']:7.3f} {p['source']} | {(p['section'] or '')[:50]}")
     print(json.dumps(report["summary"], indent=1))
+    for tag, row in report["by_tag"].items():
+        print(f"  {tag:<10} " + "  ".join(f"{k}={v}" for k, v in row.items()))
     if args.calibrate:
         cal = calibrate(report["cases"])
         report["calibration"] = cal

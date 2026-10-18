@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
     rag_corpus_version: str = "v3"
     # Cross-encoder logit below which a passage is treated as irrelevant (scripts/eval_rag.py calibrates it).
-    rag_min_rerank_score: float = -6.0
+    rag_min_rerank_score: float = -7.5
 
     # Region (Canada-only for now)
     default_country: str = "CA"
