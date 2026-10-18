@@ -50,7 +50,7 @@ def get_file_storage() -> Storage:
 
 def _turn_response(turn: chat_service.ChatTurn) -> dict:
     return {"answer": turn.answer, "sources": turn.sources, "cited": turn.cited, "observations_created": turn.observations_created,
-            "red_flags": turn.red_flags, "assessment_hint": turn.assessment_hint, "message_id": turn.message_id,
+            "assessment_hint": turn.assessment_hint, "message_id": turn.message_id,
             "language": turn.language, "conversation_id": turn.conversation_id}
 
 
@@ -61,7 +61,7 @@ def _no_conversation() -> HTTPException:
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(rate_limit("chat"))])
 def chat(req: ChatRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db),
          llm: LlmProvider = Depends(get_llm), embeddings: EmbeddingProvider = Depends(get_embeddings)):
-    """Advocate chat turn: red-flag short-circuit, RAG-cited answer, observation extraction."""
+    """Advocate chat turn: RAG-cited answer, output guard, observation extraction."""
     try:
         turn = chat_service.handle_message(db, user, req.message, llm, embeddings, language=req.language,
                                            conversation_id=req.conversation_id,
@@ -178,7 +178,7 @@ def get_checkin(language: str | None = Query(None, pattern="^(ja|en)$"), user: U
 def post_checkin(body: CheckinSubmit, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     res = checkin_service.submit_checkin(db, user, body.answers, on_date=body.date, language=body.language)
     return {"date": res["date"], "daily_log_id": res["daily_log"].id, "observations": res["observations"],
-            "red_flags": res["red_flags"], "emergency_guidance": res["emergency_guidance"], "ignored": res["ignored"]}
+            "ignored": res["ignored"]}
 
 
 @router.post("/ingest", response_model=IngestResponse, dependencies=[Depends(require_admin_or_dev)])

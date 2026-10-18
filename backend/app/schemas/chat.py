@@ -37,7 +37,6 @@ class ChatResponse(BaseModel):
     sources: list[SourceRef] = []
     cited: list[int] = []  # SourceRef.n values that appear as [n] in the answer (subset of sources)
     observations_created: list[ObservationOut] = []
-    red_flags: list[str] = []
     assessment_hint: str | None = None
     message_id: str | None = None
     language: str | None = None
@@ -90,8 +89,6 @@ class CheckinResult(BaseModel):
     date: _dt.date
     daily_log_id: str
     observations: list[ObservationOut] = []
-    red_flags: list[str] = []
-    emergency_guidance: str | None = None
     ignored: list[str] = []
 
 

@@ -22,14 +22,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.models import (
     PATHWAYS, AssessmentTask, BpReading, DailyLog, DeviceRhythmResult, MetricSample, Observation, Profile,
-    RiskAssessment, ScreenerResponse, User,
+    RiskAssessment, User,
 )
 from app.ml.context import (
     BpReadingIn, DailySeries, ObservationIn, PathwayContext, PriorAssessment, ProfileIn, RhythmResultIn,
-    ScreenerIn, TaskSessionIn,
+    TaskSessionIn,
 )
 from app.ml.rules import PD_VOWEL_MODEL_KEY as PD_VOWEL_KEY
-from app.ml.screener import LEGACY_ID_MAP
 
 DEFAULT_TZ = "America/Toronto"
 #: Prior assessments are loaded by time window, not count (review fix 7): frequent event /
@@ -54,10 +53,6 @@ TAP_FEATURES: dict[str, str] = {
     "dwell_mean_ms": "tap_dwell_mean",
     "travel_time_cv": "tap_travel_cv",
 }
-
-# Legacy engine screener ids → content-bank ids (app/content/screener_pd.json), which are canonical.
-SCREENER_ID_MAP: dict[str, str] = dict(LEGACY_ID_MAP)
-
 
 # ---------------------------------------------------------------- helpers
 
@@ -144,14 +139,6 @@ def premature_cvd_family_history(family_history: dict | None) -> bool | None:
     return None
 
 
-def normalize_screener_answers(answers: dict[str, Any] | None) -> dict[str, bool]:
-    """Accept content-bank ids or legacy engine ids; return content-bank ids → bool."""
-    out: dict[str, bool] = {}
-    for k, v in (answers or {}).items():
-        out[SCREENER_ID_MAP.get(k, k)] = bool(v)
-    return out
-
-
 # ---------------------------------------------------------------- row mappers
 
 def map_profile(p: Profile | None, on: date) -> ProfileIn:
@@ -191,11 +178,6 @@ def map_rhythm(r: DeviceRhythmResult, tz: ZoneInfo) -> RhythmResultIn:
 def map_observation(o: Observation, tz: ZoneInfo) -> ObservationIn:
     return ObservationIn(created_at=to_local(o.created_at, tz), kind=o.kind, label=o.label,
                          severity=_int_or_none(o.severity), free_text=o.free_text, id=o.id)
-
-
-def map_screener(s: ScreenerResponse, tz: ZoneInfo) -> ScreenerIn:
-    return ScreenerIn(created_at=to_local(s.created_at, tz), screener=s.screener,
-                      answers=normalize_screener_answers(s.answers), score=s.score, id=s.id)
 
 
 def task_device(t: AssessmentTask) -> str | None:
@@ -355,7 +337,6 @@ def build_contexts(db: Session, user: User, as_of: datetime | None = None,
     bp = [map_bp(r, tz) for r in _rows(db, BpReading, uid, BpReading.measured_at, since, until)]
     rhythm = [map_rhythm(r, tz) for r in _rows(db, DeviceRhythmResult, uid, DeviceRhythmResult.recorded_at, since, until)]
     obs = [map_observation(o, tz) for o in _rows(db, Observation, uid, Observation.created_at, since, until)]
-    screeners = [map_screener(s, tz) for s in _rows(db, ScreenerResponse, uid, ScreenerResponse.created_at, since, until)]
     task_rows = _rows(db, AssessmentTask, uid, AssessmentTask.created_at, since, until)
     tasks = aggregate_vowel_sessions([map_task(t, tz) for t in task_rows])
 
@@ -377,6 +358,6 @@ def build_contexts(db: Session, user: User, as_of: datetime | None = None,
             user_id=uid, pathway=pathway, as_of=as_of_local, profile=prof, region=settings.default_country,
             bp_readings=bp,
             rhythm_results=rhythm, observations=obs, series=dict(series), task_sessions=tasks,
-            screeners=screeners, prior_assessments=[map_prior(a, tz) for a in reversed(priors)],
+            prior_assessments=[map_prior(a, tz) for a in reversed(priors)],
         )
     return contexts

@@ -1,8 +1,7 @@
-"""Advocate chat (BACKEND_PLAN C2): text/voice → guardrails → RAG-cited answer → Observations.
+"""Advocate chat (BACKEND_PLAN C2): text/voice → RAG-cited answer → output guard → Observations.
 
 Turn pipeline (:func:`handle_message`):
-  a. save the user ChatMessage; deterministic red-flag check → emergency short-circuit
-     (emergency answer, ``notify_emergency``, ``Observation(kind='red_flag')``), no LLM call;
+  a. save the user ChatMessage;
   b. compact health-context block (``app.prompts.chat_system.build_context_block``);
   c. retrieve k=6 research chunks (pathway inferred from keywords) → cited answer → output guard;
   d. structured extraction with the cheap model → Observations (deduped vs. last 24 h);
@@ -28,7 +27,7 @@ from app.providers.embeddings import EmbeddingProvider
 from app.providers.llm import LlmConfigError, LlmError, LlmProvider
 from app.rag.ingest import detect_language
 from app.services import llm_audit_hook, rag_service
-from app.services.guardrails import RED_FLAG_LABELS, detect_red_flags, output_guard, rewrite_phrasing
+from app.services.guardrails import output_guard, rewrite_phrasing
 
 log = logging.getLogger(__name__)
 
@@ -40,8 +39,6 @@ _HINTS: tuple[tuple[str, frozenset[str]], ...] = (
     ("story_recall", frozenset({"memory_lapse", "confusion", "getting_lost", "repeating_questions",
                                 "missed_appointments", "trouble_managing_money", "trouble_managing_medication",
                                 "word_finding_difficulty"})),
-    ("pd_screener", frozenset({"tremor", "stiffness", "slowness_of_movement", "voice_change", "small_handwriting",
-                               "loss_of_smell", "acting_out_dreams", "balance_problem"})),
     ("bp_and_rhythm_check", frozenset({"palpitations", "irregular_heartbeat_feeling", "dizziness",
                                        "breathlessness", "headache"})),
 )
@@ -53,7 +50,6 @@ class ChatTurn:
     sources: list[dict[str, Any]] = field(default_factory=list)
     cited: list[int] = field(default_factory=list)  # the ``n`` of sources the answer actually cites
     observations_created: list[Observation] = field(default_factory=list)
-    red_flags: list[str] = field(default_factory=list)
     assessment_hint: str | None = None
     message_id: str | None = None
     user_message_id: str | None = None
@@ -156,32 +152,6 @@ def delete_conversation(db: Session, user: User, conversation_id: str) -> int:
     return gone
 
 
-def _emergency_turn(db: Session, user: User, msg: ChatMessage, labels: list[str], lang: str) -> ChatTurn:
-    from app.services.emergency import handle_red_flags
-
-    obs = []
-    for label in labels:
-        o = Observation(user_id=user.id, kind="red_flag", label=label, severity="urgent",
-                        onset=datetime.now(timezone.utc).date().isoformat(), free_text=msg.content[:500],
-                        source="chat", source_id=msg.id)
-        db.add(o)
-        obs.append(o)
-    db.flush()
-    # shared §7 path: guidance + throttled notify_emergency + RiskAssessment(trigger='event')
-    answer = handle_red_flags(db, user, labels, source="chat", source_id=msg.id, language=lang,
-                              observations=obs, extra={"message_id": msg.id})
-    reply = ChatMessage(user_id=user.id, conversation_id=msg.conversation_id, role="assistant", content=answer,
-                        sources=[])
-    db.add(reply)
-    db.flush()
-    audit(db, user.id, "chat.emergency", f"chat_message:{msg.id}", {"red_flags": labels, "rule": "EMG-01"},
-          actor="system")
-    db.commit()
-    return ChatTurn(answer=answer, sources=[], observations_created=obs, red_flags=labels,
-                    assessment_hint="emergency", message_id=reply.id, user_message_id=msg.id, language=lang,
-                    conversation_id=msg.conversation_id)
-
-
 def extract_observations(db: Session, user: User, llm: LlmProvider, text: str, message_id: str,
                          audit_hook=None, now: datetime | None = None) -> list[Observation]:
     """Cheap-model extraction → validated, deduped (same label within 24 h) Observations."""
@@ -205,7 +175,7 @@ def extract_observations(db: Session, user: User, llm: LlmProvider, text: str, m
             continue
         kind = it.get("kind")
         label = _snake(str(it.get("label") or ""))
-        if kind not in EXTRACTABLE_KINDS or not label or label in RED_FLAG_LABELS or label in recent:
+        if kind not in EXTRACTABLE_KINDS or not label or label in recent:
             continue
         sev = it.get("severity")
         o = Observation(user_id=user.id, kind=kind, label=label, severity=sev if sev in SEVERITIES else None,
@@ -233,10 +203,6 @@ def handle_message(db: Session, user: User, text: str, llm: LlmProvider, embeddi
     isn't theirs); ``new_conversation`` starts one titled from this message. With neither the turn
     joins the user's unthreaded messages (iOS Shortcut, older clients)."""
     text, lang, history, msg = _begin_turn(db, user, text, language, audio_meta, conversation_id, new_conversation)
-    red_flags = detect_red_flags(text, lang)
-    if red_flags:
-        return _emergency_turn(db, user, msg, red_flags, lang)
-
     hook = llm_audit_hook(db, user.id, resource=f"chat_message:{msg.id}")
     context = build_context_block(db, user)
     pathway = rag_service.infer_pathway(text)
@@ -254,11 +220,8 @@ def stream_message(db: Session, user: User, text: str, llm: LlmProvider,
     ``status`` (stage "searching", then "thinking"), ``thought`` (the model's thinking summaries),
     ``delta`` (answer text, already through the output guard's rewrites, a sentence at a time),
     ``answer`` (the final guarded answer + sources, sent before observation extraction) and
-    ``done`` (``turn``: the ChatTurn). A red flag gives only ``done``. Commits."""
+    ``done`` (``turn``: the ChatTurn). Commits."""
     text, lang, history, msg = _begin_turn(db, user, text, language, None, conversation_id, new_conversation)
-    red_flags = detect_red_flags(text, lang)
-    if red_flags:
-        return iter([{"type": "done", "turn": _emergency_turn(db, user, msg, red_flags, lang)}])
     return _stream_turn(db, user, llm, embedding_provider, msg, text, lang, history, k)
 
 
@@ -355,8 +318,7 @@ def _finish_turn(db: Session, user: User, llm: LlmProvider, msg: ChatMessage, an
            "observations": [o.label for o in obs], "voice": bool(audio_meta)})
     db.commit()
     return ChatTurn(answer=answer, sources=result["sources"], cited=rag_service.cited_numbers(answer, len(hits)),
-                    observations_created=obs, red_flags=[],
-                    assessment_hint=assessment_hint(obs), message_id=reply.id, user_message_id=msg.id, language=lang,
+                    observations_created=obs, assessment_hint=assessment_hint(obs), message_id=reply.id, user_message_id=msg.id, language=lang,
                     conversation_id=msg.conversation_id)
 
 

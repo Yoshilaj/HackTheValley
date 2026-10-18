@@ -7,13 +7,10 @@ Question selection (in order, each at most once):
 2. Pathways whose latest RiskAssessment is ``watch`` / ``followup_recommended``:
    cardio → palpitations, dizziness, breathlessness; parkinsons → tremor, stiffness;
    cognitive → memory lapse + free-text functional change.
-3. At most one task prompt: sustained vowel if the latest PD screener is positive (PD-01)
-   and no vowel task in 7 days, else story recall if none in 7 days.
+3. At most one task prompt: story recall if none in 7 days.
 
 Submission maps answers onto ``ingest_service.add_daily_log`` (scales → fields, symptom
 booleans → flags → Observations) plus a functional-change Observation for free text.
-Free text is scanned by the red-flag detector; a hit adds the red-flag flag, triggers
-``notify_emergency`` and returns emergency guidance.
 """
 
 from __future__ import annotations
@@ -24,9 +21,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AssessmentTask, BpReading, DailyLog, MetricSample, Observation, ScreenerResponse, User
+from app.db.models import AssessmentTask, BpReading, DailyLog, MetricSample, Observation, User
 from app.prompts.chat_system import latest_levels
-from app.services.guardrails import detect_red_flags
 
 SLEEP_TYPES = ("sleep_asleep_minutes", "sleep_inbed_minutes", "sleep_core_minutes", "sleep_deep_minutes",
                "sleep_rem_minutes")
@@ -71,7 +67,6 @@ _REASONS = {
     "cardio": ("心臓・血圧の項目が「経過観察」です", "Your heart/BP pathway is on watch"),
     "parkinsons": ("パーキンソン関連の項目が「経過観察」です", "Your movement/voice pathway is on watch"),
     "cognitive": ("認知機能の項目が「経過観察」です", "Your memory pathway is on watch"),
-    "task_sustained_vowel": ("スクリーナーで追加の発声テストが推奨されています", "Your screener answers suggest the voice task"),
     "task_story_recall": ("過去7日間にお話の記憶テストをしていません", "No story-recall task in the last 7 days"),
 }
 
@@ -82,13 +77,6 @@ PATHWAY_QUESTIONS = {
 }
 SYMPTOM_FLAGS = ("palpitations", "dizziness", "breathlessness", "tremor", "stiffness", "memory_lapse")
 SCALE_FIELDS = ("sleep_quality", "fatigue", "mood")
-#: guardrail label → DailyLog flag understood by ingest_service.FLAG_OBSERVATIONS
-RED_FLAG_TO_LOG_FLAG = {
-    "chest_pain": "chest_pain", "chest_pressure": "chest_discomfort", "speech_difficulty": "speech_disturbance",
-    "vision_disturbance": "vision_disturbance", "fainting": "fainting", "face_droop": "face_droop",
-    "arm_weakness": "arm_weakness", "severe_sudden_headache": "severe_sudden_headache",
-    "suicidal_ideation": "suicidal_ideation",
-}
 
 
 def _lang(language: str | None) -> str:
@@ -112,19 +100,6 @@ def _today(db: Session, user: User, now: datetime | None) -> tuple[date, datetim
     today = now.astimezone(tz).date()
     start, end = day_bounds_utc(today, tz)
     return today, start, end, tz, now
-
-
-def _pd_screener_positive(db: Session, user_id: str) -> bool:
-    row = db.scalars(select(ScreenerResponse).where(ScreenerResponse.user_id == user_id, ScreenerResponse.screener == "pd")
-                     .order_by(ScreenerResponse.created_at.desc()).limit(1)).first()
-    if not row:
-        return False
-    try:
-        from app.ml.screener import score_pd_screener
-
-        return bool(score_pd_screener(row.answers or {})[2])
-    except Exception:
-        return False
 
 
 def _has_task(db: Session, user_id: str, task_type: str, since: datetime) -> bool:
@@ -181,9 +156,7 @@ def daily_checkin_questions(db: Session, user: User, language: str | None = None
                     asked.add(qid)
 
     since = now - timedelta(days=TASK_LOOKBACK_DAYS)
-    if _pd_screener_positive(db, user.id) and not _has_task(db, user.id, "sustained_vowel", since):
-        qs.append(_q("task_sustained_vowel", lang, task="sustained_vowel"))
-    elif not _has_task(db, user.id, "story_recall", since):
+    if not _has_task(db, user.id, "story_recall", since):
         qs.append(_q("task_story_recall", lang, task="story_recall"))
     return qs
 
@@ -205,11 +178,10 @@ def _as_bool(v: Any) -> bool | None:
 def submit_checkin(db: Session, user: User, answers: dict[str, Any], on_date: date | None = None,
                    language: str | None = None) -> dict[str, Any]:
     """Persist answers → DailyLog upsert (+ Observations). Returns
-    ``{date, daily_log, observations, red_flags, emergency_guidance, ignored}``. Commits."""
+    ``{date, daily_log, observations, ignored}``. Commits."""
     from app.schemas.metrics import DailyLogIn
     from app.services.ingest_service import add_daily_log
 
-    lang = _lang(language or (user.profile.language if user.profile else None) or "en")
     today, *_ = _today(db, user, None)
     day = on_date or today
     existing = db.scalar(select(DailyLog).where(DailyLog.user_id == user.id, DailyLog.date == day))
@@ -246,9 +218,6 @@ def submit_checkin(db: Session, user: User, answers: dict[str, Any], on_date: da
         else:
             ignored.append(qid)
 
-    red_flags = sorted({lbl for t in texts.values() for lbl in detect_red_flags(t, lang)})
-    for lbl in red_flags:
-        flags[RED_FLAG_TO_LOG_FLAG[lbl]] = True
     if flags:
         fields["flags"] = {**prev_flags, **flags}
     if texts:
@@ -264,16 +233,9 @@ def submit_checkin(db: Session, user: User, answers: dict[str, Any], on_date: da
         db.flush()
         obs.append(o)
 
-    from app.services.emergency import handle_red_flags
-
-    red_obs = [o for o in obs if o.kind == "red_flag" and o.label in red_flags]
-    guidance = handle_red_flags(db, user, red_flags, source="checkin", source_id=row.id, language=lang,
-                                observations=red_obs, extra={"daily_log_id": row.id})
     from app.core.security import audit
 
     audit(db, user.id, "checkin.submit", f"daily_log:{row.id}",
-          {"fields": sorted(k for k in fields if k != "flags"), "flags": sorted(k for k, v in flags.items() if v),
-           "red_flags": red_flags})
+          {"fields": sorted(k for k in fields if k != "flags"), "flags": sorted(k for k, v in flags.items() if v)})
     db.commit()
-    return {"date": day, "daily_log": row, "observations": obs, "red_flags": red_flags,
-            "emergency_guidance": guidance, "ignored": ignored}
+    return {"date": day, "daily_log": row, "observations": obs, "ignored": ignored}

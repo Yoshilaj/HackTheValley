@@ -6,7 +6,7 @@ from typing import Iterable
 
 from app.ml.context import (
     BpReadingIn, DailySeries, ObservationIn, PathwayContext, PriorAssessment, ProfileIn,
-    RhythmResultIn, ScreenerIn, TaskSessionIn,
+    RhythmResultIn, TaskSessionIn,
 )
 from app.ml.rules import RULES_BY_ID, RuleOutcome, Scratch
 
@@ -77,10 +77,6 @@ def rhythm(offset: int, label: str, source: str = "apple_ecg") -> RhythmResultIn
 
 def obs(offset_hours: float, label: str, kind: str = "symptom") -> ObservationIn:
     return ObservationIn(AS_OF - timedelta(hours=offset_hours), kind, label, None, None, id=f"obs_{label}")
-
-
-def screener(answers: dict[str, bool], offset: int = 2) -> ScreenerIn:
-    return ScreenerIn(at(offset), "pd", answers, None, id="scr_1")
 
 
 def prior(offset_days: int, rules: Iterable[str], level: str = "watch") -> PriorAssessment:

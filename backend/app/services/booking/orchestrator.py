@@ -523,8 +523,6 @@ def run_booking_agent(db: Session, user: User, assessment: RiskAssessment, llm: 
 
     if assessment.user_id != user.id:
         raise PermissionError("assessment does not belong to user")
-    if assessment.level == "emergency":
-        raise ValueError("the booking agent never runs for emergency assessments")
     if not has_consent(db, user.id, "share_with_clinic"):
         audit(db, user.id, "booking.skipped", f"risk_assessment:{assessment.id}",
               {"reason": "no_consent:share_with_clinic"}, actor="agent", commit=commit)

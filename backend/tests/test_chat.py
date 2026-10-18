@@ -58,31 +58,19 @@ def test_chat_requires_auth(client):
     assert client.post("/api/chat", json={"message": "hi"}).status_code == 401
 
 
-def test_red_flag_short_circuits_without_llm(client, db, user, headers, fakes):
+def test_symptom_message_goes_through_the_normal_pipeline(client, db, user, headers, fakes):
+    """No red-flag detection: a chest-pain message is answered like any other (RAG + extraction)."""
     res = client.post("/api/chat", json={"message": "I have crushing chest pain and my left arm feels numb"},
                       headers=headers)
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["red_flags"] == ["chest_pain", "arm_weakness"]
-    assert body["assessment_hint"] == "emergency"
-    assert "911" in body["answer"] and body["sources"] == [] and body["cited"] == []
-    assert fakes["llm"].calls == []  # no LLM call of any kind
+    assert "red_flags" not in body and body["assessment_hint"] != "emergency"
+    assert [c["method"] for c in fakes["llm"].calls] == ["complete", "extract"]
     db.expire_all()
-    notes = db.scalars(select(Notification).where(Notification.user_id == user.id)).all()
-    assert [n.kind for n in notes] == ["emergency"] and notes[0].payload["emergency_number"] == "911"
-    obs = db.scalars(select(Observation).where(Observation.user_id == user.id)).all()
-    assert {(o.kind, o.label, o.severity, o.source) for o in obs} == {
-        ("red_flag", "chest_pain", "urgent", "chat"), ("red_flag", "arm_weakness", "urgent", "chat")}
+    assert db.scalars(select(Notification).where(Notification.user_id == user.id)).all() == []
+    assert not any(o.kind == "red_flag" for o in db.scalars(select(Observation).where(Observation.user_id == user.id)))
     assert [m.role for m in db.scalars(select(ChatMessage).where(ChatMessage.user_id == user.id)
                                        .order_by(ChatMessage.created_at))] == ["user", "assistant"]
-
-
-def test_red_flag_japanese_text_still_gets_canadian_numbers(client, db, user, headers, fakes):
-    res = client.post("/api/chat", json={"message": "急に胸が痛い", "language": "ja"}, headers=headers)
-    body = res.json()
-    assert body["red_flags"] == ["chest_pain"] and "911" in body["answer"] and "811" in body["answer"]
-    assert "119" not in body["answer"]
-    assert fakes["llm"].calls == []
 
 
 def test_normal_chat_saves_messages_sources_observations(client, db, user, headers, fakes):
@@ -91,18 +79,19 @@ def test_normal_chat_saves_messages_sources_observations(client, db, user, heade
                                {"kind": "symptom", "label": "Dizziness", "severity": "mild", "onset": "yesterday",
                                 "free_text": "a bit dizzy"},
                                {"kind": "functional_change", "label": "memory_lapse", "severity": None},
-                               {"kind": "red_flag", "label": "chest_pain"},  # never accepted from extraction
+                               {"kind": "red_flag", "label": "chest_pain"},  # unknown kind → dropped
                                {"kind": "symptom", "label": ""},
                            ]}, {"observations": [{"kind": "symptom", "label": "dizziness"}]}])
     msg = "How should I measure my home blood pressure? I was a bit dizzy yesterday and forgot my keys."
     res = client.post("/api/chat", json={"message": msg}, headers=headers)
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["red_flags"] == []
     assert body["sources"] and body["sources"][0]["n"] == 1 and body["sources"][0]["id"].startswith("src_")
     assert body["cited"] == [1]  # the canned answer cites [1] only
     assert "you probably have" not in body["answer"]
-    assert body["answer"].rstrip().endswith("For sudden or severe symptoms, call 911.")
+    from app.services.guardrails import DISCLAIMER_EN
+
+    assert body["answer"].rstrip().endswith(DISCLAIMER_EN.rstrip())
     assert {(o["kind"], o["label"]) for o in body["observations_created"]} == {
         ("symptom", "dizziness"), ("functional_change", "memory_lapse")}
     assert body["assessment_hint"] == "story_recall"
@@ -176,22 +165,20 @@ def test_ingest_endpoint_admin_gate(client, monkeypatch, fakes):
     assert ok.status_code == 200 and ok.json()["chunks_added"] == 1
 
 
-def test_system_prompt_makes_crisis_numbers_conditional():
-    """Review round 2: a story-recall answer appended 9-8-8 unprompted. The code adds emergency text
-    only for detected red flags; the prompt forbids the model from adding crisis lines otherwise."""
+def test_system_prompt_forbids_crisis_footers():
+    """Review round 2: a story-recall answer appended 9-8-8 unprompted. The prompt forbids the model
+    from adding crisis lines or emergency footers; the code never adds any."""
     from app.prompts.chat_system import system_prompt
 
     p = system_prompt("en")
-    assert "CONDITIONAL" in p and "NEVER add 9-8-8" in p and "story-recall" in p
-    assert "Only if the user's own message" in p and "mentions thoughts of suicide or self-harm" in p
+    assert "NEVER append phone numbers" in p and "story-recall" in p
+    assert "9-8-8" not in p and "911" not in p
 
 
 def test_plain_question_gets_no_crisis_text_from_code():
-    """No red flag -> the code path never adds 9-8-8 / emergency guidance (FakeLlm answer + guard)."""
-    from app.services.guardrails import detect_red_flags, output_guard
+    """The output guard never adds 9-8-8 / emergency guidance (FakeLlm answer + guard)."""
+    from app.services.guardrails import output_guard
 
-    text = "How did I do on the story recall task this week? I felt a bit sad about the story."
-    assert detect_red_flags(text, "en") == []
     assert "9-8-8" not in output_guard("Your recall score was 7 of 10 [1].", "en")
 
 

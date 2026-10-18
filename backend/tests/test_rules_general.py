@@ -1,5 +1,5 @@
-"""General rules: GEN-01 (spec §6) and EMG-01 (spec §7)."""
-from tests.test_rules_helpers import ctx, daily_series, obs, run_rule, wobble
+"""General rules: GEN-01 (spec §6)."""
+from tests.test_rules_helpers import ctx, daily_series, run_rule, wobble
 
 
 def C(**kw):
@@ -25,16 +25,3 @@ def test_gen01_not_fired_long_sleep_is_not_adverse():
 def test_gen01_insufficient():
     assert run_rule("GEN-01", C()).status == "insufficient"
 
-
-def test_emg01_fires_on_red_flag_label_and_kind():
-    assert run_rule("EMG-01", C(observations=[obs(1, "chest_pain")])).fired
-    assert run_rule("EMG-01", C(observations=[obs(1, "something_else", kind="red_flag")])).fired
-    assert run_rule("EMG-01", C(observations=[obs(1, "suicidal_ideation", kind="mood")])).fired
-
-
-def test_emg01_not_fired_on_ordinary_symptom():
-    assert run_rule("EMG-01", C(observations=[obs(1, "headache")])).status == "not_fired"
-
-
-def test_emg01_not_fired_when_stale():
-    assert run_rule("EMG-01", C(observations=[obs(30, "fainting")])).status == "not_fired"

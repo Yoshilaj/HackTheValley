@@ -24,4 +24,4 @@ def test_ingest_then_chat(auth_headers):
     assert res.status_code == 200, res.text
     body = res.json()
     assert "t" in [s["id"] for s in body["sources"]]
-    assert body["red_flags"] == [] and body["answer"]
+    assert body["answer"]

@@ -1,4 +1,4 @@
-"""assess_user: persistence + transitions (app/services/risk_service.py; spec phase-a §7, §8, §10, §11)."""
+"""assess_user: persistence + transitions (app/services/risk_service.py; spec phase-a §8, §10, §11)."""
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db.models import (
-    AuditLog, BpReading, Consent, DeviceRhythmResult, Notification, Observation, Profile, RiskAssessment, User,
+    AuditLog, BpReading, Consent, DeviceRhythmResult, Notification, Profile, RiskAssessment, User,
 )
 from app.jobs import run_job
 from app.services import risk_service as rs
@@ -115,30 +115,6 @@ def test_level_change_notification(db, hooks):
     assert change.payload["previous_level"] == "no_finding" and change.payload["level"] == "followup_recommended"
 
 
-def test_emergency_never_calls_hooks(db, hooks):
-    u = make_user(db)
-    add_bp(db, u, NOW, 150, 95)
-    db.add(Observation(user_id=u.id, kind="red_flag", label="chest_pain", created_at=NOW - timedelta(hours=1)))
-    db.commit()
-    rows = {r.pathway: r for r in rs.assess_user(db, u, as_of=NOW)}
-    assert rows["general"].level == "emergency" and rows["general"].priority_score == 100
-    assert "emergency" in kinds(db, u)
-    # cardio followup is still notified, but no hook (booking) runs while an emergency is active
-    assert "followup_recommended" in kinds(db, u)
-    assert hooks == []
-    em = db.scalar(select(Notification).where(Notification.user_id == u.id, Notification.kind == "emergency"))
-    assert em.payload["emergency_number"] == "911"
-
-
-def test_emergency_only_user_no_hooks(db, hooks):
-    u = make_user(db)
-    db.add(Observation(user_id=u.id, kind="red_flag", label="face_droop", created_at=NOW - timedelta(hours=1)))
-    db.commit()
-    rs.assess_user(db, u, as_of=NOW)
-    assert hooks == []
-    assert "followup_recommended" not in kinds(db, u)
-
-
 def test_data_needed_throttled(db):
     u = make_user(db)
     rs.assess_user(db, u, as_of=NOW)
@@ -222,7 +198,7 @@ def test_preventive_measures_rules():
     assert all({"text_en", "text_ja", "source_id", "related_rule"} <= set(m) for m in bp)
     cog = preventive_measures("cognitive", [], None, [])
     assert len(cog) == 4 and all("not a way to lower a disease percentage" in m["text_en"] for m in cog)
-    assert preventive_measures("parkinsons", ["PD-01"], None)[0]["related_rule"] == "PD-01"
+    assert preventive_measures("parkinsons", ["PD-04"], None)[0]["related_rule"] == "PD-04"
     assert len(preventive_measures("general", [], None)) == 2
     assert preventive_measures("cardio", [], ProfileIn(), [])  # fallback ≥2
     assert len(preventive_measures("cardio", [], ProfileIn(), [])) >= 2

@@ -49,7 +49,6 @@ def test_timeseries_roundtrip_and_utc(db):
                              raw_label="心房細動の可能性", recorded_at=t),
         m.DailyLog(user_id=u.id, date=date(2026, 10, 1), sleep_quality=3, flags={"tremor": False, "headache": True}),
         m.Observation(user_id=u.id, kind="symptom", label="fatigue", source="chat"),
-        m.ScreenerResponse(user_id=u.id, screener="pd", answers={"tremor_rest": True}, score=1),
         m.AssessmentTask(user_id=u.id, task_type="sustained_vowel", protocol_version="v1", language="ja",
                          recording_quality={"snr_db": 25}, features={"jitter": 0.004},
                          model_scores={"pd_vowel": {"version": "v1", "probability": 0.3}}),

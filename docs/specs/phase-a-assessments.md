@@ -74,7 +74,7 @@ Rules:
 - `BP-02` 7-day mean ≥145 or ≥90 (Grade II+), **or** Grade I sustained over two consecutive 7-day windows → `followup_recommended`.
 - `BP-03` morning 7-day mean ≥135/85 while evening mean <135/85 (morning hypertension) → `watch`, noted in report.
 - `BP-04` morning − evening systolic ≥15 mmHg on 7-day means → `watch`, noted in report.
-- `BP-05` any occasion ≥180/110 with symptoms (headache, chest pain, dyspnoea, neuro signs) → `emergency`; without symptoms → re-measure after 5 min, if persistent → `followup_recommended` (urgent wording).
+- `BP-05` any occasion ≥180/110 → re-measure after 5 min; if persistent → `followup_recommended` (urgent wording).
 - Validity: discard a reading if systolic ≤ diastolic, systolic <70 or >260, pulse <30 or >200, or user marks "error".
 
 ---
@@ -148,8 +148,8 @@ Implementation notes:
 
 ## 5. Parkinson's pathway
 
-### 5.1 Screener (StrivePD-style + prodromal items)
-Items (yes/no, last 3 months): new shaking of a hand at rest; stiffness or slowness; clumsiness / smaller handwriting; softer voice; reduced sense of smell; acting out dreams / shouting in sleep; constipation; a fall or near-fall. Motor items = first four. `PD-01`: ≥2 motor items, or 1 motor + ≥1 non-motor → `watch` and schedule vowel + tapping tasks. This item list is a custom, unvalidated questionnaire (not Tanner 1990, Goetz/MDS-UPDRS or PD-NMS), the PD-01 cut-offs are unvalidated conventions, and "a fall or near-fall" is a late PD sign rather than an MDS prodromal marker; `app/ml/screener.py::SCREENER_NOTE` carries this caveat for the API and reports.
+### 5.1 Screener — removed
+The symptom questionnaire (StrivePD-style items) and rule `PD-01` were removed on 2026-10-18 (user decision: not needed). The pathway is driven by §5.2 passive mobility, §5.3 tapping and §5.4/§5.5 voice only.
 
 ### 5.2 Passive mobility (Apple Health)
 Metrics: walking speed, step length, double-support %, walking asymmetry, walking steadiness. Baseline = 30-day median/MAD, requires ≥14 days. `PD-02`: walking speed or step length ≥1.5 MAD below baseline on ≥5 of last 7 days, or double-support/asymmetry ≥1.5 MAD above → `watch`.
@@ -185,7 +185,7 @@ Sources: Giovannoni G, van Schalkwyk J, Fritz V, Lees A. Bradykinesia akinesia i
 - Features (serving, `app/ml/features/vowel.py` via `parselmouth`): F0 mean/max/min, jitter (local, abs, RAP, PPQ5, DDP), shimmer (local, dB, APQ3, APQ5, APQ11, DDA), NHR, HNR; RPDE, DFA, PPE, spread1/2, D2 reimplemented from the papers' definitions with a written note of differences from the original extraction.
 - Training (`ml_training/train_pd_vowel.py`): `datasets.load_dataset("csv")` → `GroupKFold` by subject (5 folds); within-fold feature selection + `CalibratedClassifierCV`; `xgboost` or `LogisticRegression` (report both); metrics: grouped-CV AUC with bootstrap CI, sensitivity at 80% specificity. `push_to_hub("hackthevalley/pd-vowel-experimental-v1")` with model card: 31 subjects, English speakers, sustained vowel only, no external validation, experimental.
 - Serving: median probability over the 3 repetitions; `recording_quality` gate (duration ≥3 s voiced, SNR ≥15 dB, no clipping) else `invalid_measurement`. Serving-feature caveat: the Praat/reimplemented features are unvalidated against the MDVP training features (spread2, D2 and NHR are on a different scale; no real-audio validation exists), and the dataset's 31 people map to 32 name-derived IDs used for grouping, so app probabilities are experimental, display-only values (`CALIBRATION_NOTE`, model-card "Serving caveat").
-- Rule `PD-03`: probability ≥ calibrated threshold on ≥2 sessions ≥7 days apart **and** at least one of PD-01/02/04 fired → `watch`. Voice alone never raises above `no_finding` with a note.
+- Rule `PD-03`: probability ≥ calibrated threshold on ≥2 sessions ≥7 days apart **and** at least one of PD-02/04 fired → `watch`. Voice alone never raises above `no_finding` with a note.
 
 ### 5.5 Personal voice stability — `PD-03B` (experimental, decided 2026-10-17)
 **What it is.** A within-person *change detector* on acoustic measures, not a classifier: it compares each new recording with the user's own baseline recordings and says whether the voice has shifted from its usual range. It is called "voice stability" on purpose: in UCI Parkinson's Telemonitoring (42 people with PD, 6 months at home, one device; `app/ml/data/voice_variability_floor.json`, `ml_training/telemonitoring_variability.md`) **within-person trends in every feature did not track UPDRS** (within-subject Spearman ≈ 0, no feature with a consistent sign in ≥70 % of subjects), so PD-03B cannot claim progression detection, and the user-facing text says so.
@@ -204,7 +204,7 @@ Display-only, never scored: `MDVP:Jitter(%)`, `HNR`, `MDVP:Fo(Hz)`, and the v1 `
 
 **Statistics.** Per feature: median and scaled MAD (×1.4826) over the baseline (`app/ml/baseline.robust_center_scale`), with the scale floored at `rel_mad_median × |median|` from `voice_variability_floor.json` (UCI Telemonitoring within-person relative MAD: Shimmer 0.34, NHR 0.57, …; built-in placeholders when the file is absent: Shimmer 0.25, NHR 0.35, CPPS 0.08, speech rate 0.10, pause ratio 0.25) so a tiny baseline MAD cannot trigger. A session is **adverse** when it deviates in the PD direction by ≥ K × scale (K per feature from the table above, `VOICE_K_BY_FEATURE`). A feature is **shifted** when ≥3 of the last 5 valid sessions of its series are adverse; the recent window may overlap the baseline tail while fewer than 15 sessions exist (robust statistics tolerate ≤3 shifted baseline sessions), which is why 12 sessions suffice.
 
-**Fire condition.** ≥2 of the 5 trend features shifted (vowel and story features on their own session series). Alone → `not_fired` with evidence, the i18n message (`app/content/voice_stability.json`, surfaced as `data_quality.informational[].message`) and `display_only=true`. With PD-01 / PD-02 / PD-04 fired in the same evaluation → `fired`, `watch`, summary "Voice measurements have shifted from your usual range alongside another finding — a change worth checking". Never `followup_recommended`.
+**Fire condition.** ≥2 of the 5 trend features shifted (vowel and story features on their own session series). Alone → `not_fired` with evidence, the i18n message (`app/content/voice_stability.json`, surfaced as `data_quality.informational[].message`) and `display_only=true`. With PD-02 / PD-04 fired in the same evaluation → `fired`, `watch`, summary "Voice measurements have shifted from your usual range alongside another finding — a change worth checking". Never `followup_recommended`.
 
 **Expected false-alert rate.** With no true change, at K=3 a single telemonitoring feature trips ~6–9 % of recordings and a "2-of-3 features" window ~2–3 % per evaluation (`alert_rates` in the JSON: Shimmer 2.4 %, NHR 3.1 %); the 2-of-5-features / 3-of-5-sessions rule here is expected at or below that (~≤3 % per evaluation; the CPPS / speech placeholders are uncalibrated). The rule exposes the per-feature rates in `data.no_change_alert_rates` and the report prints them next to each shifted measure.
 
@@ -219,18 +219,13 @@ Sources: Skodda 2013 (PMC3872441, longitudinal voice change in PD — shimmer / 
 
 ---
 
-## 7. Emergency path
-`EMG-01` red-flag symptom extracted from chat or daily log: chest pain/pressure, sudden face droop / arm weakness / speech difficulty, fainting, severe sudden headache, suicidal ideation. `EMG-02` = BP-05. Action: immediate emergency guidance in the reply (Canada: call 911; if unsure, the 811 nurse line — Health Link / Health811; for suicidal ideation 9-8-8, call or text), notify emergency contact if consented, create `RiskAssessment(level=emergency)`; **no booking agent**.
-
----
-
 ## 8. Rule engine contract
 ```
 Rule = {id, pathway, version, inputs: [field names], condition(ctx) -> bool,
         level, rationale, sources: [ResearchSource ids], review_status}
 evaluate(user) -> for each pathway: {level, fired: [rule ids], insufficient: [inputs], evidence: [...]}
 ```
-Level per pathway = max over fired rules by order `no_finding < watch < followup_recommended < emergency`; `insufficient_data` and `invalid_measurement` are reported alongside, and are the level when nothing fired and a **gate** rule's inputs are missing/invalid (cardio `BP-00`/`RHY-02`, cognitive `COG-01`, general `GEN-01`; Parkinson's only when no screener, mobility, tapping or voice input is usable) — other rules' missing inputs are listed in `data_quality.missing_optional_inputs` and do not change the level.
+Level per pathway = max over fired rules by order `no_finding < watch < followup_recommended`; `insufficient_data` and `invalid_measurement` are reported alongside, and are the level when nothing fired and a **gate** rule's inputs are missing/invalid (cardio `BP-00`/`RHY-02`, cognitive `COG-01`, general `GEN-01`; Parkinson's only when no mobility, tapping or voice input is usable) — other rules' missing inputs are listed in `data_quality.missing_optional_inputs` and do not change the level.
 
 Tests (pytest): for every rule, three synthetic cases (fires / does not fire / insufficient). Replay harness over the seeded demo user must produce `[BP-02, RHY-01] → followup_recommended`.
 
@@ -248,7 +243,7 @@ Every assessment run writes, per pathway:
 3. **Data quality and missing inputs** — `recording_quality`, `valid` flags, `missing_inputs[]`, `baseline_n_days`.
 4. **Rule that suggested follow-up** — `fired_rules[]` with rule version.
 5. **Supporting observations and references** — `evidence[]` (row ids) and `sources[]` (ResearchSource ids).
-The user-facing level and the booking trigger come only from (4). Items (1)–(3) are displayed with their own meaning; (5) is used by the report and the RAG explanation. The emergency and insufficient-data paths (sections 7, 8) must be implemented and tested **before** the booking agent is connected to `followup_recommended`.
+The user-facing level and the booking trigger come only from (4). Items (1)–(3) are displayed with their own meaning; (5) is used by the report and the RAG explanation. The insufficient-data path (section 8) must be implemented and tested **before** the booking agent is connected to `followup_recommended`.
 
 ---
 
@@ -263,10 +258,9 @@ Deterministic, from the rule engine output only.
 | `no_finding` | 0 | +5 per rule that fired at `watch` level in the previous 30 days but has since cleared (shows "recently resolved") → max 15 |
 | `watch` | 25 | +10 per additional `watch` rule fired; +10 if the same rule fired in ≥2 consecutive weekly windows; max 55 |
 | `followup_recommended` | 60 | +10 per additional `followup_recommended` rule; +10 if any `watch` rule also fired; +5 if persistent ≥2 windows; max 85 |
-| `emergency` | 100 | — (UI shows emergency guidance, no gauge) |
 | `insufficient_data` / `invalid_measurement` | null | UI shows "—" with "N more days of X needed" / "re-record" |
 
-Examples: BP-02 alone → 60. BP-02 + RHY-01 → 70. BP-02 + RHY-01 + BP-04 (watch) → 80. PD-01 alone → 25; PD-01 + PD-02 → 35; PD-01 + PD-02 persistent → 45.
+Examples: BP-02 alone → 60. BP-02 + RHY-01 → 70. BP-02 + RHY-01 + BP-04 (watch) → 80. PD-04 alone → 25; PD-04 + PD-02 → 35; PD-04 + PD-02 persistent → 45.
 
 Booking trigger is unchanged: `followup_recommended` level (score ≥60 by construction), after consent check. The score never triggers anything by itself.
 
@@ -315,4 +309,4 @@ Per pathway, the card lists 2–4 measures tied to the fired rules' modifiable i
   "disclaimer": "This is not a diagnosis. The priority score reflects which follow-up rules fired, not the chance that you have a condition."
 }
 ```
-UI rules: gauge colour by level (grey / amber / red / emergency banner); the `score_label` text is always rendered under the number; `probabilities[]` render in their own labelled block with the source; `insufficient_data` renders a progress indicator ("3 of 5 BP days recorded") instead of a number.
+UI rules: gauge colour by level (grey / amber / red); the `score_label` text is always rendered under the number; `probabilities[]` render in their own labelled block with the source; `insufficient_data` renders a progress indicator ("3 of 5 BP days recorded") instead of a number.

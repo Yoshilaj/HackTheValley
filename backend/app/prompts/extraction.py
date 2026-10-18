@@ -1,7 +1,6 @@
 """Chat → Observation extraction (BACKEND_PLAN C2: "user types/speaks → health tracking data").
 
-Run on every user turn with the cheap model. Red flags are NOT extracted here: they are
-detected deterministically by ``app.services.guardrails`` before any LLM call.
+Run on every user turn with the cheap model.
 """
 
 from __future__ import annotations
@@ -44,8 +43,6 @@ lost, repeating questions, missed appointments, trouble managing money or medica
 - free_text: the user's own words for this item (short quote, original language)
 For medication items put the drug name and dose in free_text (Canadian generic or brand names are \
 fine, e.g. "ramipril 5 mg", "Tylenol"). Do not infer diagnoses.
-Do not extract emergency red flags (chest pain, stroke signs, fainting, thoughts of suicide): \
-they are detected separately and answered with 911 / 9-8-8 guidance.
 
 Vocabulary:
 {vocabulary}"""

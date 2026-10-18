@@ -1,4 +1,4 @@
-"""Content banks: story-recall stories (§1.1), 3-word recall sets (§1.4), PD screener (§5.1).
+"""Content banks: story-recall stories (§1.1), 3-word recall sets (§1.4).
 
 All files are validated on first load; a malformed bank raises
 :class:`ContentError` instead of serving a bad stimulus.
@@ -31,13 +31,11 @@ __all__ = [
     "ContentError",
     "Story",
     "WordSet",
-    "Screener",
     "get_story",
     "get_story_by_id",
     "list_stories",
     "get_word_set",
     "get_word_set_by_id",
-    "get_screener",
     "get_voice_stability_text",
     "count_en_words",
     "count_ja_chars",
@@ -108,25 +106,6 @@ class WordSet:
     words: tuple[str, ...]
     variants: dict[str, list[str]] = field(default_factory=dict)
 
-
-@dataclass(frozen=True)
-class Screener:
-    id: str
-    version: str
-    period: dict[str, str]
-    items: tuple[dict[str, Any], ...]
-
-    def for_language(self, language: str) -> list[dict[str, Any]]:
-        lang = _lang(language)
-        return [{"id": i["id"], "type": i["type"], "text": i["text"][lang]} for i in self.items]
-
-    @property
-    def motor_ids(self) -> list[str]:
-        return [i["id"] for i in self.items if i["type"] == "motor"]
-
-    @property
-    def nonmotor_ids(self) -> list[str]:
-        return [i["id"] for i in self.items if i["type"] == "nonmotor"]
 
 
 def _lang(language: str) -> str:
@@ -253,29 +232,6 @@ def get_word_set_by_id(set_id: str, language: str) -> WordSet:
             return WordSet(id=s["id"], language=lang, words=tuple(s[lang]), variants=dict(s.get("variants", {}).get(lang, {})))
     raise ContentError(f"unknown word set {set_id!r}")
 
-
-SCREENER_PD_IDS = (
-    "tremor_rest", "stiffness_slowness", "clumsiness_handwriting", "soft_voice",
-    "smell_loss", "dream_enactment", "constipation", "falls",
-)
-
-
-@lru_cache(maxsize=None)
-def get_screener(name: str = "pd") -> Screener:
-    """Load a screener (only ``'pd'``, §5.1)."""
-    if name != "pd":
-        raise ContentError(f"unknown screener {name!r}")
-    doc = _read(CONTENT_DIR / "screener_pd.json")
-    items = doc.get("items", [])
-    ids = tuple(i.get("id") for i in items)
-    if ids != SCREENER_PD_IDS:
-        raise ContentError(f"screener_pd item ids {ids} != {SCREENER_PD_IDS}")
-    for i in items:
-        if i.get("type") not in {"motor", "nonmotor"} or not all(i.get("text", {}).get(l) for l in LANGUAGES):
-            raise ContentError(f"screener item {i.get('id')} malformed")
-    if [i["id"] for i in items if i["type"] == "motor"] != list(SCREENER_PD_IDS[:4]):
-        raise ContentError("§5.1: motor items must be the first four")
-    return Screener(id="pd", version=doc.get("version", ""), period=doc.get("period", {}), items=tuple(items))
 
 
 VOICE_STABILITY_KEYS = ("message", "fired_summary", "report_limitation", "baseline_note", "device_change_note")

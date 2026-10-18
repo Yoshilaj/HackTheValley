@@ -9,7 +9,6 @@ by ``level == followup_recommended`` (score ≥60 by construction).
 | no_finding           | 0    | +5 per watch rule fired in last 30 days, now cleared; ≤15 |
 | watch                | 25   | +10 per extra watch rule; +10 if persistent ≥2 windows; ≤55 |
 | followup_recommended | 60   | +10 per extra follow-up rule; +10 if any watch rule also fired; +5 if persistent; ≤85 |
-| emergency            | 100  | —                                                          |
 | insufficient/invalid | None | UI shows "—"                                              |
 """
 from __future__ import annotations
@@ -36,7 +35,6 @@ NO_FINDING_BASE, NO_FINDING_PER_RESOLVED, NO_FINDING_MAX = 0, 5, 15
 RESOLVED_LOOKBACK = timedelta(days=30)
 WATCH_BASE, WATCH_PER_EXTRA, WATCH_PERSIST, WATCH_MAX = 25, 10, 10, 55
 FU_BASE, FU_PER_EXTRA, FU_WITH_WATCH, FU_PERSIST, FU_MAX = 60, 10, 10, 5, 85
-EMERGENCY_SCORE = 100
 PERSISTENT_WINDOWS = 2
 
 
@@ -63,8 +61,6 @@ def _recently_resolved(result: PathwayResult, priors: Iterable[PriorAssessment])
 def priority_score(result: PathwayResult, prior_assessments: Iterable[PriorAssessment] = ()) -> int | None:
     """Follow-up priority 0–100 per spec §11.1, or ``None`` for insufficient/invalid."""
     level = result.level
-    if level == "emergency":
-        return EMERGENCY_SCORE
     if level in ("insufficient_data", "invalid_measurement"):
         return None
     levels = [f.level for f in result.fired_rules]
@@ -93,9 +89,6 @@ def headline_for(result: PathwayResult) -> dict[str, str]:
     """Short, neutral headline per level (JA and EN). Never names a disease."""
     level = result.level
     n = len(result.fired_rules)
-    if level == "emergency":
-        return {"en": "Please get urgent help now — follow the emergency guidance below",
-                "ja": "すぐに助けを求めてください。下の緊急時の案内に従ってください"}
     if level == "followup_recommended":
         n_fu = sum(1 for f in result.fired_rules if f.level == "followup_recommended") or 1
         lead = _COUNT_EN.get(n_fu, f"{n_fu} findings suggest")

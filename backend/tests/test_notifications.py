@@ -1,6 +1,5 @@
 import uuid
 
-import pytest
 from sqlalchemy import select
 
 from app.core.auth import create_access_token
@@ -63,60 +62,6 @@ def test_notify_email_revoked_consent(db):
     db.commit()
     svc.notify(db, user.id, svc.KIND_IMPORT_FINISHED, "t", "b", email=True, email_provider=fake)
     assert fake.outbox == []
-
-
-# ---------------------------------------------------------------- emergency
-
-def test_notify_emergency_with_contact_consent(db):
-    fake = FakeEmail()
-    user = make_user(db, consents=("data_processing", "emergency_contact"))
-    row = svc.notify_emergency(db, user, "EMG-01: chest pain", email_provider=fake)
-    assert row.kind == "emergency"
-    assert "911" in row.title and "911" in row.body and "811" in row.body and "9-8-8" in row.body
-    assert row.payload["emergency_number"] == "911"
-    assert row.payload["contact_email"]["sent"] is True
-    recipients = [m.to[0] for m in fake.outbox]
-    assert "contact@example.com" in recipients and user.email in recipients
-    contact_msg = next(m for m in fake.outbox if m.to == ["contact@example.com"])
-    assert "EMG-01" in contact_msg.text
-
-
-def test_notify_emergency_without_contact_consent(db):
-    fake = FakeEmail()
-    user = make_user(db, consents=("data_processing",))
-    row = svc.notify_emergency(db, user, {"summary": "BP-05", "fired_rules": ["BP-05"]}, email_provider=fake)
-    assert row.payload["contact_email"] == {"sent": False, "reason": "no_consent"}
-    assert all(m.to != ["contact@example.com"] for m in fake.outbox)
-    assert row.payload["summary"] == "BP-05"
-
-
-def test_notify_emergency_no_contact_email(db):
-    fake = FakeEmail()
-    user = make_user(db, consents=("emergency_contact",), contact_email=None)
-    row = svc.notify_emergency(db, user, None, email_provider=fake)
-    assert row.payload["contact_email"]["reason"] == "no_contact_email"
-    assert fake.outbox == []  # no data_processing consent either -> user not emailed
-
-
-def test_notify_emergency_english_local_number(db):
-    fake = FakeEmail()
-    user = make_user(db, consents=(), language="en", timezone="America/Toronto")
-    row = svc.notify_emergency(db, user, "x", email_provider=fake)
-    assert "911" in row.title and row.body.startswith("If you have chest pain")
-
-
-@pytest.mark.parametrize("tz,lang", [
-    ("America/Toronto", "en"), ("America/Vancouver", "en"), ("America/Halifax", "en"), (None, None),
-    ("Asia/Tokyo", "ja"),  # Canada-only product: always settings.emergency_number
-])
-def test_emergency_number(tz, lang):
-    assert svc.emergency_number(tz, lang) == "911"
-
-
-def test_notify_emergency_japanese_language_keeps_canadian_numbers(db):
-    user = make_user(db, consents=(), language="ja")
-    row = svc.notify_emergency(db, user, "x", email_provider=FakeEmail())
-    assert "911" in row.title and "811" in row.body and "#7119" not in row.body
 
 
 # ---------------------------------------------------------------- service queries

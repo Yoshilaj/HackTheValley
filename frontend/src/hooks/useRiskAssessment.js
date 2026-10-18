@@ -39,7 +39,6 @@ const FINDINGS = {
   no_finding: ["No findings", "Low"],
   watch: ["Keep an eye on", "Moderate"],
   followup_recommended: ["Follow-up recommended", "High"],
-  emergency: ["Urgent", "High"],
 };
 
 // Canadian Cardiovascular Society bands for 10-year Framingham risk: low under 10 %, high from 20 %.

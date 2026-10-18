@@ -126,7 +126,7 @@ export function getRiskCards() {
 }
 
 // ---- Chat, stored per user as separate conversations.
-// sendChat -> { answer, sources: [{ n, title, url, ... }], red_flags, conversation_id }.
+// sendChat -> { answer, sources: [{ n, title, url, ... }], conversation_id }.
 // Pass the conversation's server id to continue it, or newConversation to start
 // one (the reply carries its new id). The backend takes text only; attachments
 // stay on this device.
@@ -300,22 +300,13 @@ export function getRhythmResults() {
 
 // ---- Daily check-in (one row per day; a second save on the same day updates it).
 // Scales are 1-5; flags are the backend's check-in vocabulary (see CheckInPage).
-// Returns the row plus the observations it raised and emergency guidance for red flags.
+// Returns the row plus the observations it raised.
 export function getDailyLogs(days = 30) {
   return request(`/api/logs/daily?days=${days}`);
 }
 
 export function saveDailyLog(body) {
   return post("/api/logs/daily", body);
-}
-
-// ---- Parkinson's screener (spec §5.1): the items (with their ids) and a yes/no answer per id.
-export function getPdScreener() {
-  return request("/api/screener/pd?language=en");
-}
-
-export function submitPdScreener(answers) {
-  return post("/api/screener/pd", { answers });
 }
 
 // ---- Finger-tapping task (spec §5.3, keyboard protocol): 30 s per hand of

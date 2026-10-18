@@ -69,8 +69,6 @@ class Settings(BaseSettings):
 
     # Region (Canada-only for now)
     default_country: str = "CA"
-    emergency_number: str = "911"
-    health_line_number: str = "811"
 
     # Booking agent v2 (docs/specs/booking-v2.md)
     # sandbox = every outbound booking (email, call, website) goes to the SANDBOX_* targets the
@@ -103,8 +101,6 @@ class Settings(BaseSettings):
     # Delay (ms) after every browser action so people can follow along; 0 = full speed. The hard
     # timeout grows with it automatically (60 s + fields x slow_mo x 4, capped at 5 min).
     web_booking_slow_mo_ms: int = 0
-    # Canadian Suicide Crisis Helpline (call or text, 24/7), used in crisis guidance text.
-    crisis_line_number: str = "9-8-8"
 
     # Provider switches ("fake" = deterministic offline implementations for tests/dev)
     embedding_provider: Literal["local", "voyage", "fake"] = "fake"

@@ -122,8 +122,6 @@ def _preventive(a: RiskAssessment, lang: str) -> list[dict[str, Any]]:
 
 
 def _next_action(db: Session, a: RiskAssessment) -> dict[str, Any]:
-    if a.level == "emergency":
-        return {"type": "emergency_guidance"}
     appt = db.scalar(
         select(Appointment).join(RiskAssessment, Appointment.assessment_id == RiskAssessment.id)
         .where(Appointment.user_id == a.user_id, RiskAssessment.pathway == a.pathway,

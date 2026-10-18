@@ -6,9 +6,8 @@ import { USE_BACKEND, getDailyLogs, logMetric, saveDailyLog } from "../api/clien
 // Daily check-in: how you slept, how tired you are, and anything you noticed.
 // Saved to the backend's daily log (POST /api/logs/daily), where fatigue feeds
 // the general-wellbeing rule (GEN-01), the ticked changes become observations
-// the cognitive rule (COG-03) reads, and the emergency symptoms take the
-// red-flag path (EMG-01). Hours slept are stored as a sleep metric (the same
-// series an Apple Watch export fills), the other half of GEN-01.
+// the cognitive rule (COG-03) reads. Hours slept are stored as a sleep metric
+// (the same series an Apple Watch export fills), the other half of GEN-01.
 //
 // The flag ids are the backend's own vocabulary (ingest_service.FLAG_OBSERVATIONS).
 
@@ -45,21 +44,6 @@ const FLAG_GROUPS = [
       ["tremor", "Shaking or tremor"],
       ["stiffness", "Stiffness or slowness"],
       ["headache", "Headache"],
-    ],
-  },
-  {
-    id: "urgent",
-    title: "Warning signs",
-    hint: "If any of these are happening now, call 911. Ticking them here also tells CareSync.",
-    flags: [
-      ["chest_pain", "Chest pain"],
-      ["chest_discomfort", "Chest pressure or tightness"],
-      ["face_droop", "Face drooping on one side"],
-      ["arm_weakness", "Weakness in an arm or leg"],
-      ["speech_disturbance", "Trouble speaking or slurred speech"],
-      ["vision_disturbance", "Sudden loss of vision"],
-      ["fainting", "Fainted or nearly fainted"],
-      ["severe_sudden_headache", "Sudden, very severe headache"],
     ],
   },
 ];
@@ -278,11 +262,6 @@ export default function CheckInPage() {
                 <h2>Saved for {result.date}</h2>
                 <em className="badge normal">Saved</em>
               </div>
-              {result.emergency_guidance && (
-                <p className="checkin-urgent" role="alert">
-                  {result.emergency_guidance}
-                </p>
-              )}
               {result.observations?.length ? (
                 <>
                   <p className="field-hint">Noted for your next assessment:</p>

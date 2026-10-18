@@ -39,7 +39,7 @@ from app.db.models import (
     AssessmentTask, BpReading, DeviceRhythmResult, MetricSample, Observation, Report,
     ResearchSource, RiskAssessment, User,
 )
-from app.ml.rules import BP_SYMPTOM_LABELS, COG03_EXCLUDED_LABELS, FUNCTIONAL_CHANGE_LABELS
+from app.ml.rules import COG03_EXCLUDED_LABELS, FUNCTIONAL_CHANGE_LABELS
 from app.prompts.report import FORBIDDEN_PHRASES, system_prompt
 
 log = get_logger(__name__)
@@ -493,8 +493,9 @@ def _references(db: Session, assessment: RiskAssessment, probabilities: list[dic
 
 # ---------------------------------------------------------------- patient context filter (review fix 6)
 
-_CARDIO_OBS_LABELS = frozenset(BP_SYMPTOM_LABELS | {
-    "palpitations", "dizziness", "breathlessness", "chest_pain", "chest_pressure", "chest_discomfort"})
+_CARDIO_OBS_LABELS = frozenset({
+    "palpitations", "dizziness", "breathlessness", "dyspnoea", "dyspnea", "shortness_of_breath", "headache",
+    "chest_pain", "chest_pressure", "chest_discomfort"})
 # memory_lapse / confusion no longer trigger COG-03, but they still belong in the doctor's cognitive context.
 _COGNITIVE_OBS_LABELS = frozenset(FUNCTIONAL_CHANGE_LABELS | COG03_EXCLUDED_LABELS | {
     "functional_change_reported", "forgetfulness", "memory_problems", "word_finding_difficulty"})
@@ -503,7 +504,7 @@ _PD_OBS_LABELS = frozenset({
     "shuffling_gait", "freezing", "small_handwriting", "soft_voice", "voice_change", "loss_of_smell", "anosmia",
     "constipation", "acting_out_dreams", "rem_sleep_behaviour", "dizziness_on_standing"})
 _GENERAL_OBS_WORDS = ("sleep", "insomnia", "fatigue", "tired", "mood", "stress", "low_energy")
-#: never in a clinic report (too sensitive / handled by the emergency path)
+#: never in a clinic report (too sensitive)
 _EXCLUDED_OBS_LABELS = frozenset({"suicidal_ideation"})
 REPORT_FREE_TEXT_MAX = 200
 
@@ -529,8 +530,8 @@ def observation_relevant(pathway: str, o: Observation) -> bool:
 
 
 def _obs_details(o: Observation) -> str | None:
-    if o.kind == "red_flag" or not o.free_text:
-        return None  # red-flag free text (often a verbatim chat message) is never shared
+    if not o.free_text:
+        return None
     text = " ".join(o.free_text.split())
     return text if len(text) <= REPORT_FREE_TEXT_MAX else text[:REPORT_FREE_TEXT_MAX - 1] + "…"
 

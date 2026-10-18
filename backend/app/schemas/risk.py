@@ -1,4 +1,4 @@
-"""Risk assessment + screener request/response models (spec phase-a §5.1, §10, §11)."""
+"""Risk assessment request/response models (spec phase-a §10, §11)."""
 from datetime import datetime
 from typing import Any
 
@@ -38,33 +38,3 @@ class RiskRunOut(BaseModel):
     trigger: str
     assessments: list[RiskAssessmentOut]
 
-
-class ScreenerItemOut(BaseModel):
-    id: str
-    type: str
-    text: str
-
-
-class ScreenerOut(BaseModel):
-    id: str
-    version: str
-    language: str
-    period: str
-    response_type: str = "yes_no"
-    items: list[ScreenerItemOut]
-
-
-class ScreenerAnswersIn(BaseModel):
-    answers: dict[str, bool] = Field(..., description="item id (content-bank id; legacy pd_* ids accepted) → yes/no")
-
-
-class ScreenerResultOut(BaseModel):
-    id: str
-    screener: str
-    score: float
-    motor_count: int
-    nonmotor_count: int
-    pd01_would_fire: bool
-    next_tasks: list[str] = Field(default_factory=list)
-    validation_note: str = Field("", description="unvalidated custom questionnaire caveat (app.ml.screener.SCREENER_NOTE)")
-    created_at: datetime

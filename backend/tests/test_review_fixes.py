@@ -36,67 +36,6 @@ def _notes(db, user, kind=None):
 
 # ---------------------------------------------------------------- 1 + 3 + 8: daily log / observations
 
-def test_daily_log_red_flag_flag_gets_emergency_path_and_assessment(client, db):
-    user = make_user(db)
-    h = headers_for(user)
-    res = client.post("/api/logs/daily", headers=h, json={"date": TODAY, "flags": {"chest_pain": True}})
-    assert res.status_code == 200, res.text
-    body = res.json()
-    assert body["emergency_guidance"] and "911" in body["emergency_guidance"]  # Canada
-    assert "119" not in body["emergency_guidance"]
-    assert [n.kind for n in _notes(db, user, "emergency")] == ["emergency"]
-    # fix 3: the dashboard reflects the emergency immediately
-    general = db.scalar(select(RiskAssessment).where(RiskAssessment.user_id == user.id,
-                                                     RiskAssessment.pathway == "general"))
-    assert general is not None and general.level == "emergency"
-    assert general.data_quality["trigger"] == "event"
-
-
-def test_daily_log_red_flag_in_notes_and_repost_keeps_timestamp(client, db):
-    user = make_user(db)
-    h = headers_for(user)
-    res = client.post("/api/logs/daily", headers=h, json={"date": TODAY, "notes": "crushing chest pain since noon"})
-    assert res.status_code == 200 and res.json()["emergency_guidance"]
-    obs = [o for o in res.json()["observations"] if o["kind"] == "red_flag"]
-    assert [o["label"] for o in obs] == ["chest_pain"]
-    first = db.get(Observation, obs[0]["id"])
-    created = first.created_at
-    # fix 8: re-posting does not refresh the observation (EMG-01 24 h window not extended) …
-    again = client.post("/api/logs/daily", headers=h, json={"date": TODAY, "flags": {"chest_pain": True}, "mood": 3})
-    assert again.status_code == 200
-    db.expire_all()
-    row = db.get(Observation, obs[0]["id"])
-    assert row is not None and row.created_at == created
-    # … and fix 2: the same observation id is not notified twice within 24 h
-    assert len(_notes(db, user, "emergency")) == 1
-    # a flag that becomes false removes only its observation
-    off = client.post("/api/logs/daily", headers=h, json={"date": TODAY, "flags": {"chest_pain": False, "tremor": True}})
-    assert {o["label"] for o in off.json()["observations"]} == {"tremor"}
-    assert off.json()["emergency_guidance"] is None
-
-
-def test_daily_log_without_red_flag_has_null_guidance(client, db):
-    user = make_user(db)
-    res = client.post("/api/logs/daily", headers=headers_for(user), json={"date": TODAY, "flags": {"headache": True}})
-    assert res.status_code == 200 and res.json()["emergency_guidance"] is None
-    assert _notes(db, user, "emergency") == []
-
-
-def test_observation_post_red_flag(client, db):
-    user = make_user(db)
-    h = headers_for(user)
-    res = client.post("/api/observations", headers=h, json={"kind": "red_flag", "label": "fainting"})
-    assert res.status_code == 201 and res.json()["emergency_guidance"]
-    res2 = client.post("/api/observations", headers=h,
-                       json={"kind": "symptom", "label": "dizzy", "free_text": "I fainted in the kitchen"})
-    assert res2.status_code == 201 and res2.json()["emergency_guidance"]
-    db.expire_all()
-    extra = db.scalars(select(Observation).where(Observation.user_id == user.id, Observation.kind == "red_flag",
-                                                 Observation.source_id == res2.json()["id"])).all()
-    assert [o.label for o in extra] == ["fainting"]
-    plain = client.post("/api/observations", headers=h, json={"kind": "symptom", "label": "headache"})
-    assert plain.status_code == 201 and plain.json()["emergency_guidance"] is None
-
 
 def test_checkin_later_submission_keeps_earlier_observation(db):
     user = make_user(db)
@@ -108,42 +47,6 @@ def test_checkin_later_submission_keeps_earlier_observation(db):
     assert res2["daily_log"].flags == {"palpitations": True}
     db.expire_all()
     assert db.get(Observation, oid).created_at == created
-
-
-# ---------------------------------------------------------------- 2 + 10: emergency notification throttle
-
-def test_emergency_notified_once_until_new_red_flag(db):
-    u = make_user(db, consents=("data_processing",))
-    db.add(Observation(user_id=u.id, kind="red_flag", label="chest_pain",
-                       created_at=datetime.now(timezone.utc) - timedelta(hours=1)))
-    db.commit()
-    rs.assess_user(db, u)
-    rs.assess_user(db, u)
-    rows = _notes(db, u, "emergency")
-    assert len(rows) == 1 and rows[0].payload["observation_ids"]
-    db.add(Observation(user_id=u.id, kind="red_flag", label="fainting"))
-    db.commit()
-    rs.assess_user(db, u)
-    assert len(_notes(db, u, "emergency")) == 2
-
-
-def test_assess_user_commit_false_does_not_commit_emergency(db):
-    u = make_user(db, consents=("data_processing",))
-    db.add(Observation(user_id=u.id, kind="red_flag", label="chest_pain"))
-    db.commit()
-    rows = rs.assess_user(db, u, commit=False)
-    assert any(r.level == "emergency" for r in rows)
-    db.rollback()
-    assert _notes(db, u, "emergency") == []
-
-
-def test_chat_emergency_creates_assessment_and_single_notification(client, db):
-    user = make_user(db)
-    res = client.post("/api/chat", headers=headers_for(user), json={"message": "I have crushing chest pain"})
-    assert res.status_code == 200 and res.json()["assessment_hint"] == "emergency"
-    assert len(_notes(db, user, "emergency")) == 1
-    assert db.scalar(select(RiskAssessment.level).where(RiskAssessment.user_id == user.id,
-                                                        RiskAssessment.pathway == "general")) == "emergency"
 
 
 # ---------------------------------------------------------------- 4: reminder after consent revoke
@@ -201,8 +104,8 @@ def test_report_context_filtered_by_pathway_and_truncated(db):
     now = datetime.now(timezone.utc) - timedelta(hours=1)
     db.add_all([
         Observation(user_id=user.id, kind="functional_change", label="getting_lost", free_text="got lost", created_at=now),
-        Observation(user_id=user.id, kind="red_flag", label="suicidal_ideation", free_text="private", created_at=now),
-        Observation(user_id=user.id, kind="red_flag", label="chest_pain", free_text="verbatim chat", created_at=now),
+        Observation(user_id=user.id, kind="mood", label="suicidal_ideation", free_text="private", created_at=now),
+        Observation(user_id=user.id, kind="symptom", label="chest_pain", created_at=now),
         Observation(user_id=user.id, kind="symptom", label="dizziness", free_text="x" * 400, created_at=now),
     ])
     db.commit()

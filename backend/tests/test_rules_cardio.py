@@ -92,7 +92,7 @@ def test_bp04_insufficient():
     assert run_rule("BP-04", C(bp_readings=bp_days(7, None, (120, 75)))).status == "insufficient"
 
 
-# BP-05 / EMG-02 --------------------------------------------------------------
+# BP-05 ----------------------------------------------------------------------
 def severe(minutes_after=None, second=(185, 112)):
     t0 = AS_OF - timedelta(hours=2)
     rs = [BpReadingIn(t0, "evening", 188, 114, 80, False, True, id="r0"),
@@ -102,21 +102,18 @@ def severe(minutes_after=None, second=(185, 112)):
     return rs
 
 
-def test_bp05_symptomatic_is_emergency_and_emg02_fires():
-    c = C(bp_readings=severe(), observations=[obs(1, "headache")])
-    o = run_rule("BP-05", c)
-    assert o.fired and o.level == "emergency"
-    assert run_rule("EMG-02", c).fired
-
-
-def test_bp05_asymptomatic_persistent_is_urgent_followup():
+def test_bp05_persistent_is_urgent_followup():
     c = C(bp_readings=severe(minutes_after=6))
     o = run_rule("BP-05", c)
     assert o.fired and o.level == "followup_recommended" and o.data["urgent"]
-    assert run_rule("EMG-02", c).status == "not_fired"
 
 
-def test_bp05_asymptomatic_not_remeasured_asks_remeasure():
+def test_bp05_symptoms_do_not_change_the_level():
+    c = C(bp_readings=severe(), observations=[obs(1, "headache"), obs(1, "chest_pain")])
+    assert run_rule("BP-05", c).status == "insufficient"  # symptoms no longer escalate; re-measure decides
+
+
+def test_bp05_not_remeasured_asks_remeasure():
     o = run_rule("BP-05", C(bp_readings=severe()))
     assert o.status == "insufficient" and o.missing_inputs == ["bp_remeasure_after_5min"] and o.note
 
@@ -175,7 +172,7 @@ def test_bp05_not_fired_normal_or_invalid_or_old():
     invalid = [BpReadingIn(AS_OF - timedelta(hours=1), "evening", 270, 120, 80, False, True)]
     assert run_rule("BP-05", C(bp_readings=invalid, observations=[obs(1, "headache")])).status == "not_fired"
     old = [BpReadingIn(at(3, 7), "morning", 190, 115, 80, False, True)]
-    assert run_rule("EMG-02", C(bp_readings=old, observations=[obs(1, "chest_pain")])).status == "not_fired"
+    assert run_rule("BP-05", C(bp_readings=old)).status == "not_fired"
 
 
 # FRS-01 (Canada) ---------------------------------------------------------------

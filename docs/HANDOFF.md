@@ -16,7 +16,7 @@ SCHEDULER_TIMEZONE=America/Toronto
 `backend/data/dev.db` was rebuilt from scratch with the `-Q` model. With the non-quantized model in
 `.env` the server would embed queries with a different provider name than the corpus was built with
 (and re-ingest on the next `ingest_corpus` run). New settings to know about are all in
-`backend/.env.example` with one-line comments (`WEB_BOOKING_LOW_MEMORY`, `CRISIS_LINE_NUMBER`,
+`backend/.env.example` with one-line comments (`WEB_BOOKING_LOW_MEMORY`,
 `LOCAL_EMBED_*`, `BOOKING_*`, `SANDBOX_CLINIC_*`, `TWILIO_*`, `ELEVENLABS_AGENT_*`, `RESEND_WEBHOOK_SECRET`).
 
 ## What exists now
@@ -37,7 +37,7 @@ SCHEDULER_TIMEZONE=America/Toronto
   The answer step is checked by `scripts/eval_answers.py` (real Gemini answer + Gemini judge, two
   calls per question; 2026-10-17: 90% of answers fully supported by their excerpts, 96% correct
   citations, 18/18 unanswerable questions say the library does not cover them).
-- **Region:** Canada only, English only. 911 / Health811 (811) / 9-8-8 (`CRISIS_LINE_NUMBER`);
+- **Region:** Canada only, English only.
   Framingham (CCS) as the long-term cardio context; America/Toronto.
 - **Booking agent v2:** Places discovery near the user → slots (calendar ∩ opening hours) → channel
   detection (web form / e-mail / phone) → **one user approval** → web (Playwright) → e-mail (Resend,
@@ -158,9 +158,6 @@ scripts.ingest_corpus --provider local`) instead of on the 512 MB box. Nothing h
   With `RERANKER=identity` (Render default) there is no relevance floor.
 - **Vowel model is weak:** pooled out-of-fold AUC 0.74, 95% CI 0.53–0.91 (32 subjects, of whom 8 are healthy). It is experimental and
   can never raise a level on its own.
-- **Red flags are keyword-based** (EN + legacy JA list in `app/services/guardrails.py`): paraphrases slip
-  through and negations can trigger it. French is not covered. The chat prompt sometimes adds the 9-8-8 line
-  unprompted (seen on the story-recall question).
 - **BP thresholds:** 135/85 home threshold matches Hypertension Canada; the 145/90 single-window cut-off and
   the morning rules come from JSH 2019. Rules are `draft` (not clinically reviewed).
 - **Scores are not validated:** the rule set and the story-recall score are unvalidated. Framingham uses the 7-day home SBP
@@ -191,23 +188,19 @@ scripts.ingest_corpus --provider local`) instead of on the 512 MB box. Nothing h
 
 ## Review fixes applied (2026-10-17)
 
-1. Red flags in daily logs (flags or `notes` text) and in `POST /observations` take the shared emergency path `app/services/emergency.py:handle_red_flags` (guidance + `notify_emergency` + event assessment). Chat and check-in use it too. The responses gained `emergency_guidance`.
-2. Emergency notifications record `observation_ids`. `assess_user` notifies only on a transition into emergency or on new trigger ids, and never repeats the same ids within 24 h.
-3. Chat, check-in, log and observation emergencies create `RiskAssessment(level=emergency)` immediately (`trigger='event'`) without a second notification.
-4. `process_appointment_followups` cancels a requested appointment and notifies the user when `share_with_clinic` was revoked. No reminder is sent.
-5. `GET /r/{token}` requires an active `share_with_clinic` consent. Revoking it nulls the user's share tokens. A report generated without that consent has `share_token=None` and `share_url: null`.
-6. The clinic report shows only observations relevant to its pathway. It never includes `suicidal_ideation` or red-flag free text, and free text is cut to 200 characters.
-7. Prior assessments are loaded by time window (60 days, cap 500), and persistence uses the latest assessment in each weekly window.
-8. A re-posted daily log keeps its observations (and their `created_at`) and deletes only those whose flag is now false. A check-in sends only the flags answered in that submission.
-9. Production with no e-mail configured fails at startup. `FakeEmail` outside dev mode returns `accepted=False`.
-10. `notify_emergency(commit=False)` is used inside `assess_user`, so it no longer commits mid-run.
-11. `facts_for_llm` drops the patient name. The clinic e-mail note is a fixed per-pathway template; the LLM's `note` is only a slot-preference enum.
-12. The confirm link requires `status == 'requested'` (409 otherwise). The token is `ts.sig` with a 30-day expiry, keyed by `APPOINTMENT_TOKEN_SECRET` or a key derived from `JWT_SECRET`.
-13. `insufficient_data` / `invalid_measurement` come only from gate rules (BP-00/RHY-02, COG-01, GEN-01; PD only when no input at all). Other missing inputs go to `data_quality.missing_optional_inputs` (spec §8 updated).
-14. Spec §6 now says "1.5 × scaled MAD (MAD × 1.4826)", matching the code.
-15. The OAuth callback URL-encodes `error` in the redirect.
-16. The Apple Health upload limit is enforced while streaming, and partial files are removed.
-17. `tests/test_admin.py` seeds a fresh user, not the shared demo user.
+1. `process_appointment_followups` cancels a requested appointment and notifies the user when `share_with_clinic` was revoked. No reminder is sent.
+2. `GET /r/{token}` requires an active `share_with_clinic` consent. Revoking it nulls the user's share tokens. A report generated without that consent has `share_token=None` and `share_url: null`.
+3. The clinic report shows only observations relevant to its pathway; free text is cut to 200 characters.
+4. Prior assessments are loaded by time window (60 days, cap 500), and persistence uses the latest assessment in each weekly window.
+5. A re-posted daily log keeps its observations (and their `created_at`) and deletes only those whose flag is now false. A check-in sends only the flags answered in that submission.
+6. Production with no e-mail configured fails at startup. `FakeEmail` outside dev mode returns `accepted=False`.
+7. `facts_for_llm` drops the patient name. The clinic e-mail note is a fixed per-pathway template; the LLM's `note` is only a slot-preference enum.
+8. The confirm link requires `status == 'requested'` (409 otherwise). The token is `ts.sig` with a 30-day expiry, keyed by `APPOINTMENT_TOKEN_SECRET` or a key derived from `JWT_SECRET`.
+9. `insufficient_data` / `invalid_measurement` come only from gate rules (BP-00/RHY-02, COG-01, GEN-01; PD only when no input at all). Other missing inputs go to `data_quality.missing_optional_inputs` (spec §8 updated).
+10. Spec §6 now says "1.5 × scaled MAD (MAD × 1.4826)", matching the code.
+11. The OAuth callback URL-encodes `error` in the redirect.
+12. The Apple Health upload limit is enforced while streaming, and partial files are removed.
+13. `tests/test_admin.py` seeds a fresh user, not the shared demo user.
 
 Regression tests: `backend/tests/test_review_fixes.py`. `DELETE /api/me` is unchanged and has a TODO for the Google token revoke.
 

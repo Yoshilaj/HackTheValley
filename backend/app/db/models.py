@@ -27,14 +27,14 @@ RHYTHM_LABELS = (
     "sinus_rhythm", "possible_af", "afib", "high_hr", "low_hr", "inconclusive",
     "poor_recording", "irregular_rhythm_notification", "other",
 )
-OBSERVATION_KINDS = ("symptom", "functional_change", "medication", "lifestyle", "mood", "red_flag")
-OBSERVATION_SOURCES = ("chat", "log", "document", "screener")
+OBSERVATION_KINDS = ("symptom", "functional_change", "medication", "lifestyle", "mood")
+OBSERVATION_SOURCES = ("chat", "log", "document")
 TASK_TYPES = (
     "story_recall", "sustained_vowel", "word_recall", "finger_tap",
     "picture_description", "free_speech", "fluency",
 )
 PATHWAYS = ("cognitive", "cardio", "parkinsons", "general")
-RISK_LEVELS = ("insufficient_data", "invalid_measurement", "no_finding", "watch", "followup_recommended", "emergency")
+RISK_LEVELS = ("insufficient_data", "invalid_measurement", "no_finding", "watch", "followup_recommended")
 APPOINTMENT_STATUSES = (
     "proposed", "awaiting_approval", "processing", "requested", "needs_user_info", "confirmed", "declined", "cancelled",
     "failed",
@@ -253,16 +253,6 @@ class Observation(IdMixin, CreatedAtMixin, Base):
     free_text: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(16), default="chat")  # OBSERVATION_SOURCES
     source_id: Mapped[str | None] = mapped_column(String(64))  # e.g. ChatMessage.id / DailyLog.id
-
-
-class ScreenerResponse(IdMixin, CreatedAtMixin, Base):
-    __tablename__ = "screener_responses"
-    __table_args__ = (Index("ix_screener_user_time", "user_id", "created_at"),)
-
-    user_id: Mapped[str] = user_fk(index=False)
-    screener: Mapped[str] = mapped_column(String(32))  # pd | cardio | ...
-    answers: Mapped[JsonDict] = mapped_column(JSON, default=dict)
-    score: Mapped[float | None]
 
 
 class AssessmentTask(IdMixin, CreatedAtMixin, Base):
@@ -571,6 +561,6 @@ class StoredFile(IdMixin, CreatedAtMixin, Base):
 USER_OWNED_MODELS: tuple[type[Base], ...] = (
     AppointmentMessage, Report, Appointment, RiskAssessment, Notification, OAuthCredential, ChatMessage,
     ChatConversation, RefillRequest, DoseLog, VisitBooking,
-    UploadedDocument, AssessmentTask, ScreenerResponse, Observation, DailyLog,
+    UploadedDocument, AssessmentTask, Observation, DailyLog,
     DeviceRhythmResult, BpReading, MetricSample, DeviceToken, UserSession, Consent, Profile, AuditLog,
 )

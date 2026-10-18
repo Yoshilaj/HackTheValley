@@ -333,14 +333,6 @@ def test_tokyo_profile_still_plans(db):
     assert appt.status == "awaiting_approval" and appt.clinic["id"] == BLOOR
 
 
-def test_emergency_never_books(db):
-    user = toronto_user(db)
-    assessment = make_assessment(db, user, level="emergency", with_data=False)
-    with pytest.raises(ValueError):
-        ba.run_booking_agent(db, user, assessment, FakeLlm(), FakeCalendar(), None, FakeEmail(), "en")
-    assert followup.handle_followup(db, user, assessment, llm=FakeLlm()) == (None, None)
-
-
 def test_handle_followup_plans_once(db):
     user = toronto_user(db)
     email = FakeEmail()

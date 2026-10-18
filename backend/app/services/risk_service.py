@@ -10,8 +10,6 @@ Pipeline: ``build_contexts`` → ``evaluate_all`` → per pathway: priority scor
 * newly ``followup_recommended`` → ``followup_recommended`` notification (+email) and,
   with an active ``ai_assessment`` consent, every callable in ``FOLLOWUP_HOOKS``
   (report / booking agent registers itself there);
-* ``emergency`` → ``notify_emergency``; ``FOLLOWUP_HOOKS`` are NEVER called (§7) — not for the
-  emergency pathway and not for any other pathway in the same run;
 * ``insufficient_data`` → ``data_needed`` notification, at most once per 7 days per pathway.
 
 The user-facing level comes only from fired rules (§10.4). No LLM is called here;
@@ -43,7 +41,7 @@ DATA_NEEDED_THROTTLE = timedelta(days=7)
 
 #: Called as ``hook(db, user, assessment)`` when a pathway newly reaches
 #: ``followup_recommended`` and the user has an active ``ai_assessment`` consent.
-#: Never called for ``emergency``. Hook exceptions are logged and swallowed.
+#: Hook exceptions are logged and swallowed.
 FollowupHook = Callable[[Session, User, RiskAssessment], Any]
 FOLLOWUP_HOOKS: list[FollowupHook] = []
 
@@ -61,7 +59,6 @@ MISSING_INPUT_TEXT = {
     "bp_remeasure_after_5min": "a repeat blood-pressure reading after 5 minutes of rest",
     "story_recall_sessions": "story-recall task sessions (5 for a personal baseline)",
     "story_recall_followup_sessions": "more story-recall task sessions after the baseline",
-    "pd_screener": "the movement questionnaire",
     "sustained_vowel_sessions": "voice ('aah') recordings",
     "voice_baseline_sessions": "voice recordings on the same device (10 for a personal voice baseline)",
 }
@@ -132,9 +129,6 @@ def _json_safe(obj: Any) -> Any:
 def build_explanation(result: PathwayResult, language: str = "en") -> str:
     """Deterministic template from fired rules' summary_text + missing inputs + disclaimer only."""
     lines: list[str] = []
-    if result.level == "emergency":
-        lines.append("Urgent: please follow the emergency guidance." if language == "en"
-                     else "緊急: 緊急時の案内に従ってください。")
     if result.fired_rules:
         lines.append("What the rules found:" if language == "en" else "該当したルール:")
         lines += [f"- {f.summary_text} [{f.id} v{f.version}]" for f in result.fired_rules]
@@ -222,12 +216,8 @@ def _data_needed_recent(db: Session, user_id: str, pathway: str, now: datetime) 
     return any((r.payload or {}).get("pathway") == pathway for r in rows)
 
 
-def _summary_text(row: RiskAssessment) -> str:
-    return "; ".join(f"{f['id']}: {f['summary_text']}" for f in (row.fired_rules or [])) or row.level
-
-
 def _handle_transition(db: Session, user: User, row: RiskAssessment, prev: RiskAssessment | None,
-                       now: datetime, suppress_hooks: bool = False) -> list[str]:
+                       now: datetime) -> list[str]:
     """Write notifications / call hooks for one pathway; returns the actions taken."""
     lang = _lang(user)
     name = PATHWAY_NAMES.get(row.pathway, {}).get(lang, row.pathway)
@@ -236,55 +226,27 @@ def _handle_transition(db: Session, user: User, row: RiskAssessment, prev: RiskA
                "priority_score": row.priority_score}
     actions: list[str] = []
 
-    if row.level == "emergency":
-        from app.services.emergency import already_notified, notified_ids
-
-        trigger_ids = sorted({str(e["ref"]) for f in row.fired_rules or [] if f.get("level") == "emergency"
-                              for e in f.get("evidence") or [] if e.get("ref")})
-        seen = notified_ids(db, user.id, now=now)
-        new_ids = set(trigger_ids) - seen
-        # §7: notify on the transition into emergency or when new red-flag evidence appears; never
-        # repeat for ids already notified within 24 h (chat / check-in / log already notified them).
-        if already_notified(db, user.id, trigger_ids, now=now) or (prev_level == "emergency" and not new_ids):
-            actions.append("emergency_already_notified")
-        else:
-            notify_svc.notify_emergency(db, user, {"summary": _summary_text(row),
-                                                   "fired_rules": [f["id"] for f in row.fired_rules or []],
-                                                   "pathway": row.pathway, "assessment_id": row.id,
-                                                   "observation_ids": trigger_ids}, commit=False)
-            actions.append("emergency")
-        return actions  # never FOLLOWUP_HOOKS, no booking (§7)
-
     if prev_level is not None and prev_level != row.level:
         title = (f"{name}: 判定が変わりました" if lang == "ja" else f"{name}: assessment level changed")
         notify_svc.notify(db, user.id, notify_svc.KIND_RISK_LEVEL_CHANGE, title, row.explanation,
                           payload=payload, commit=False)
         actions.append("risk_level_change")
 
-    prev_deferred = bool(prev is not None and (prev.data_quality or {}).get("followup_deferred_emergency"))
-    newly_followup = row.level == "followup_recommended" and prev_level != "followup_recommended"
-    if newly_followup or (row.level == "followup_recommended" and prev_deferred):
-        if newly_followup:
-            title = (f"{name}: 受診をおすすめします" if lang == "ja" else f"{name}: a check-up is recommended")
-            # One e-mail per finding: when the booking agent will produce an approval card in this run,
-            # that card's e-mail carries the finding, so this notification stays in-app only.
-            will_book = not suppress_hooks and _booking_will_follow(db, user, row)
-            notify_svc.notify(db, user.id, notify_svc.KIND_FOLLOWUP_RECOMMENDED, title, row.explanation,
-                              payload=payload | ({"email": {"sent": False, "reason": "covered_by_approval_email"}}
-                                                 if will_book else {}),
-                              email=not will_book, commit=False)
-            actions.append("followup_recommended")
-        if suppress_hooks:
-            # §7: emergency elsewhere in this run → no hooks now; mark the row so the next
-            # non-emergency run still runs them (an event run must not swallow the booking).
-            row.data_quality = {**(row.data_quality or {}), "followup_deferred_emergency": True}
-            actions.append("followup_hooks_suppressed_emergency")
-        elif has_consent(db, user.id, "ai_assessment"):
+    if row.level == "followup_recommended" and prev_level != "followup_recommended":
+        title = (f"{name}: 受診をおすすめします" if lang == "ja" else f"{name}: a check-up is recommended")
+        # One e-mail per finding: when the booking agent will produce an approval card in this run,
+        # that card's e-mail carries the finding, so this notification stays in-app only.
+        will_book = _booking_will_follow(db, user, row)
+        notify_svc.notify(db, user.id, notify_svc.KIND_FOLLOWUP_RECOMMENDED, title, row.explanation,
+                          payload=payload | ({"email": {"sent": False, "reason": "covered_by_approval_email"}}
+                                             if will_book else {}),
+                          email=not will_book, commit=False)
+        actions.append("followup_recommended")
+        if has_consent(db, user.id, "ai_assessment"):
             on_followup_recommended(db, user, row)
             actions.append("followup_hooks")
 
-    # no "more data needed" nagging while another pathway is an emergency (§7: guidance first)
-    if row.level == "insufficient_data" and not suppress_hooks and not _data_needed_recent(db, user.id, row.pathway, now):
+    if row.level == "insufficient_data" and not _data_needed_recent(db, user.id, row.pathway, now):
         title = (f"{name}: データが不足しています" if lang == "ja" else f"{name}: more data needed")
         body = ", ".join(MISSING_INPUT_TEXT.get(m, m) for m in row.missing_inputs or [])
         notify_svc.notify(db, user.id, notify_svc.KIND_DATA_NEEDED, title, body or None,
@@ -337,8 +299,6 @@ def assess_user(db: Session, user: User, as_of: datetime | None = None, trigger:
 
     rows: list[RiskAssessment] = []
     summary: dict[str, Any] = {}
-    # §7: while any pathway is an emergency, no booking/report hook runs for this user in this run.
-    any_emergency = any(r.level == "emergency" for r in results)
     for result in results:
         ctx = contexts[result.pathway]
         on_bp_med = bool(ctx.profile.bp_treated)
@@ -363,7 +323,7 @@ def assess_user(db: Session, user: User, as_of: datetime | None = None, trigger:
         )
         db.add(row)
         db.flush()
-        actions = _handle_transition(db, user, row, prev, now, suppress_hooks=any_emergency)
+        actions = _handle_transition(db, user, row, prev, now)
         summary[result.pathway] = {"level": row.level, "priority_score": score,
                                    "fired": result.fired_rule_ids, "actions": actions}
         rows.append(row)

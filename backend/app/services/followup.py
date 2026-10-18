@@ -4,7 +4,7 @@
     register_followup_hooks()   # called from app.main lifespan; idempotent
 
 `app.services.risk_service` calls every hook in `FOLLOWUP_HOOKS` when a pathway newly becomes
-`followup_recommended` (never for `emergency`). Our hook generates the clinician report and,
+`followup_recommended`. Our hook generates the clinician report and,
 when the user consented to `share_with_clinic`, runs the booking agent. A pathway that already
 has an active appointment (proposed / awaiting_approval / requested / needs_user_info / confirmed) from the last 30 days is not
 booked again, so repeated nightly runs never spam clinics. The agent stops at
@@ -42,7 +42,7 @@ def handle_followup(db: Session, user: User, assessment: RiskAssessment, *, llm:
                     places: Any = None, email: Any = None, language: str | None = None,
                     commit: bool = True) -> tuple[Report | None, Appointment | None]:
     """generate_report -> run_booking_agent (consent-gated) -> (report, appointment | None).
-    Emergency / non-followup assessments are ignored (returns (None, None))."""
+    Non-followup assessments are ignored (returns (None, None))."""
     from app.providers.llm import get_llm_provider
     from app.services import llm_audit_hook
     from app.services.booking_agent import run_booking_agent
@@ -100,8 +100,6 @@ def start_for_pathway(db: Session, user: User, pathway: str, *, llm: Any = None,
                            .order_by(RiskAssessment.created_at.desc()).limit(1))
     if assessment is None:
         raise NoAssessment(pathway)
-    if assessment.level == "emergency":
-        raise ValueError("emergency assessments get emergency guidance, never a booking")
     if not has_consent(db, user.id, "share_with_clinic"):
         raise ConsentMissing("share_with_clinic consent is not active")
     llm = llm or get_llm_provider(audit_hook=llm_audit_hook(db, user.id, f"risk_assessment:{assessment.id}"))

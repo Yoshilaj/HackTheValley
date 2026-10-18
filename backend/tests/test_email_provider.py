@@ -53,8 +53,8 @@ def test_resend_send_success_mocked(monkeypatch):
 def test_render_email_has_disclaimers_and_escapes():
     html = render_email("<Title>", "<p>body</p>", cta_url="https://x.test/a?b=1&c=2")
     assert "&lt;Title&gt;" in html and "<p>body</p>" in html
-    # Canada only, English only: the 911 / 811 disclaimer, no Japanese footer, no "119"
-    assert "This is not a diagnosis" in html and "call 911" in html and "811" in html
+    # Canada only, English only: the 811 disclaimer, no Japanese footer, no "911" / "119"
+    assert "This is not a diagnosis" in html and "911" not in html and "811" in html
     assert "これは診断ではありません" not in html and "119" not in html
     assert "https://x.test/a?b=1&amp;c=2" in html and "CareSync" in html
     assert email_mod.DISCLAIMER_EN.startswith("This is not a diagnosis")

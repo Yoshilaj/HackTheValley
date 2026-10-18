@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.auth import create_access_token
 from app.db.models import (
     AssessmentTask, BpReading, DailyLog, MetricSample, Notification, Observation, Profile, RiskAssessment,
-    ScreenerResponse, User,
+    User,
 )
 from app.services.checkin_service import daily_checkin_questions, submit_checkin
 
@@ -69,14 +69,6 @@ def test_watch_pathways_add_targeted_questions(db, user):
     assert next(q for q in qs if q["id"] == "palpitations")["pathway"] == "cardio"
 
 
-def test_pd_screener_positive_prompts_vowel_task(db, user):
-    db.add(ScreenerResponse(user_id=user.id, screener="pd", answers={"pd_rest_tremor": True, "pd_soft_voice": True}))
-    db.commit()
-    qs = daily_checkin_questions(db, user, "en", now=MORNING)
-    tasks = [q for q in qs if q["id"].startswith("task_")]
-    assert [t["id"] for t in tasks] == ["task_sustained_vowel"] and tasks[0]["task"] == "sustained_vowel"
-
-
 def test_submit_checkin_upserts_log_and_observations(db, user):
     res = submit_checkin(db, user, {"sleep_quality": 2, "fatigue": "4", "palpitations": True, "dizziness": "no",
                                     "functional_change": "I forgot to pay a bill", "bp_reminder": True, "bogus": 1},
@@ -86,7 +78,7 @@ def test_submit_checkin_upserts_log_and_observations(db, user):
     assert log.flags == {"palpitations": True, "dizziness": False}
     assert {(o.kind, o.label) for o in res["observations"]} == {
         ("symptom", "palpitations"), ("functional_change", "functional_change_reported")}
-    assert res["ignored"] == ["bogus"] and res["red_flags"] == []
+    assert res["ignored"] == ["bogus"] and "red_flags" not in res
     # resubmission merges flags and stays idempotent for the same flag
     res2 = submit_checkin(db, user, {"mood": 3, "tremor": True}, on_date=date(2026, 10, 17))
     assert res2["daily_log"].id == log.id and res2["daily_log"].fatigue == 4
@@ -97,15 +89,14 @@ def test_submit_checkin_upserts_log_and_observations(db, user):
     assert sorted(labels) == ["functional_change_reported", "palpitations", "tremor"]
 
 
-def test_submit_checkin_red_flag_text(db, user):
+def test_submit_checkin_free_text_is_not_scanned_for_red_flags(db, user):
     res = submit_checkin(db, user, {"functional_change": "Yesterday I fainted at the station"},
                          on_date=date(2026, 10, 17))
-    assert res["red_flags"] == ["fainting"] and "EMERGENCY" in res["emergency_guidance"]
-    assert ("red_flag", "fainting") in {(o.kind, o.label) for o in res["observations"]}
+    assert "red_flags" not in res and "emergency_guidance" not in res
+    assert {(o.kind, o.label) for o in res["observations"]} == {("functional_change", "functional_change_reported")}
+    assert res["daily_log"].flags is None
     kinds = db.scalars(select(Notification.kind).where(Notification.user_id == user.id)).all()
-    # exactly one emergency notification; the event assessment (review fix 3) may add the COG-03
-    # follow-up notification for the reported functional change (hooks stay suppressed, §7)
-    assert kinds.count("emergency") == 1 and set(kinds) <= {"emergency", "followup_recommended"}
+    assert "emergency" not in kinds
 
 
 def test_checkin_routes(client, user):
@@ -114,4 +105,4 @@ def test_checkin_routes(client, user):
     assert qs.status_code == 200 and {"id", "text", "type", "reason"} <= set(qs.json()[0])
     res = client.post("/api/chat/checkin", headers=h, json={"answers": {"fatigue": 3, "mood": 4}})
     assert res.status_code == 200, res.text
-    assert res.json()["daily_log_id"] and res.json()["red_flags"] == []
+    assert res.json()["daily_log_id"] and "red_flags" not in res.json()

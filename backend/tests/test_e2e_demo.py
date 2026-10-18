@@ -2,7 +2,7 @@
 
 planted trend → risk run → report + booking plan (awaiting approval) → user approves (clinic e-mail) →
 dashboard → clinic confirm → chat (RAG +
-observation) → red flag (emergency, no booking) → check-in → story / vowel / tapping tasks → export → delete.
+observation) → second risk run (no duplicate booking) → check-in → story / vowel / tapping tasks → export → delete.
 
 Uses a fresh user with the demo profile + all consents (the shared session DB's demo@example.com may
 already carry rows from other tests), seeded with ``scripts.seed_demo.seed_planted_trend``.
@@ -173,18 +173,18 @@ def test_e2e_demo(client, app, db, demo, fakes, outbox):
                                                              "I felt a bit dizzy yesterday.", "language": "en"})
     assert r.status_code == 200, r.text
     b = r.json()
-    assert b["red_flags"] == [] and b["sources"] and b["sources"][0]["id"].startswith("src_")
+    assert "red_flags" not in b and b["sources"] and b["sources"][0]["id"].startswith("src_")
     assert [(o["kind"], o["label"]) for o in b["observations_created"]] == [("symptom", "dizziness")]
 
-    # ---- red flag → emergency guidance + notification; next risk run: general=emergency, no new booking
+    # ---- a symptom message is ordinary chat (no emergency path); next risk run: no new booking
     r = client.post("/api/chat", headers=h, json={"message": "I have crushing chest pain right now", "language": "en"})
     b = r.json()
-    assert r.status_code == 200 and b["red_flags"] and b["assessment_hint"] == "emergency"
-    assert "emergency" in {n["kind"] for n in client.get("/api/notifications?limit=100", headers=h).json()}
+    assert r.status_code == 200 and b["assessment_hint"] != "emergency"
+    assert "emergency" not in {n["kind"] for n in client.get("/api/notifications?limit=100", headers=h).json()}
     n_appts = _count(db, Appointment, user.id)
     r = client.post("/api/risk/run", headers=h)
     rows = {a["pathway"]: a for a in r.json()["assessments"]}
-    assert rows["general"]["level"] == "emergency"
+    assert all(a["level"] != "emergency" for a in rows.values())
     db.expire_all()
     assert _count(db, Appointment, user.id) == n_appts
     assert len([m for m in outbox.outbox if (m.tags or {}).get("kind") == "booking_request"]) == 1

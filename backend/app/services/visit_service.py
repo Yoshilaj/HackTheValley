@@ -31,7 +31,7 @@ SPECIALTY_LABELS = {
 }
 KIND_TYPES = {"hospital": "hospital"}  # everything else shows as a clinic
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-FLAGGED = {"watch", "followup_recommended", "emergency"}
+FLAGGED = {"watch", "followup_recommended"}
 
 SLOT_STEP = timedelta(minutes=90)  # spread the offered times through each day
 SLOTS_PER_CLINIC = 6

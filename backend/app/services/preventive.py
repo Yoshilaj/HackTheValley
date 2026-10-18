@@ -128,8 +128,6 @@ def preventive_measures(pathway: str, fired_rule_ids: Iterable[str], profile: Pr
     """2–4 measures ``{text_en, text_ja, source_id, related_rule}`` for one pathway (§11.3)."""
     fired = list(fired_rule_ids)
     probabilities = probabilities or []
-    if "EMG-01" in fired or "EMG-02" in fired:
-        return []  # emergency card shows emergency guidance only
     if pathway == "cardio":
         items = _cardio(fired, profile, probabilities, on_bp_medication)
     elif pathway in ("cognitive", "parkinsons"):

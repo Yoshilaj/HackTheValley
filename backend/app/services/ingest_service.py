@@ -294,20 +294,8 @@ def add_rhythm_result(db: Session, user_id: str, source: str, raw_label: str, re
 
 # ================================================================ daily log → observations
 
-#: flag → [(kind, label)]. Red-flag labels use app/ml/rules.py RED_FLAG_LABELS vocabulary
-#: (spec §7 EMG-01); functional changes feed COG-03 (spec §1.3).
+#: flag → [(kind, label)]. Functional changes feed COG-03 (spec §1.3).
 FLAG_OBSERVATIONS: dict[str, list[tuple[str, str]]] = {
-    "chest_discomfort": [("red_flag", "chest_pressure")],
-    "chest_pain": [("red_flag", "chest_pain")],
-    "vision_speech_disturbance": [("red_flag", "speech_difficulty"), ("red_flag", "vision_disturbance")],
-    "speech_disturbance": [("red_flag", "speech_difficulty")],
-    "vision_disturbance": [("red_flag", "vision_disturbance")],
-    "fainting": [("red_flag", "fainting")],
-    "face_droop": [("red_flag", "face_droop")],
-    "arm_weakness": [("red_flag", "arm_weakness")],
-    "severe_headache": [("red_flag", "severe_sudden_headache")],
-    "severe_sudden_headache": [("red_flag", "severe_sudden_headache")],
-    "suicidal_ideation": [("red_flag", "suicidal_ideation")],
     "memory_lapse": [("functional_change", "memory_lapse")],
     "confusion": [("functional_change", "confusion")],
     "getting_lost": [("functional_change", "getting_lost")],
@@ -341,8 +329,9 @@ def add_daily_log(db: Session, user_id: str, log: DailyLogIn) -> tuple[DailyLog,
             setattr(row, f, data[f])
     db.flush()
 
-    # Upsert by (kind, label): keep rows (and their original created_at — the EMG-01 24 h window
-    # must not be extended by re-posting) for flags that are still true; delete the rest.
+    # Upsert by (kind, label): keep rows (and their original created_at, so re-posting does not
+    # move the observation forward in the rule look-back windows) for flags that are still true;
+    # delete the rest.
     existing = {(o.kind, o.label): o for o in log_observations(db, user_id, row.id)}
     obs: list[Observation] = []
     seen: set[tuple[str, str]] = set()
@@ -356,8 +345,7 @@ def add_daily_log(db: Session, user_id: str, log: DailyLogIn) -> tuple[DailyLog,
             o = existing.get((kind, label))
             if o is None:
                 o = Observation(user_id=user_id, kind=kind, label=label, onset=log.date.isoformat(),
-                                free_text=f"daily log flag: {flag}", source="log", source_id=row.id,
-                                severity="urgent" if kind == "red_flag" else None)
+                                free_text=f"daily log flag: {flag}", source="log", source_id=row.id)
                 db.add(o)
             obs.append(o)
     for key, o in existing.items():

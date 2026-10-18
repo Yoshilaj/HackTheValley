@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import GuestGate from "../components/GuestGate.jsx";
-import PdScreener from "../components/PdScreener.jsx";
 import TappingTask from "../components/TappingTask.jsx";
 import AppleHealthImport from "../components/AppleHealthImport.jsx";
 import { useSession } from "../context/SessionContext.jsx";
@@ -41,7 +40,7 @@ export default function AssessmentsPage() {
             <p className="subtitle">Short checks that help spot changes early.</p>
           </div>
         </header>
-        <GuestGate title="Do the checks">Sign in to answer the questionnaire, do the tapping task and import your Apple Watch data.</GuestGate>
+        <GuestGate title="Do the checks">Sign in to do the tapping task and import your Apple Watch data.</GuestGate>
       </main>
     );
   }
@@ -73,7 +72,6 @@ export default function AssessmentsPage() {
 
       <div className="page-split assessments-split">
         <div className="stack">
-          <PdScreener onSubmitted={refresh} />
           <TappingTask onSubmitted={refresh} />
         </div>
         <div className="stack">

@@ -9,13 +9,12 @@ integration code exists but has never been run against the live service (no keys
 
 | Board item | Status | Notes |
 |---|---|---|
-| A2/A3 Decision rules (BP, RHY, SUITA, COG, PD, GEN, EMG) | Built | `app/ml/rules.py` + engine; fires / not fired / insufficient tests per rule; demo replay → cardio `[BP-02, RHY-01]` score 70 |
+| A2/A3 Decision rules (BP, RHY, SUITA, COG, PD, GEN) | Built | `app/ml/rules.py` + engine; fires / not fired / insufficient tests per rule; demo replay → cardio `[BP-02, RHY-01]` score 70 |
 | A2 Story recall task (3-step battery + delay) | Built | `app/ml/story_task.py`, `/api/tasks/story/*`; semantic-recall score is experimental, no validated thresholds |
 | A2 3-word recall, finger tapping, sustained vowel | Built | `/api/tasks/word-recall`, `/tapping`, `/vowel`; vowel sessions aggregated per day (median) for PD-03 |
-| A2 PD screener | Built | `/api/screener/pd`; one id set (content-bank ids), legacy ids accepted |
 | A2 Suita score | Built | `app/ml/suita.py`; context only, never drives the level |
 | A4 PD vowel model training | Built, **not validated** | `ml_training/train_pd_vowel.py`; UCI, subject-grouped CV, pooled OOF AUC 0.74 (95% CI 0.53–0.91); served from `backend/models/`. 2026-10-17 audit: on real audio through the app's own extractor v1 scores **AUC 0.31** (feature skew: shimmer ×3–4, NHR ×2.8, spread2 ×0.36). `train_pd_vowel_audio.py` v2 on Italian PVS (CC BY, 47 subjects) reaches 0.93 but is a recording-channel artefact (channel-blind features: chance on leave-one-session-out). **PD-03 is display-only** (`PD_VOWEL_RULE_ENABLED=false`) until a single-channel corpus (NeuroVoz / PC-GITA access request) gives a real v2 |
-| A3/A4 PD-03B personal voice stability (experimental) | Built | spec §5.5: within-person change detector on shimmer ↑ / NHR ↑ / CPPS ↓ (vowel) and speech rate ↓ / pause ratio ↑ (story); first-10-session same-device baseline, median/MAD floored by UCI Telemonitoring within-person rel-MAD (`app/ml/data/voice_variability_floor.json`), per-feature K (shimmer/NHR 3.0; CPPS 2.5, speech 2.0 placeholders), ≥2 of 5 features shifted on ≥3 of last 5 sessions; display-only alone, `watch` with PD-01/02/04. Telemonitoring within-person trends did not track UPDRS → "voice stability", not progression. Demo: parkinsons `watch` `[PD-04, PD-03B]` with the report table |
+| A3/A4 PD-03B personal voice stability (experimental) | Built | spec §5.5: within-person change detector on shimmer ↑ / NHR ↑ / CPPS ↓ (vowel) and speech rate ↓ / pause ratio ↑ (story); first-10-session same-device baseline, median/MAD floored by UCI Telemonitoring within-person rel-MAD (`app/ml/data/voice_variability_floor.json`), per-feature K (shimmer/NHR 3.0; CPPS 2.5, speech 2.0 placeholders), ≥2 of 5 features shifted on ≥3 of last 5 sessions; display-only alone, `watch` with PD-02/04. Telemonitoring within-person trends did not track UPDRS → "voice stability", not progression. Demo: parkinsons `watch` `[PD-04, PD-03B]` with the report table |
 | A4 HF Hub push | Built | Private repo `Yoshil061111/pd-vowel-experimental-v1`, pinned by `PD_VOWEL_HUB_REVISION` in `.env` (2026-10-17). App loads `backend/models/` first, else `snapshot_download` at that revision (`PdVowelModel.load_default`). Re-push: `python -m ml_training.train_pd_vowel --push-to-hub <repo>` then re-pin. Caveat: serving features (Praat) ≠ training features (MDVP) — score is experimental until validated (audit item 2) |
 | A4 Gated models (ADReSS picture description, mPower tapping) | Not built | access not requested yet (see HANDOFF) |
 | B Database (models, SQLite/Postgres, pgvector) | Built | tables created at startup; `CREATE EXTENSION vector` on Postgres (Postgres path untested here) |
@@ -24,7 +23,7 @@ integration code exists but has never been run against the live service (no keys
 | C1 Apple Health export import | Built | background task, job status `pending → running → done / failed` |
 | C1 iOS Shortcut | Built | `docs/shortcut.md` + device tokens; not tried on a real iPhone |
 | C1 Document / BP-photo extraction | Built-needs-key | Claude vision/extraction; fake LLM in tests |
-| C2 Chat (text) + extraction + red-flag short-circuit | Built | red flags are keyword-based |
+| C2 Chat (text) + extraction | Built | |
 | C2 Voice chat (Whisper) | Built-needs-key | OpenAI Whisper path unverified; FakeStt in tests |
 | C2 Daily check-in | Built | `/api/chat/checkin` |
 | C3 RAG (corpus ingest, retrieval, cited answers) | Built | fake embeddings by default; Voyage path Built-needs-key |
@@ -73,9 +72,9 @@ Four separate layers, never merged into one "risk score":
 1. **Assessment models** produce a *task-specific* result (a recall score, a vowel-phonation classifier output, a device-generated ECG label, a 7-day home BP mean).
 2. **Decision rules** decide the follow-up for each finding independently. Each rule has an id, a threshold, a rationale, the source it is based on, and is reviewed on its own. Rules never AND-together independent findings so that one suppresses another.
 3. **RAG** explains relevant evidence and limitations. It does not validate the assessment.
-4. **Booking agent** executes the agreed follow-up. Emergency red flags (chest pain, FAST stroke signs, syncope, suicidal ideation) are handled by a separate emergency-guidance path and are never sent to the booking agent.
+4. **Booking agent** executes the agreed follow-up.
 
-Per-pathway output levels: `insufficient_data | invalid_measurement | no_finding | watch | followup_recommended | emergency`. A missing or failed assessment is never `no_finding`.
+Per-pathway output levels: `insufficient_data | invalid_measurement | no_finding | watch | followup_recommended`. A missing or failed assessment is never `no_finding`.
 
 Every assessment record carries: `task_type`, `protocol_version`, `language`, `recording_quality` (SNR, duration, clipping), `missing_inputs[]`, `model_version`, `baseline_n_days`.
 
@@ -107,15 +106,15 @@ Detailed protocols, score sheets and rule definitions: `docs/specs/phase-a-asses
 
 **Cardio — three explicit modules (Apple/OMRON/HearO-informed)**
 - *Module 1 — Rhythm findings (device results, no model).* Store device-generated results as first-class records: Apple irregular-rhythm events, Apple ECG classifications, OMRON connect result labels (from PDF or screen photo via Claude vision), manual irregular-pulse indicator. Rule `RHY-01`: any "possible AF / AFib" result in a user without a known AF diagnosis → `followup_recommended` (mirrors Apple's and OMRON's own instruction). `RHY-02`: ≥2 inconclusive/poor recordings → `invalid_measurement` with re-record guidance. No palpitations requirement.
-- *Module 2 — Home BP protocol (OMRON-study-informed).* Protocol: morning (within 1 h of waking, before meds) and evening readings, seated, 2 readings each. Weekly mean of valid readings. Rules follow the Japanese Society of Hypertension home-BP thresholds: `BP-01` 7-day mean ≥135/85 → `watch`; `BP-02` ≥145/90 or ≥2 weeks ≥135/85 → `followup_recommended`; `BP-03` any reading ≥180/110 with symptoms → `emergency`; fewer than 8 valid readings in 7 days → `insufficient_data`.
+- *Module 2 — Home BP protocol (OMRON-study-informed).* Protocol: morning (within 1 h of waking, before meds) and evening readings, seated, 2 readings each. Weekly mean of valid readings. Rules follow the Japanese Society of Hypertension home-BP thresholds: `BP-01` 7-day mean ≥135/85 → `watch`; `BP-02` ≥145/90 or ≥2 weeks ≥135/85 → `followup_recommended`; `BP-05` an occasion ≥180/110 that persists after a 5-min re-measure → `followup_recommended` (urgent wording); fewer than 8 valid readings in 7 days → `insufficient_data`.
 - *Module 3 — Long-term risk (published calculator, not retrained).* Implement a **named Japanese risk equation** (Suita score for 10-year CHD; inputs age, sex, BP, cholesterol, diabetes, smoking, CKD) as a transparent calculator with its eligibility and population limits stated. Shown as context in the doctor report, never as a trigger on its own. Framingham/Kaggle retraining removed. Wearable HRV and resting HR are **not** inputs to this module; they feed only the personal-baseline change detector below.
 - *Not doing:* training an AF waveform model (PhysioNet 2017 is 300 Hz AliveCor; Apple exports 512 Hz; cross-device validation not feasible in 36h). Device results are used instead.
 
-**Parkinson's (StrivePD- and review-informed)**
-- *Screener questionnaire* (StrivePD-style, extended with prodromal markers from research criteria): new shaking at rest, stiffness/slowness, clumsiness or small handwriting, reduced smell, acting out dreams, constipation, soft voice. Scored as count of positives; `PD-01` ≥2 motor items or 1 motor + 1 prodromal → `watch` and prompts the tasks below.
+**Parkinson's (review-informed)**
+- *No symptom questionnaire* (removed 2026-10-18, user decision): the pathway is driven by passive mobility, the tapping task and the voice tasks below.
 - *Passive mobility (Apple Health, no model).* Walking speed, step length, double-support %, walking asymmetry, walking steadiness from Apple Health export/Shortcut. `PD-02`: sustained decline vs personal baseline (≥14 days baseline, else `insufficient_data`) → `watch`. The Apple Movement Disorder API is not usable (entitlement + diagnosed patients only), so this is our passive-motor substitute.
 - *Finger-tapping task* (15 s per hand, browser timestamps): interval mean, CV, decrement slope, asymmetry. Task score and personal change only; no trained model unless mPower access arrives (then participant-level split, labelled experimental).
-- *Experimental voice classifier — the one model we train.* Task: **standardized sustained vowel /a/ for 5 s** matching the UCI Parkinson's protocol (Little et al.; 195 recordings, 31 people, 23 PD). Features computed with `parselmouth`/Praat: jitter, shimmer, HNR, F0 stats; RPDE/DFA/PPE reimplemented with documented differences from the original extraction. Train gradient boosting with **participant-grouped** CV; feature selection and calibration inside the folds; report AUC with CI. UCI Telemonitoring (42 PD-only, UPDRS) is **not** combined; optional separate severity-regression experiment. Pushed to the HF Hub with a model card stating: 31 subjects, English speakers, sustained vowel only, no external validation, experimental. `PD-03`: classifier probability above threshold on ≥2 separate sessions **and** at least one positive screener/mobility/tapping finding → `watch` (never `followup_recommended` on voice alone). Conversational speech is stored separately and never scored by this model.
+- *Experimental voice classifier — the one model we train.* Task: **standardized sustained vowel /a/ for 5 s** matching the UCI Parkinson's protocol (Little et al.; 195 recordings, 31 people, 23 PD). Features computed with `parselmouth`/Praat: jitter, shimmer, HNR, F0 stats; RPDE/DFA/PPE reimplemented with documented differences from the original extraction. Train gradient boosting with **participant-grouped** CV; feature selection and calibration inside the folds; report AUC with CI. UCI Telemonitoring (42 PD-only, UPDRS) is **not** combined; optional separate severity-regression experiment. Pushed to the HF Hub with a model card stating: 31 subjects, English speakers, sustained vowel only, no external validation, experimental. `PD-03`: classifier probability above threshold on ≥2 separate sessions **and** at least one positive mobility/tapping finding → `watch` (never `followup_recommended` on voice alone). Conversational speech is stored separately and never scored by this model.
 
 **Personal-baseline change detection (HearO-informed, all pathways)**
 `app/ml/baseline.py`: per metric/task, rolling 30-day baseline (median, MAD); flag when the last 3–7 days deviate persistently. Requires ≥14 days (`insufficient_data` otherwise). Labelled as "change worth checking", not a disease signal; HearO's evidence is in diagnosed CHF and does not transfer.
@@ -123,7 +122,6 @@ Detailed protocols, score sheets and rule definitions: `docs/specs/phase-a-asses
 ### A3. Decision-rule table and evaluation
 - `app/ml/rules.py`: each rule = `{id, pathway, inputs, condition, level, rationale, source_ids, review_status}`. Rules evaluated independently; the pathway level is the max over fired rules, with `insufficient_data` reported alongside when inputs are missing.
 - Evaluation we can actually do in 36h: unit tests per rule with synthetic series (fires / doesn't fire / insufficient data); a replay harness that runs the rules over the seeded demo user; the PD classifier's grouped-CV AUC on UCI. We state plainly that the rule set as a whole is unvalidated.
-- Emergency path: `EMG-*` rules (red-flag symptoms from chat/log, BP-03) return emergency guidance immediately in the chat response and notify the emergency/family contact if consented; they do **not** create a booking.
 
 ### A4. Training pipeline (`backend/ml_training/`)
 - `train_pd_vowel.py`: HF `datasets` loader for UCI Parkinson's CSV; participant-grouped CV; `sklearn`/`xgboost`; calibration in-fold; `push_to_hub("hackthevalley/pd-vowel-experimental-v1")` with model card. Optional `train_adress.py` (gated) and `train_mpower_tapping.py` (gated).
@@ -146,7 +144,7 @@ Detailed protocols, score sheets and rule definitions: `docs/specs/phase-a-asses
 - Structured tasks: story recall (×2 immediate + delayed), sustained vowel /a/ 5 s, 3-word delayed recall, optional picture description (gated)
 
 **3. Manual daily logging / check-in**
-- Sleep quality, fatigue, mood, stress (1–5); PD screener items; yes/no: tremor, stiffness, fall, memory lapse, confusion, headache, dizziness, palpitations, chest discomfort, breathlessness, vision/speech disturbance; medication adherence; caffeine/alcohol; exercise; finger-tapping when prompted
+- Sleep quality, fatigue, mood, stress (1–5); yes/no: tremor, stiffness, fall, memory lapse, confusion, headache, dizziness, palpitations, chest discomfort, breathlessness, vision/speech disturbance; medication adherence; caffeine/alcohol; exercise; finger-tapping when prompted
 
 **4. Manual blood pressure / device results**
 - Systolic, diastolic, pulse, irregular-pulse flag, measured_at, session (morning/evening), arm, position, pre/post medication; validity flags
@@ -172,10 +170,9 @@ Postgres with `pgvector` (Supabase or Neon free tier), SQLAlchemy 2 + Alembic. O
   - `Observation` (user_id, kind: symptom | functional_change | medication | lifestyle | mood; label, severity, onset, free_text, source: chat | log | document, source_id)
   - `AssessmentTask` (user_id, task_type: story_recall | sustained_vowel | word_recall | finger_tap | picture_description | free_speech; protocol_version, language, recording_quality json, raw_url/json, features json, model_scores json)
   - `DeviceRhythmResult` (user_id, source: apple_irn | apple_ecg | omron_connect | manual; label, recorded_at, file_url)
-  - `ScreenerResponse` (user_id, screener: pd | cardio; answers json, score, created_at)
   - `UploadedDocument` (user_id, kind, file_url, extracted json)
 - **Chat History**: `ChatMessage` (user_id, role, content, audio_url, sources json, created_at)
-- **Risk Assessment History**: `RiskAssessment` (user_id, pathway, level enum: insufficient_data | invalid_measurement | no_finding | watch | followup_recommended | emergency, fired_rules json, missing_inputs json, model_versions json, evidence json, explanation, created_at); `Report` (assessment_id, markdown, pdf_url, share_token)
+- **Risk Assessment History**: `RiskAssessment` (user_id, pathway, level enum: insufficient_data | invalid_measurement | no_finding | watch | followup_recommended, fired_rules json, missing_inputs json, model_versions json, evidence json, explanation, created_at); `Report` (assessment_id, markdown, pdf_url, share_token)
 - **Appointment Records**: `Appointment` (user_id, assessment_id, clinic json, proposed_slots, chosen_slot, status, calendar_event_id, channel, agent_log json); `Notification`; `OAuthCredential`
 - RAG: `ResearchSource`, `ResearchChunk` (embedding `vector(1024)`)
 - Ops: `Job` (name, scheduled_for, started/finished, status, error); `AuditLog` (LLM calls, data access)
@@ -208,7 +205,7 @@ Replace stubs in `app/rag/`: `embeddings.py` → Voyage AI (`voyage-3`) with bat
 - Startup: download models from HF Hub, cache in memory.
 - `assess_user(user_id)`: build pathway inputs from DB → run assessment models/calculators → evaluate decision rules independently (`app/ml/rules.py`) → `RiskAssessment` rows with `fired_rules`, `missing_inputs` and `evidence[]` (metric ids, task ids, device-result ids, observation ids, research chunk ids). Sonnet writes `explanation` from evidence only, including limitations.
 - `GET /api/risk/latest`, `GET /api/risk/history`, `POST /api/risk/run` (demo trigger).
-- Level transition → Notification; `followup_recommended` → Report + booking agent (after consent check). `emergency` → immediate emergency guidance + contact notification, **never** the booking agent. `insufficient_data` → check-in asks for the missing input.
+- Level transition → Notification; `followup_recommended` → Report + booking agent (after consent check). `insufficient_data` → check-in asks for the missing input.
 
 ### C5. Background Tasks / Cloud AI
 `app/jobs/scheduler.py`: APScheduler in-process. Nightly `assess_all_users`, hourly `process_pending_uploads`, `appointment_followups`. Every run recorded in `Job`. No Celery/Redis.
@@ -238,7 +235,7 @@ Replace stubs in `app/rag/`: `embeddings.py` → Voyage AI (`voyage-3`) with bat
 - **API Security**: rate limit `/api/chat*` and uploads (`slowapi`), file-type/size validation, CORS locked to `FRONTEND_ORIGIN`, secrets only via env.
 - **User Consent Management**: `Consent` table (purpose: data_processing | ai_assessment | calendar_access | share_with_clinic; granted_at, revoked_at); consent checked before assessment and before the agent emails anyone. `POST /api/consent`.
 - **Health Data Access Controls**: user-scoped queries, `AuditLog` on every read of health rows and every LLM call; report access only via token.
-- **Medical AI Safety Guardrails**: system prompts forbid diagnosis/treatment instructions; output schema carries a mandatory disclaimer; red-flag detector (chest pain, stroke FAST symptoms, syncope, suicidal ideation) is the `EMG-*` rule path in A3 and short-circuits to emergency guidance, bypassing booking; explanations may only reference evidence rows and must state limitations; model cards state cohort limits.
+- **Medical AI Safety Guardrails**: system prompts forbid diagnosis/treatment instructions; output schema carries a mandatory disclaimer; explanations may only reference evidence rows and must state limitations; model cards state cohort limits.
 - **Data Deletion / Privacy Controls**: `DELETE /api/me` cascades all rows + storage objects + revokes OAuth; `GET /api/me/export` (JSON dump).
 
 ## Phase F — Deployment & Infrastructure
@@ -285,8 +282,7 @@ Cut order if behind: gated extras → delayed-recall condition of story task →
 
 ## Revision 2026-10-17 (agreed with the user)
 
-- **Region: Canada only, English only** (aging-population prevention framing). Emergency guidance
-  911 / Health Link 811 / 9-8-8 crisis line; timezone America/Toronto; seed clinics in Toronto.
+- **Region: Canada only, English only** (aging-population prevention framing); timezone America/Toronto; seed clinics in Toronto.
   The Suita score is Japan-specific: for Canada the long-term context calculator is the Framingham
   Risk Score as used by the Canadian Cardiovascular Society; Suita kept in code, off for CA.
   Home BP thresholds 135/85 match Hypertension Canada.

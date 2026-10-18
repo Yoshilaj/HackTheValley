@@ -23,10 +23,10 @@ Interactive schema: `GET /docs` (Swagger) and `GET /openapi.json`. This file is 
 Times are ISO 8601 (UTC `Z` from the DB; slots carry the user's offset). `language` is `ja | en` and defaults to the profile language.
 
 Enumerations used below:
-- `level` ∈ `insufficient_data | invalid_measurement | no_finding | watch | followup_recommended | emergency`
+- `level` ∈ `insufficient_data | invalid_measurement | no_finding | watch | followup_recommended`
 - `pathway` ∈ `cardio | cognitive | parkinsons | general`
 - consent `purpose` ∈ `data_processing | ai_assessment | calendar_access | share_with_clinic | emergency_contact`
-- `Observation.kind` ∈ `symptom | functional_change | medication | lifestyle | mood | red_flag`
+- `Observation.kind` ∈ `symptom | functional_change | medication | lifestyle | mood`
 
 ---
 
@@ -75,7 +75,7 @@ Onboarding (collected at sign-up, used by the booking agent): `first_name, last_
 | GET | /api/metrics/bp?days=14 | user | – | `{ readings: BpReading[], summary: BpSummary }` |
 | POST | /api/metrics/rhythm | user | `{ source: apple_irn\|apple_ecg\|omron_connect\|manual_irregular_pulse, label (raw device string, e.g. "心房細動の可能性"), recorded_at, file_url?, meta? }` | 201 `{ id, source, label (normalised: sinus_rhythm\|possible_af\|afib\|high_hr\|low_hr\|inconclusive\|poor_recording\|irregular_rhythm_notification\|other), raw_label, recorded_at, file_url, meta }` |
 | GET | /api/metrics/rhythm?days=90 | user | – | `RhythmResult[]` |
-| POST | /api/logs/daily | user | `{ date, sleep_quality?, fatigue?, mood?, stress? (1–5), flags?: {name: bool}, medication_adherence?, caffeine_alcohol?, exercise_minutes?, notes? }` | `DailyLog + { observations: Observation[], emergency_guidance: string \| null }` (upsert by date; true flags become Observations — existing ones keep their `created_at`, ones whose flag is now false are deleted; red-flag flags **or red-flag text in `notes`** trigger the emergency path: `emergency_guidance` text, emergency notification (throttled 24 h per observation), event risk assessment) |
+| POST | /api/logs/daily | user | `{ date, sleep_quality?, fatigue?, mood?, stress? (1–5), flags?: {name: bool}, medication_adherence?, caffeine_alcohol?, exercise_minutes?, notes? }` | `DailyLog + { observations: Observation[] }` (upsert by date; true flags become Observations — existing ones keep their `created_at`, ones whose flag is now false are deleted) |
 | GET | /api/logs/daily?days=30 | user | – | `DailyLog[]` (each with `observations`) |
 
 `BpSummary` = `{ days, per_day: [{ date, morning?: {systolic, diastolic, n}, evening?: {…}, day_mean: {systolic, diastolic} }], window_7d: { start, end, day_mean, morning, evening (each {systolic, diastolic, n_days, sufficient}), method, jsh? }, n_readings, n_invalid, n_irregular_pulse_flags }`.
@@ -98,19 +98,10 @@ Metric types and units: `METRIC_TYPES` in `backend/app/schemas/metrics.py` (step
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
 | GET | /api/observations?kind=&days=30 | user | – | `Observation[]` |
-| POST | /api/observations | user | `{ kind, label, severity?, onset?, free_text?, source? }` | 201 `Observation + { emergency_guidance: string \| null }` (a red-flag kind/label or red-flag text in `free_text` takes the emergency path; detected text labels add `red_flag` Observations) |
+| POST | /api/observations | user | `{ kind, label, severity?, onset?, free_text?, source? }` | 201 `Observation` |
 | DELETE | /api/observations/{id} | user | – | 204 |
 
-`Observation` = `{ id, kind, label, severity, onset, free_text, source (chat\|log\|document\|screener), source_id, created_at }`.
-
-## 6. Screener (Parkinson's, spec §5.1)
-
-| Method | Path | Auth | Request | Response |
-|---|---|---|---|---|
-| GET | /api/screener/pd?language= | user | – | `{ id: "pd", version, language, period, response_type: "yes_no", items: [{ id, type (motor\|nonmotor), text }] }` |
-| POST | /api/screener/pd | user | `{ answers: { <item id>: bool } }` | 201 `{ id, screener, score, motor_count, nonmotor_count, pd01_would_fire, next_tasks (["sustained_vowel","finger_tap"] when PD-01 would fire), created_at }`; 422 unknown item |
-
-Item ids (canonical, from `app/content/screener_pd.json`): `tremor_rest, stiffness_slowness, clumsiness_handwriting, soft_voice` (motor), `smell_loss, dream_enactment, constipation, falls` (non-motor). Legacy ids (`pd_rest_tremor`, …) are still accepted.
+`Observation` = `{ id, kind, label, severity, onset, free_text, source (chat\|log\|document), source_id, created_at }`.
 
 ## 7. Assessment tasks (spec §1, §1.4, §5.3, §5.4)
 
@@ -140,16 +131,15 @@ Tapping per-hand features (`features.left` / `features.right`): `tap_count` (KS3
 | POST | /api/chat/voice | user | multipart `file` (audio/*, ≤25 MB), `language?` | `ChatTurn + { transcript, task_id }` (`task_id` = `AssessmentTask(free_speech)`); 422 no speech recognised, 415 not audio |
 | GET | /api/chat/history?limit=50 | user | – | `[{ id, role (user\|assistant), content, audio_url, sources, created_at }]` oldest first |
 | GET | /api/chat/checkin?language= | user | – | `[{ id, text, type: scale\|bool\|text, reason, pathway?, sessions?, task? (story_recall\|sustained_vowel) }]` |
-| POST | /api/chat/checkin | user | `{ answers: { <question id>: value }, date?, language? }` | `{ date, daily_log_id, observations: Observation[], red_flags, emergency_guidance: str\|null, ignored: [id] }` |
+| POST | /api/chat/checkin | user | `{ answers: { <question id>: value }, date?, language? }` | `{ date, daily_log_id, observations: Observation[], ignored: [id] }` |
 | POST | /api/ingest | dev/admin | `{ text, source (ResearchSource id), title?, pathway_tags?, url?, year? }` | `{ chunks_added, source_id }` |
 | POST | /api/ingest/corpus?force=false&limit_chunks_per_source= | dev/admin | – | `{ sources, ingested, skipped, failed, total_chunks, total_parents, pruned: [id], per_source: [{ id, status, loader, chunks, parents }] }` (corpus: `backend/data/raw/research/sources.json`; English only; `pruned` is always `[]` here — removing a source is done with `scripts/ingest_corpus.py`) |
 | GET | /api/sources?pathway= | public | – | `[{ id, title, authors, year, url, doi, pathway_tags, kind, chunk_count }]` |
 
-`ChatTurn` = `{ answer, sources: SourceRef[], cited: int[], observations_created: Observation[], red_flags: str[], assessment_hint, message_id, language }`. `cited` = the `n` values that actually appear as `[n]` in `answer` (a subset of `sources[].n`, ascending; `[1-3]` and `[1, 3]` forms are expanded). `sources` lists every passage the model was given, cited or not; show `cited` ones as references and the rest (if at all) as "also consulted". History rows (`GET /api/chat/history`) carry `sources` but not `cited`: derive it from the `[n]` markers in `content`.
-`SourceRef` = `{ n, id, title, year, url, snippet, chunk_id, section, score }`; `n` matches the `[n]` markers in `answer`. `section` = heading path of the parent section the passage comes from (e.g. `"Abstract > Results"`, `"4.2 Investigations"`, `"p. 6"` for PDFs; `null` for legacy rows); show it next to the title so two passages from one source are distinguishable. Normally at most 2 passages per source (`app/rag/packing.py:MAX_PER_SOURCE`); a source can fill more slots only when no other source has a relevant passage, so the same `id` can appear several times with different `section`s. `score` = cross-encoder logit (can be negative) or RRF score with `RERANKER=identity`; for ordering/debugging only. **`sources` can be empty on a normal (non-red-flag) turn**: with the cross-encoder, passages scoring below `RAG_MIN_RERANK_SCORE` (default −6.0) are dropped, and when nothing in the English research library is relevant ("how much sleep do I need?") the answer says so without citations; render a "no research sources for this answer" state rather than an empty list.
-Red flags (`chest_pain, chest_pressure, speech_difficulty, vision_disturbance, fainting, face_droop, arm_weakness, severe_sudden_headache, suicidal_ideation`; keyword detection) short-circuit the turn: `answer` is emergency guidance (Canada: 911, Health811 nurse line 811, 9-8-8 Suicide Crisis Helpline; `settings.emergency_number` / `health_line_number` / `crisis_line_number`), an `emergency` notification is created (+ e-mail to the emergency contact with consent), `Observation(kind=red_flag, severity=urgent)` rows are written, `sources` is empty, no LLM call, and the next risk run puts `general` at `emergency` with no booking.
-`assessment_hint` ∈ `emergency | story_recall | pd_screener | bp_and_rhythm_check | null`.
-Check-in question ids: `sleep_quality, fatigue, mood` (scale 1–5); `bp_reminder, palpitations, dizziness, breathlessness, tremor, stiffness, memory_lapse, task_story_recall, task_sustained_vowel` (bool); `functional_change` (text).
+`ChatTurn` = `{ answer, sources: SourceRef[], cited: int[], observations_created: Observation[], assessment_hint, message_id, language }`. `cited` = the `n` values that actually appear as `[n]` in `answer` (a subset of `sources[].n`, ascending; `[1-3]` and `[1, 3]` forms are expanded). `sources` lists every passage the model was given, cited or not; show `cited` ones as references and the rest (if at all) as "also consulted". History rows (`GET /api/chat/history`) carry `sources` but not `cited`: derive it from the `[n]` markers in `content`.
+`SourceRef` = `{ n, id, title, year, url, snippet, chunk_id, section, score }`; `n` matches the `[n]` markers in `answer`. `section` = heading path of the parent section the passage comes from (e.g. `"Abstract > Results"`, `"4.2 Investigations"`, `"p. 6"` for PDFs; `null` for legacy rows); show it next to the title so two passages from one source are distinguishable. Normally at most 2 passages per source (`app/rag/packing.py:MAX_PER_SOURCE`); a source can fill more slots only when no other source has a relevant passage, so the same `id` can appear several times with different `section`s. `score` = cross-encoder logit (can be negative) or RRF score with `RERANKER=identity`; for ordering/debugging only. **`sources` can be empty on a normal turn**: with the cross-encoder, passages scoring below `RAG_MIN_RERANK_SCORE` (default −6.0) are dropped, and when nothing in the English research library is relevant ("how much sleep do I need?") the answer says so without citations; render a "no research sources for this answer" state rather than an empty list.
+`assessment_hint` ∈ `story_recall | bp_and_rhythm_check | null`.
+Check-in question ids: `sleep_quality, fatigue, mood` (scale 1–5); `bp_reminder, palpitations, dizziness, breathlessness, tremor, stiffness, memory_lapse, task_story_recall` (bool); `functional_change` (text).
 Every answer ends with the disclaimer (`DISCLAIMER_JA/EN`, `app/services/guardrails.py`).
 
 ## 9. Risk & dashboard (C4, spec §10–§11)
@@ -164,7 +154,7 @@ Every answer ends with the disclaimer (`DISCLAIMER_JA/EN`, `app/services/guardra
 
 `RiskAssessment` = `{ id, pathway, level, priority_score (0–100\|null), fired_rules: [{ id, version, level, summary_text, evidence, sources, persistence_windows }], missing_inputs, data_quality, model_versions, evidence, probabilities, preventive_measures, explanation, created_at }`.
 
-What a risk run does: one row per pathway; level change → `risk_level_change` notification; newly `followup_recommended` → `followup_recommended` notification (+ e-mail) and, with `ai_assessment` consent, the report + booking agent (§10, §12); `emergency` → `emergency` notification and **no** report/booking for any pathway in that run; `insufficient_data` → `data_needed` (at most once per 7 days per pathway). The level comes only from fired rules; no LLM is called.
+What a risk run does: one row per pathway; level change → `risk_level_change` notification; newly `followup_recommended` → `followup_recommended` notification (+ e-mail) and, with `ai_assessment` consent, the report + booking agent (§10, §12); `insufficient_data` → `data_needed` (at most once per 7 days per pathway). The level comes only from fired rules; no LLM is called.
 
 `PathwayCard` (spec §11.4):
 
@@ -208,7 +198,7 @@ What a risk run does: one row per pathway; level change → `risk_level_change` 
 
 `long_term_risk` (added 2026-10-17, additive): the cardio card's long-term context estimate, `null` on the other cards. Canada uses `calculator: "framingham_2008"` (D'Agostino 2008 general CVD, CCS 2021 usage: doubled for a first-degree relative with premature CVD at age 30–59 without diabetes; `category` = CCS `low` <10% · `intermediate` 10–19.9% · `high` ≥20%; cholesterol inputs in mmol/L). `calculator: "suita"` only when `DEFAULT_COUNTRY=JP`. `status` ∈ `ok | insufficient_data | not_applicable` (ages 30–74, no known CHD). It never changes the level (rule `FRS-01` is informational). `probabilities[]` keeps the same entry for existing clients.
 
-`next_action.type` ∈ `appointment_approval_needed | appointment_requested | appointment_needs_info | appointment_confirmed | none | collect_data | emergency_guidance`. `trend` = 8 weekly points. UI rules: gauge colour by level; always render `score_label` under the number; `probabilities[]` in their own labelled block; `insufficient_data` → progress indicator instead of a number; `emergency` → emergency banner, no gauge.
+`next_action.type` ∈ `appointment_approval_needed | appointment_requested | appointment_needs_info | appointment_confirmed | none | collect_data`. `trend` = 8 weekly points. UI rules: gauge colour by level; always render `score_label` under the number; `probabilities[]` in their own labelled block; `insufficient_data` → progress indicator instead of a number.
 
 ## 10. Reports (C7)
 
@@ -264,7 +254,7 @@ contact, newsletter forms are `none`.
 | GET | /api/appointments/{id}/calendar?token= | public (signed link from the confirmation e-mail) | – | **never changes state**: "Add it to your calendar?" page — `mode=google`: a button that POSTs to the same URL + the .ics link; `mode=manual`: the pre-filled Google Calendar link + the .ics link; "Already in your calendar" when added |
 | POST | /api/appointments/{id}/calendar?token= | public (same token) | – | writes the confirmed event to Google Calendar (= `calendar-sync add`, `by: "user:email_link"`); HTML result page. 403 bad token, 409 not confirmed / Google not connected |
 | GET | /api/appointments/{id}/calendar.ics?token= | public (same token) | – | the invitation (`text/calendar`, attachment; UTC times, `UID <id>@caresync`, 1-hour `VALARM`); 409 when there is no confirmed time |
-| POST | /api/appointments/run/{assessment_id} | admin | – | `Appointment + {…}` — manual trigger (plans → `awaiting_approval`); 409 without `share_with_clinic` consent or for an emergency |
+| POST | /api/appointments/run/{assessment_id} | admin | – | `Appointment + {…}` — manual trigger (plans → `awaiting_approval`); 409 without `share_with_clinic` consent |
 | POST | /api/webhooks/resend/inbound | public, Svix-signed | Resend `email.received` event (raw body) | `{ status: processed\|needs_review\|duplicate\|unmatched\|ignored, email_id?, appointment_id?, matched_by?: reply_token\|sender_review, outcome?, action?, appointment_status? }`. Matching uses the metadata only, before any body is fetched or parsed: **only the reply token** (`book+<token>@…` in to / cc / received_for) can change an appointment. Without a token, a sender equal to the clinic address of exactly ONE open appointment (never the shared `SANDBOX_CLINIC_EMAIL` / `CLINIC_FALLBACK_EMAIL`) → `needs_review`: the message is stored (`classification.outcome = "unverified"`), the user gets an `appointment_needs_info` "please review" notification, the status is unchanged; anything else → `unmatched` (nothing stored). HTML bodies are capped at 200 KB and converted with the stdlib HTML parser. 401 bad / missing / stale (>5 min) signature when `RESEND_WEBHOOK_SECRET` is set; 503 when the secret is unset and `DEV_MODE=false`; 400 invalid JSON. Body fetched from `GET https://api.resend.com/emails/receiving/{email_id}` (the webhook carries metadata only); idempotent on `email_id` |
 | POST | /api/webhooks/elevenlabs/post-call | public, HMAC-signed | ElevenLabs Agents webhook (raw body): `post_call_transcription` (or `call_initiation_failure`; `post_call_audio` and other types → `ignored`) | `{ status: processed\|duplicate\|unmatched\|ignored, conversation_id?, appointment_id?, matched_by?: external_ref\|appointment_id, outcome?: confirmed\|counter_offer\|needs_info\|declined\|no_answer\|voicemail\|other, action?, appointment_status? }`. Header `ElevenLabs-Signature: t=<unix>,v0=<hex HMAC-SHA256(secret, "<t>.<raw body>")>`; 401 bad / missing / stale (>30 min) signature when `ELEVENLABS_WEBHOOK_SECRET` is set; 503 when unset and `DEV_MODE=false`; 400 invalid JSON. Matched by `Appointment.external_ref` = conversation id (fallback: the `appointment_id` dynamic variable, only if that conversation is a phone attempt for the current clinic). Transcript stored as an inbound `AppointmentMessage` (`channel=phone`, `external_id=phone:<conversation_id>:result`, idempotent). Outcomes from `analysis.data_collection_results` → same handling as e-mail replies; `no_answer` / `voicemail` / `call_initiation_failure` → phone attempt `failed` → next channel / next candidate (or keep waiting when another channel's request to the clinic is still open) |
 
@@ -303,9 +293,9 @@ Job `appointment_followups` (daily 09:00, `requested` only): consent revoked →
 | POST | /api/notifications/{id}/read | user | – | `Notification` |
 | POST | /api/notifications/read-all | user | – | `{ updated }` |
 
-`Notification` = `{ id, kind, title, body, payload, read_at, created_at }`; `kind` ∈ `risk_level_change | followup_recommended | emergency | appointment_approval_needed | appointment_requested | appointment_needs_info | appointment_confirmed | appointment_failed | data_needed | import_finished | weekly_summary`. `appointment_approval_needed` payload: `{ appointment_id, clinic, channel_plan, slots, shared_fields, missing_profile_fields, finding, candidates: [{rank, clinic, channel_plan, slots}] }`; `appointment_confirmed` payload: `{ appointment_id, chosen_slot, slot_label, clinic, calendar: <calendar-sync status> }` (its body ends with "Add it to your calendar? Nothing is added until you say so." while `calendar.status = pending`); `appointment_needs_info` payload: `{ appointment_id, question }`. `payload.email` = `{ sent, reason?, result? }` (`result.attachments` lists attached files, e.g. the `.ics`; `reason: covered_by_approval_email` when the approval e-mail of the same run carries the finding); emergency payloads add `emergency_number`, `contact_email`. Every appointment notification carries `payload.appointment_id`: the frontend bell opens `/appointments?appointment=<id>` (the appointment sheet: approval card, confirmation + calendar step, or status).
+`Notification` = `{ id, kind, title, body, payload, read_at, created_at }`; `kind` ∈ `risk_level_change | followup_recommended | appointment_approval_needed | appointment_requested | appointment_needs_info | appointment_confirmed | appointment_failed | data_needed | import_finished | weekly_summary`. `appointment_approval_needed` payload: `{ appointment_id, clinic, channel_plan, slots, shared_fields, missing_profile_fields, finding, candidates: [{rank, clinic, channel_plan, slots}] }`; `appointment_confirmed` payload: `{ appointment_id, chosen_slot, slot_label, clinic, calendar: <calendar-sync status> }` (its body ends with "Add it to your calendar? Nothing is added until you say so." while `calendar.status = pending`); `appointment_needs_info` payload: `{ appointment_id, question }`. `payload.email` = `{ sent, reason?, result? }` (`result.attachments` lists attached files, e.g. the `.ics`; `reason: covered_by_approval_email` when the approval e-mail of the same run carries the finding). Every appointment notification carries `payload.appointment_id`: the frontend bell opens `/appointments?appointment=<id>` (the appointment sheet: approval card, confirmation + calendar step, or status).
 
-User e-mails share one layout (`render_email` / `email_shell`: CareSync header, title, buttons, the Canadian 911 / 811 disclaimer; English only). The approval and confirmation e-mails are described in §11.
+User e-mails share one layout (`render_email` / `email_shell`: CareSync header, title, buttons, the not-a-diagnosis disclaimer; English only). The approval and confirmation e-mails are described in §11.
 
 ## 14. Jobs & admin
 

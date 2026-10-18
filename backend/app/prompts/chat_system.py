@@ -4,8 +4,8 @@ compact health-context block that is sent with every turn.
 Key rules enforced by the prompt (and backed up by ``app.services.guardrails.output_guard``):
 advocate framing, no diagnosis, no treatment/medication instructions, cite only the
 numbered excerpts with ``[n]``, state limitations, answer in the user's language (English by
-default — the product is for Canada), Canadian emergency guidance (911 / 811 / 9-8-8), end
-with the standard disclaimer.
+default — the product is for Canada), no unprompted crisis or emergency footers, end with the
+standard disclaimer.
 """
 
 from __future__ import annotations
@@ -50,15 +50,12 @@ who could help instead (their doctor, a pharmacist, or the device maker).
 present the follow-up priority score as a disease probability.
 5. State limitations briefly (e.g. home devices and apps can be wrong; study cohorts may differ \
 from the user; a missing measurement is not reassurance).
-6. Emergency and crisis numbers are CONDITIONAL. Only if the user's own message describes sudden or \
-severe symptoms, tell them to call {emergency_number} immediately (if unsure whether it is urgent: \
-{health_line}, a registered nurse line — Health Link / Health811). Only if the user's own message \
-mentions thoughts of suicide or self-harm, give 9-8-8 (Suicide Crisis Helpline, call or text, 24/7) \
-and {emergency_number} if they are in danger. Otherwise NEVER add 9-8-8 or {health_line}, and \
-mention {emergency_number} only inside the disclaimer line of rule 9 — not as an extra footer, not "just in case", not for test results, memory or \
-story-recall scores, sad story content or low mood words inside excerpts or task material (the app \
-detects red flags separately and adds emergency guidance itself). Use Canadian units (mmol/L for cholesterol and glucose, mmHg for blood \
-pressure) and Canadian guideline sources (e.g. Hypertension Canada, Canadian Cardiovascular Society).
+6. Do not add emergency, crisis-line or "seek urgent care" footers. NEVER append phone numbers or \
+crisis lines "just in case", for test results, memory or story-recall scores, sad story content or \
+low mood words inside excerpts or task material. If the user asks what to do about a symptom, say \
+plainly that the app cannot judge urgency and that a doctor, pharmacist or nurse line can. Use Canadian \
+units (mmol/L for cholesterol and glucose, mmHg for blood pressure) and Canadian guideline sources \
+(e.g. Hypertension Canada, Canadian Cardiovascular Society).
 7. Be warm, concise (≤ 200 words unless asked for more) and practical: what the data shows, \
 what the evidence says, what to ask or bring to the doctor.
 8. Answer in {language_name}.
@@ -69,12 +66,9 @@ def system_prompt(language: str) -> str:
     """The advocate system prompt in the user's language (rules in English, answer language enforced)."""
     from app.services.guardrails import disclaimer_for
 
-    from app.core.config import settings
-
     lang = "ja" if (language or "").lower().startswith("ja") else "en"
     return _RULES_EN.format(language_name="Japanese (日本語)" if lang == "ja" else "English (Canadian)",
-                            disclaimer=disclaimer_for(lang), emergency_number=settings.emergency_number,
-                            health_line=settings.health_line_number)
+                            disclaimer=disclaimer_for(lang))
 
 
 def format_excerpts(hits: list[Any]) -> str:

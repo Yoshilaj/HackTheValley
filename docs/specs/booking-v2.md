@@ -33,7 +33,6 @@ Supersedes the email-only flow in BACKEND_PLAN §C6. Canada only, English only.
   approval card lists `shared_fields` and `missing_profile_fields` (required onboarding fields still
   empty, so the user sees what the agent cannot answer). The phone agent always says it is an AI
   assistant calling on behalf of the patient.
-- Emergency-level assessments never reach the agent (unchanged).
 - Consent gates unchanged: `share_with_clinic` required; `calendar_access` for FreeBusy/events.
 
 ## 1. Flow

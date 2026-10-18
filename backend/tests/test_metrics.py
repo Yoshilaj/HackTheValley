@@ -155,17 +155,17 @@ def test_rhythm_endpoint_keeps_raw_label(client, headers):
 
 def test_daily_log_observations_and_upsert(db, user):
     log = DailyLogIn(date=date(2026, 10, 16), fatigue=4, flags={
-        "headache": True, "chest_discomfort": True, "fainting": True, "vision_speech_disturbance": True,
+        "headache": True, "palpitations": True, "fainting": True,
         "memory_lapse": True, "confusion": True, "tremor": False})
     row, obs = svc.add_daily_log(db, user.id, log)
     db.commit()
     got = {(o.kind, o.label) for o in obs}
+    # no red-flag mapping: every unmapped true flag is a plain symptom observation
     assert got == {
-        ("symptom", "headache"), ("red_flag", "chest_pressure"), ("red_flag", "fainting"),
-        ("red_flag", "speech_difficulty"), ("red_flag", "vision_disturbance"),
+        ("symptom", "headache"), ("symptom", "palpitations"), ("symptom", "fainting"),
         ("functional_change", "memory_lapse"), ("functional_change", "confusion"),
     }
-    assert all(o.source == "log" and o.source_id == row.id for o in obs)
+    assert all(o.source == "log" and o.source_id == row.id and o.severity is None for o in obs)
 
     # re-submit the same date with fewer flags → same row, observations re-derived
     row2, obs2 = svc.add_daily_log(db, user.id, DailyLogIn(date=date(2026, 10, 16), flags={"headache": True}))
@@ -177,13 +177,16 @@ def test_daily_log_observations_and_upsert(db, user):
 
 def test_daily_log_endpoints(client, headers):
     res = client.post("/api/logs/daily", headers=headers, json={
-        "date": date.today().isoformat(), "mood": 3, "flags": {"fainting": True}})
+        "date": date.today().isoformat(), "mood": 3, "flags": {"palpitations": True}})
     assert res.status_code == 200, res.text
-    assert res.json()["observations"][0]["kind"] == "red_flag"
+    assert res.json()["observations"][0]["kind"] == "symptom" and "emergency_guidance" not in res.json()
     listed = client.get("/api/logs/daily?days=7", headers=headers).json()
-    assert listed[0]["observations"][0]["label"] == "fainting"
-    reds = client.get("/api/observations?kind=red_flag&days=1", headers=headers).json()
-    assert [o["label"] for o in reds] == ["fainting"]
+    assert listed[0]["observations"][0]["label"] == "palpitations"
+    syms = client.get("/api/observations?kind=symptom&days=1", headers=headers).json()
+    assert [o["label"] for o in syms] == ["palpitations"]
+    # red_flag is no longer an accepted observation kind
+    bad = client.post("/api/observations", headers=headers, json={"kind": "red_flag", "label": "chest_pain"})
+    assert bad.status_code == 422
 
 
 def test_observations_crud(client, headers):

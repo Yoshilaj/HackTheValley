@@ -8,7 +8,7 @@ Extends ``scripts.seed.seed_demo_user`` with 35 days of data:
 * home BP twice daily (2 readings per occasion), stable ~128/80, then rising over the last
   14 days to ~149/94 (7-day mean ≈146/92 → BP-02);
 * OMRON Connect "Possible AFib" (possible_af) 3 days ago (→ RHY-01), a palpitations observation;
-* a completed PD screener (all "no"), daily fatigue logs;
+* daily fatigue logs;
 * **simulated** Parkinson's-pathway trend (every row carries ``raw_json.simulated=True``): 35 daily
   keyboard finger_tap sessions (BRAIN test, s / ; keys, 30 s per hand, built from synthetic key-event
   streams through ``task_service.build_tapping_task``), stable then tap count down / interval up /
@@ -43,9 +43,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     AssessmentTask, AuditLog, BpReading, DailyLog, DeviceRhythmResult, MetricSample, Observation, RiskAssessment,
-    ScreenerResponse, User,
+    User,
 )
-from app.ml.screener import PD_SCREENER_ITEMS
 from app.services.context_builder import user_zone
 from app.services.task_service import build_tapping_task
 
@@ -217,13 +216,10 @@ def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> 
                               label="possible_af", recorded_at=at(3, 7, 10), meta={"device": "HCR-7800T"}))
     db.add(Observation(user_id=user.id, kind="symptom", label="palpitations", severity="mild", onset="3 days ago",
                        free_text="Sometimes I feel my heart fluttering", source="chat", created_at=at(2, 12)))
-    db.add(ScreenerResponse(user_id=user.id, screener="pd", answers={i.id: False for i in PD_SCREENER_ITEMS},
-                            score=0.0, created_at=at(20, 10)))
     # ---- simulated Parkinson's-pathway trend (PD-04 tapping + PD-03B voice; spec §5.3, §5.5)
+    # today's sessions are clamped to ``now`` (not skipped) so the planted trend is the same at any time of day
     for i in range(DAYS):
-        t = at(i, 19)
-        if t > now:
-            continue
+        t = min(at(i, 19), now)
         task = build_tapping_task(user, tap_events_for(i, "left"), tap_events_for(i, "right"), TAP_DURATION_S)
         task.raw_json = {**task.raw_json, **SIMULATED}
         task.language, task.created_at = "en", t
@@ -245,7 +241,7 @@ def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> 
                               recording_quality={**{k: {"audio": rq_audio, "asr_confidence": 0.9}
                                                     for k in ("immediate_1", "immediate_2", "delayed")},
                                                  "device": VOICE_DEVICE},
-                              created_at=at(off, 10)))
+                              created_at=min(at(off, 10), now - timedelta(minutes=30))))
         prob = round(0.18 + 0.04 * (i % 3), 2)  # always below the 0.6 threshold: v1 score stays display-only
         db.add(AssessmentTask(user_id=user.id, task_type="sustained_vowel", protocol_version="vowel-1", language="en",
                               valid=True, raw_json={**SIMULATED, "repetition_index": 1, "sample_rate": 16000},
@@ -257,7 +253,7 @@ def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> 
                                                  "clip_frac": 0.0, "ok": True, "reasons": [],
                                                  "noise_floor_dbfs": round(_wobble(-60, 1.5, i), 1), "level_dbfs": -20.0,
                                                  "clipping_ratio": 0.0, "device": VOICE_DEVICE},
-                              created_at=at(off, 10, 30)))
+                              created_at=min(at(off, 10, 30), now)))
         counts["voice_sessions"] = counts.get("voice_sessions", 0) + 2
     base_bp = {"systolic": 136.0, "diastolic": 84.0}
     for off in (14, 7):

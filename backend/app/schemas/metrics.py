@@ -211,7 +211,7 @@ class DailyLogIn(BaseModel):
 
     model_config = ConfigDict(json_schema_extra={"examples": [{
         "date": "2026-10-17", "sleep_quality": 2, "fatigue": 4, "mood": 3, "stress": 3,
-        "flags": {"headache": True, "memory_lapse": True, "chest_discomfort": False},
+        "flags": {"headache": True, "memory_lapse": True, "palpitations": False},
         "medication_adherence": True, "caffeine_alcohol": {"caffeine_cups": 2, "alcohol_units": 0},
         "exercise_minutes": 20, "notes": "Forgot where I parked.",
     }]})
@@ -230,19 +230,16 @@ class ObservationOut(ORMModel):
 
 
 class ObservationCreated(ObservationOut):
-    """POST /observations response: the row + emergency guidance when it is (or its text
-    contains) a red flag (spec §7)."""
-
-    emergency_guidance: str | None = None
+    """POST /observations response: the created row."""
 
 
 class ObservationCreate(BaseModel):
-    kind: Literal["symptom", "functional_change", "medication", "lifestyle", "mood", "red_flag"]
+    kind: Literal["symptom", "functional_change", "medication", "lifestyle", "mood"]
     label: str = Field(min_length=1, max_length=200, examples=["dizziness"])
     severity: str | None = Field(default=None, max_length=32)
     onset: str | None = Field(default=None, max_length=100)
     free_text: str | None = Field(default=None, max_length=5000)
-    source: Literal["chat", "log", "document", "screener"] = "log"
+    source: Literal["chat", "log", "document"] = "log"
 
 
 class DailyLogOut(ORMModel):
@@ -258,5 +255,3 @@ class DailyLogOut(ORMModel):
     exercise_minutes: int | None
     notes: str | None
     observations: list[ObservationOut] = []
-    #: emergency guidance (spec §7) when this submission reported a red flag; else null
-    emergency_guidance: str | None = None

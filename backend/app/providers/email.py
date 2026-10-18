@@ -26,11 +26,11 @@ log = get_logger(__name__)
 # callers that still import it; e-mails render the English disclaimer only.
 DISCLAIMER_JA = (
     "これは診断ではありません。本サービスは医療機関の受診を補助するものであり、"
-    "医師による診察・診断の代わりにはなりません。緊急の場合は911番に電話してください。"
+    "医師による診察・診断の代わりにはなりません。"
 )
 DISCLAIMER_EN = (
     "This is not a diagnosis. This service helps you prepare for a medical visit and does not "
-    "replace examination or diagnosis by a doctor. In an emergency, call 911. For health advice, "
+    "replace examination or diagnosis by a doctor. For health advice, "
     "call 811 to speak with a registered nurse."
 )
 

@@ -4,7 +4,7 @@ Every rule is evaluated independently on a ``PathwayContext`` and returns a
 ``RuleOutcome``. No rule's AND-condition suppresses another rule's finding.
 The only cross-rule dependency is PD-03, which by spec (§5.4) can only
 *escalate* a voice-model score when another PD rule already fired; it never
-hides PD-01/02/04.
+hides PD-02/04.
 
 Gate rules (BP-00, COG-01, RHY-02) never "fire": they return
 ``insufficient``/``invalid`` and the engine reports them alongside.
@@ -32,10 +32,9 @@ from app.ml import bp as bpm
 from app.ml.context import BpReadingIn, ObservationIn, PathwayContext, TaskSessionIn
 from app.ml.framingham import FRS_ELEVATED_PCT, framingham_score
 from app.ml.rhythm import AF_LABELS, CLASSIFIED_LABELS, HR_LABELS, UNCLASSIFIED_LABELS, rhythm_findings
-from app.ml.screener import score_pd_screener
 from app.ml.suita import SUITA_ELEVATED_PCT, suita_score
 
-LEVEL_ORDER = ("no_finding", "watch", "followup_recommended", "emergency")
+LEVEL_ORDER = ("no_finding", "watch", "followup_recommended")
 LEVELS = ("insufficient_data", "invalid_measurement") + LEVEL_ORDER
 
 # ---------------------------------------------------------------- thresholds
@@ -46,11 +45,6 @@ BP_SEVERE_SYS, BP_SEVERE_DIA = 180, 110           # BP-05: ≥180/110 (any valid
 BP_REMEASURE_MIN = timedelta(minutes=5)           # BP-05: re-measure after 5 min
 BP_REMEASURE_MAX = timedelta(minutes=60)          # decision: re-measure must be within 1 h
 BP_SEVERE_LOOKBACK = timedelta(hours=24)          # decision: "any occasion" = last 24 h
-BP_SYMPTOM_LABELS = frozenset({                   # BP-05 symptoms (§2)
-    "headache", "severe_headache", "chest_pain", "chest_pressure", "dyspnoea", "dyspnea",
-    "shortness_of_breath", "breathlessness", "neuro_signs", "face_droop", "arm_weakness",
-    "speech_difficulty", "vision_disturbance", "confusion", "sudden_confusion", "numbness",
-})
 # §4 Rhythm
 RHY_LOOKBACK_DAYS = 30                            # decision: RHY-01/03 look-back
 RHY02_WINDOW_DAYS = 7                             # RHY-02: "in 7 days"
@@ -71,10 +65,9 @@ FUNCTIONAL_CHANGE_LABELS = frozenset({
 })
 #: Decision: these daily check-in yes/no flags are stored as ``kind="functional_change"`` but are
 #: symptoms, not functional changes in the spec's sense — a single "yes" must not start the
-#: follow-up / booking flow. Sudden confusion is handled by the emergency detector.
+#: follow-up / booking flow.
 COG03_EXCLUDED_LABELS = frozenset({"memory_lapse", "confusion"})
 # §5 Parkinson's
-PD01_LOOKBACK = timedelta(days=90)                # "last 3 months"
 PD02_METRICS = (("walking_speed", "down"), ("step_length", "down"),
                 ("double_support_pct", "up"), ("walking_asymmetry_pct", "up"))
 PD04_METRICS = (("tap_count", "down"), ("tap_interval_mean", "up"), ("tap_interval_cv", "up"),
@@ -110,17 +103,10 @@ VOICE_TREND_LABELS = {"MDVP:Shimmer": "shimmer", "NHR": "noise-to-harmonics rati
 VOICE_FLOOR_DEFAULTS: dict[str, float] = {"Shimmer": 0.25, "NHR": 0.35, "CPPS": 0.08,
                                           "speech_rate": 0.10, "pause_ratio": 0.25}
 VOICE_FLOOR_PATH = Path(__file__).resolve().parent / "data" / "voice_variability_floor.json"
-VOICE_SUPPORTING_RULES = ("PD-01", "PD-02", "PD-04")
+VOICE_SUPPORTING_RULES = ("PD-02", "PD-04")
 # §6 General
 GEN01_METRICS = (("sleep_duration", "down"), ("fatigue", "up"))
 GEN_BASELINE = dict(baseline_days=30, recent_days=7, min_baseline_days=14, k=1.5, min_recent_hits=5)
-# §7 Emergency
-EMG_LOOKBACK = timedelta(hours=24)                # decision: red flag reported in last 24 h
-RED_FLAG_LABELS = frozenset({
-    "chest_pain", "chest_pressure", "face_droop", "arm_weakness", "speech_difficulty",
-    "fainting", "syncope", "severe_sudden_headache", "suicidal_ideation", "vision_disturbance",
-    "shortness_of_breath", "sudden_confusion", "loss_of_balance",  # guardrails.RED_FLAG_LABELS additions
-})
 
 # --------------------------------------------------------------- data types
 Status = Literal["fired", "not_fired", "insufficient", "invalid", "not_applicable"]
@@ -130,8 +116,7 @@ Status = Literal["fired", "not_fired", "insufficient", "invalid", "not_applicabl
 class RuleOutcome:
     """Result of one rule's condition.
 
-    ``level`` overrides the rule's default level (used by BP-05, whose spec
-    has a symptomatic → emergency and an asymptomatic → follow-up branch).
+    ``level`` overrides the rule's default level.
     ``note`` is surfaced as informational even when the rule did not fire.
     """
 
@@ -344,13 +329,6 @@ def _bp05_assess(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
         if not severe:
             return RuleOutcome("not_fired")
         top = max(severe, key=lambda r: (r.systolic, r.diastolic))
-        symptoms = [ob for ob in _recent(ctx.observations, "created_at", ctx.as_of, BP_SEVERE_LOOKBACK)
-                    if ob.label in BP_SYMPTOM_LABELS]
-        if symptoms:
-            evidence = [_severe_ev(top)]
-            evidence += [ev("observation", ob.id, f"Reported {ob.label.replace('_', ' ')}", ob.label) for ob in symptoms]
-            return RuleOutcome("fired", evidence, level="emergency", data={"symptomatic": True},
-                               summary=f"Very high blood pressure ({top.systolic}/{top.diastolic}) with symptoms")
 
         def remeasures(s: BpReadingIn) -> list[BpReadingIn]:
             return [r for r in valid if BP_REMEASURE_MIN <= r.measured_at - s.measured_at <= BP_REMEASURE_MAX]
@@ -362,7 +340,7 @@ def _bp05_assess(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
                 mins = (r.measured_at - s.measured_at).total_seconds() / 60
                 evidence = [_severe_ev(s), ev("bp_reading", r.id, f"Re-measured {r.systolic}/{r.diastolic} after {mins:.0f} minutes",
                                               {"systolic": r.systolic, "diastolic": r.diastolic})]
-                return RuleOutcome("fired", evidence, level="followup_recommended", data={"symptomatic": False, "urgent": True},
+                return RuleOutcome("fired", evidence, level="followup_recommended", data={"urgent": True},
                                    summary="Very high blood pressure persisted on re-measurement — please contact a doctor promptly")
         latest = severe[-1]
         if not remeasures(latest):
@@ -375,14 +353,6 @@ def _bp05_assess(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
 
 def bp05(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
     return _bp05_assess(ctx, sc)
-
-
-def emg02(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
-    """EMG-02 = BP-05 symptomatic branch (spec §7)."""
-    o = _bp05_assess(ctx, sc)
-    if o.fired and o.data.get("symptomatic"):
-        return RuleOutcome("fired", list(o.evidence), summary=o.summary, data=dict(o.data))
-    return RuleOutcome("not_fired")
 
 
 def suita01(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
@@ -559,21 +529,6 @@ def cog04(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
 
 
 # --------------------------------------------------------------- Parkinson's
-def pd01(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
-    recent = sorted(_recent([s for s in ctx.screeners if s.screener == "pd"], "created_at", ctx.as_of, PD01_LOOKBACK),
-                    key=lambda s: s.created_at)
-    if not recent:
-        return RuleOutcome("insufficient", missing_inputs=["pd_screener"])
-    s = recent[-1]
-    motor, nonmotor, fired = score_pd_screener(s.answers)
-    data = {"motor_count": motor, "nonmotor_count": nonmotor}
-    if not fired:
-        return RuleOutcome("not_fired", data=data)
-    return RuleOutcome("fired", [ev("screener_response", s.id, f"Screener: {motor} motor and {nonmotor} non-motor items", data)],
-                       data=data | {"schedule_tasks": ["sustained_vowel", "finger_tap"]},
-                       summary=f"Screener answers ({motor} movement-related, {nonmotor} other) suggest tracking movement tasks")
-
-
 def _baseline_rule(ctx: PathwayContext, metrics, params: dict[str, Any], summary: str) -> RuleOutcome:
     results = []
     for name, direction in metrics:
@@ -614,7 +569,7 @@ def _pd_vowel_rule_enabled() -> bool:
 
 
 def pd03(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
-    """Voice score ≥ threshold on ≥2 sessions ≥7 days apart AND PD-01/02/04 fired (spec §5.4).
+    """Voice score ≥ threshold on ≥2 sessions ≥7 days apart AND PD-02/04 fired (spec §5.4).
 
     Fires only when ``settings.pd_vowel_rule_enabled`` is true; otherwise the same condition is
     reported as a display-only note (the served model is unvalidated on app-extracted audio)."""
@@ -631,7 +586,7 @@ def pd03(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
         return RuleOutcome("not_fired")
     evidence = [ev("assessment_task", s.id, f"Experimental voice-model score above threshold on {s.created_at.date()}",
                    s.model_scores[PD_VOWEL_MODEL_KEY]) for s in pos]
-    others = [rid for rid in ("PD-01", "PD-02", "PD-04") if sc.outcomes.get(rid) and sc.outcomes[rid].fired]
+    others = [rid for rid in VOICE_SUPPORTING_RULES if sc.outcomes.get(rid) and sc.outcomes[rid].fired]
     if not others:
         return RuleOutcome("not_fired", evidence,
                            note="Experimental voice-model score was above its threshold; on its own this does not raise the level.")
@@ -833,7 +788,7 @@ def pd03b(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
     """PD-03B personal voice stability (spec §5.5, experimental).
 
     Fires (``watch``) only when ≥``VOICE_MIN_ADVERSE_FEATURES`` trend features are adverse on ≥3 of the last
-    5 sessions of their own task series **and** PD-01/02/04 fired in this evaluation; alone it is a
+    5 sessions of their own task series **and** PD-02/04 fired in this evaluation; alone it is a
     display-only note (``not_fired`` + evidence + i18n ``data['message']``). Fewer than
     ``VOICE_BASELINE_SESSIONS`` baseline sessions on the current device in both series → ``insufficient``
     with ``missing_inputs=['voice_baseline_sessions']`` (optional input, never a gate on its own)."""
@@ -886,14 +841,6 @@ def gen01(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
                           "Sleep or fatigue has shifted from your usual range — a change worth checking")
 
 
-def emg01(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
-    obs = _obs_matching(ctx, EMG_LOOKBACK, lambda o: o.kind == "red_flag" or o.label in RED_FLAG_LABELS)
-    if not obs:
-        return RuleOutcome("not_fired")
-    return RuleOutcome("fired", [ev("observation", o.id, f"Reported: {o.label.replace('_', ' ')}", o.label) for o in obs],
-                       summary="A symptom that needs urgent attention was reported")
-
-
 # ----------------------------------------------------------------- registry
 #: Hypertension Canada 2020 is the primary BP source (HBPM series mean ≥135/85, ≥180/110 severe);
 #: JSH 2019 stays as the secondary source for the 145/90, morning-hypertension and ME-difference rules.
@@ -929,11 +876,9 @@ RULES: list[Rule] = [
          "Canada home threshold).", _HTN, "draft", bp03),
     Rule("BP-04", "cardio", "1", ["bp_readings"], "watch",
          "Morning − evening systolic ≥15 mmHg is an independent risk factor (JSH 2019).", _HTN, "draft", bp04),
-    Rule("BP-05", "cardio", "1", ["bp_readings", "observations"], "followup_recommended",
-         "Occasion ≥180/110 (Hypertension Canada: mean ≥180/110 = hypertension at once): with symptoms → emergency; "
-         "without symptoms, persistent after 5-min re-measure → urgent follow-up.", _HTN, "draft", bp05),
-    Rule("EMG-02", "cardio", "1", ["bp_readings", "observations"], "emergency",
-         "= BP-05 symptomatic branch.", _HTN, "draft", emg02),
+    Rule("BP-05", "cardio", "1", ["bp_readings"], "followup_recommended",
+         "Occasion ≥180/110 (Hypertension Canada: mean ≥180/110 = hypertension at once), persistent after "
+         "5-min re-measure → urgent follow-up.", _HTN, "draft", bp05),
     Rule("FRS-01", "cardio", "1", ["profile", "bp_readings"], "no_finding",
          "Framingham 10-year CVD risk (D'Agostino 2008, CCS 2021 modified for family history) ≥10% — CCS "
          "intermediate/high — noted as elevated long-term risk (context only).",
@@ -949,27 +894,23 @@ RULES: list[Rule] = [
          "≥2 inconclusive/poor recordings in 7 days and no classified result.", ["src_apple_ecg"], "draft", rhy02),
     Rule("RHY-03", "cardio", "1", ["rhythm_results"], "watch",
          "High HR or low HR result on ≥2 occasions.", ["src_apple_ecg"], "draft", rhy03),
-    # Parkinson's (§5) — PD-03 must come after PD-01/02/04
-    Rule("PD-01", "parkinsons", "1", ["screeners"], "watch",
-         "≥2 motor items, or 1 motor + ≥1 non-motor item.", ["src_strivepd"], "draft", pd01),
+    # Parkinson's (§5) — PD-03 must come after PD-02/04
     Rule("PD-02", "parkinsons", "1", [m for m, _ in PD02_METRICS], "watch",
          "Gait metric ≥1.5 MAD from 30-day baseline on ≥5 of last 7 days.", ["src_hearo"], "draft", pd02),
     Rule("PD-04", "parkinsons", "1", [m for m, _ in PD04_METRICS], "watch",
          "Finger-tapping metric ≥1.5 MAD from baseline on ≥5 of last 7 days (as PD-02).", ["src_hearo"], "draft", pd04),
     Rule("PD-03", "parkinsons", "1", ["task_sessions.sustained_vowel"], "watch",
-         "Voice-model score ≥ threshold on ≥2 sessions ≥7 days apart and PD-01/02/04 fired; voice alone never raises the level.",
+         "Voice-model score ≥ threshold on ≥2 sessions ≥7 days apart and PD-02/04 fired; voice alone never raises the level.",
          ["src_little2008"], "draft", pd03),
     Rule("PD-03B", "parkinsons", "1", ["task_sessions.sustained_vowel.features", "task_sessions.story_recall.features"],
          "watch",
          "Personal voice stability (experimental): ≥2 of 5 within-person trend features (shimmer ↑, NHR ↑, CPPS ↓; "
          "speech rate ↓, pause ratio ↑) ≥1.5 scaled MAD from the first-10-session same-device baseline on ≥3 of the "
-         "last 5 sessions, and PD-01/02/04 fired; alone it is display-only.",
+         "last 5 sessions, and PD-02/04 fired; alone it is display-only.",
          _VOICE_SOURCES, "draft", pd03b),
-    # general (§6, §7)
+    # general (§6)
     Rule("GEN-01", "general", "1", [m for m, _ in GEN01_METRICS], "watch",
          "Sleep duration or fatigue ≥1.5 MAD from baseline on ≥5 of last 7 days.", ["src_hearo"], "draft", gen01),
-    Rule("EMG-01", "general", "1", ["observations"], "emergency",
-         "Red-flag symptom (chest pain, FAST signs, fainting, severe sudden headache, suicidal ideation).", [], "draft", emg01),
 ]
 RULES_BY_ID: dict[str, Rule] = {r.id: r for r in RULES}
 

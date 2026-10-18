@@ -1,9 +1,9 @@
-"""Engine contract (spec §8): level ordering, independence, emergency, persistence."""
+"""Engine contract (spec §8): level ordering, independence, persistence."""
 from app.ml.context import ProfileIn
 from app.ml.engine import consecutive_windows, evaluate_all, evaluate_pathway, level_rank
 from app.ml.priority import priority_score
 from tests.test_rules_helpers import (
-    AS_OF, bp_days, ctx, daily_series, obs, prior, rhythm, screener, story_sessions, vowel, wobble,
+    AS_OF, bp_days, ctx, daily_series, obs, prior, rhythm, story_sessions, vowel, wobble,
 )
 from tests.test_rules_cardio import severe
 
@@ -13,7 +13,7 @@ AF = [rhythm(3, "心房細動の可能性", "omron_connect")]
 
 
 def test_level_order():
-    order = ["no_finding", "watch", "followup_recommended", "emergency"]
+    order = ["no_finding", "watch", "followup_recommended"]
     assert sorted(order, key=level_rank) == order
 
 
@@ -51,12 +51,12 @@ def test_invalid_measurement_when_nothing_fired():
     assert any(i["rule_id"] == "RHY-02" for i in r.informational)
 
 
-def test_emergency_dominates_and_is_not_combined():
-    r = evaluate_pathway(ctx("cardio", bp_readings=GRADE_II + severe(), rhythm_results=AF,
+def test_severe_bp_with_symptoms_is_followup_not_emergency():
+    r = evaluate_pathway(ctx("cardio", bp_readings=GRADE_II + severe(minutes_after=6), rhythm_results=AF,
                              observations=[obs(1, "chest_pain")]))
-    assert r.level == "emergency"
-    assert {"BP-05", "EMG-02", "BP-02", "RHY-01"} <= set(r.fired_rule_ids)
-    assert priority_score(r) == 100
+    assert r.level == "followup_recommended"
+    assert {"BP-05", "BP-02", "RHY-01"} <= set(r.fired_rule_ids) and "EMG-02" not in r.fired_rule_ids
+    assert priority_score(r) == 80  # three follow-up rules: 60 + 10 + 10
 
 
 def test_framingham_is_informational_only_in_canada():
@@ -83,38 +83,38 @@ def test_long_term_missing_inputs_do_not_make_pathway_insufficient():
     assert r.probabilities[0]["status"] == "insufficient_data"
 
 
-def test_bp05_asymptomatic_urgent_followup_level():
+def test_bp05_urgent_followup_level():
     r = evaluate_pathway(ctx("cardio", bp_readings=NORMAL + severe(minutes_after=6)))
     fr = {f.id: f.level for f in r.fired_rules}
-    assert fr["BP-05"] == "followup_recommended" and "EMG-02" not in fr
+    assert fr["BP-05"] == "followup_recommended"
 
 
 def test_pd03_escalates_only_with_other_finding(monkeypatch):
     voice = [vowel(20, 0.8), vowel(5, 0.7)]
     alone = evaluate_pathway(ctx("parkinsons", task_sessions=voice))
     # review fix 13: voice data exists, so PD is not insufficient_data; voice alone never raises
-    # the level (→ no_finding) and the missing screener / mobility inputs are optional
+    # the level (→ no_finding) and the missing mobility / tapping inputs are optional
     assert "PD-03" not in alone.fired_rule_ids and alone.level == "no_finding"
-    assert "pd_screener" in alone.data_quality["missing_optional_inputs"]
+    assert "tap_count" in alone.data_quality["missing_optional_inputs"]
     assert any(i["rule_id"] == "PD-03" for i in alone.informational)
-    with_screener = ctx("parkinsons", task_sessions=voice, screeners=[screener({"tremor_rest": True, "soft_voice": True})])
+    tapping = {"tap_count": daily_series("tap_count", wobble(60, 30, 2), [45] * 7)}
+    with_tapping = ctx("parkinsons", task_sessions=voice, series=tapping)
     # default config: voice model is display-only, so PD-03 notes but does not fire
-    default = evaluate_pathway(with_screener)
-    assert default.fired_rule_ids == ["PD-01"] and default.level == "watch"
+    default = evaluate_pathway(with_tapping)
+    assert default.fired_rule_ids == ["PD-04"] and default.level == "watch"
     assert any(i["rule_id"] == "PD-03" for i in default.informational)
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "pd_vowel_rule_enabled", True)
-    both = evaluate_pathway(with_screener)
-    assert both.fired_rule_ids == ["PD-01", "PD-03"] and both.level == "watch"
+    both = evaluate_pathway(with_tapping)
+    assert both.fired_rule_ids == ["PD-04", "PD-03"] and both.level == "watch"
     assert both.probabilities[0]["kind"] == "experimental_model_score"
 
 
 def test_pd_watch_with_gait():
     s = {"walking_speed": daily_series("walking_speed", wobble(1.2, 30, 0.02), [1.0] * 7)}
-    r = evaluate_pathway(ctx("parkinsons", series=s,
-                             screeners=[screener({"tremor_rest": True, "constipation": True})]))
-    assert r.fired_rule_ids == ["PD-01", "PD-02"] and priority_score(r) == 35
+    r = evaluate_pathway(ctx("parkinsons", series=s))
+    assert r.fired_rule_ids == ["PD-02"] and priority_score(r) == 25
     assert r.data_quality["baseline_n_days"]["walking_speed"] == 30
 
 
@@ -130,9 +130,9 @@ def test_cognitive_retest_prompt_is_informational():
     assert any(i["rule_id"] == "COG-04" for i in r.informational)
 
 
-def test_general_emergency():
-    r = evaluate_pathway(ctx("general", observations=[obs(1, "face_droop")]))
-    assert r.level == "emergency" and r.fired_rule_ids == ["EMG-01"]
+def test_general_symptom_observation_does_not_escalate():
+    r = evaluate_pathway(ctx("general", observations=[obs(1, "face_droop", "symptom")]))
+    assert r.level == "insufficient_data" and r.fired_rule_ids == []
 
 
 def test_persistence_counts_consecutive_weekly_windows():
@@ -174,9 +174,9 @@ def test_pd03b_in_engine_display_only_alone_watch_with_tapping():
 def test_pd03b_insufficient_is_optional_not_a_gate():
     from tests.test_rules_helpers import voice_baseline
 
-    r = evaluate_pathway(ctx("parkinsons", task_sessions=voice_baseline(4),
-                             screeners=[screener({"tremor_rest": True, "soft_voice": True})]))
-    assert r.fired_rule_ids == ["PD-01"] and r.level == "watch"
+    s = {"walking_speed": daily_series("walking_speed", wobble(1.2, 30, 0.02), [1.0] * 7)}
+    r = evaluate_pathway(ctx("parkinsons", task_sessions=voice_baseline(4), series=s))
+    assert r.fired_rule_ids == ["PD-02"] and r.level == "watch"
     assert "voice_baseline_sessions" in r.data_quality["missing_optional_inputs"]
     assert r.data_quality["voice_baseline_sessions"] == {"sustained_vowel": 4, "story_recall": 0}
     empty = evaluate_pathway(ctx("parkinsons"))

@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from app.content import STORY_BANK_VERSION, ContentError, get_screener, get_story, get_story_by_id, get_word_set, list_stories
+from app.content import STORY_BANK_VERSION, ContentError, get_story, get_story_by_id, get_word_set, list_stories
 from app.content.loader import (
     CONTENT_UNIT_RANGE, ENTITY_RANGE, EN_WORD_RANGE, JA_CHAR_RANGE, SENTENCE_RANGE,
     count_en_words, count_ja_chars, count_sentences,
@@ -70,12 +70,3 @@ def test_word_sets():
     ws = get_word_set("ja", exclude_ids=[f"wr-{i:02d}" for i in range(1, 10)])
     assert ws.id == "wr-10"
 
-
-def test_screener_pd():
-    sc = get_screener("pd")
-    assert sc.motor_ids == ["tremor_rest", "stiffness_slowness", "clumsiness_handwriting", "soft_voice"]
-    assert sc.nonmotor_ids == ["smell_loss", "dream_enactment", "constipation", "falls"]
-    ja = sc.for_language("ja")
-    assert len(ja) == 8 and all(i["text"] for i in ja)
-    with pytest.raises(ContentError):
-        get_screener("ad")

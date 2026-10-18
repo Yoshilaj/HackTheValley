@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
-#: Pathways evaluated by the engine. ``general`` carries GEN-01 and EMG-01.
+#: Pathways evaluated by the engine. ``general`` carries GEN-01.
 PATHWAYS: tuple[str, ...] = ("cognitive", "cardio", "parkinsons", "general")
 #: Country whose guidelines select region-specific rules/calculators (ISO 3166-1 alpha-2).
 #: "CA" (default): Framingham Risk Score / CCS; "JP": Suita score (kept, not used in Canada).
@@ -110,17 +110,6 @@ class TaskSessionIn:
 
 
 @dataclass(frozen=True)
-class ScreenerIn:
-    """Screener response; ``answers`` keyed by item id (``app.ml.screener``)."""
-
-    created_at: datetime
-    screener: str
-    answers: dict[str, bool] = field(default_factory=dict)
-    score: float | None = None
-    id: str | None = None
-
-
-@dataclass(frozen=True)
 class ProfileIn:
     """Static profile. ``None`` always means *unknown* — never assumed normal."""
 
@@ -170,5 +159,4 @@ class PathwayContext:
     observations: list[ObservationIn] = field(default_factory=list)
     series: dict[str, DailySeries] = field(default_factory=dict)
     task_sessions: list[TaskSessionIn] = field(default_factory=list)
-    screeners: list[ScreenerIn] = field(default_factory=list)
     prior_assessments: list[PriorAssessment] = field(default_factory=list)

@@ -6,11 +6,11 @@ import pytest
 
 from app.db.models import (
     AssessmentTask, BpReading, DailyLog, DeviceRhythmResult, MetricSample, Observation, Profile, RiskAssessment,
-    ScreenerResponse, User,
+    User,
 )
 from app.ml.context import PATHWAYS
 from app.services.context_builder import (
-    age_from_dob, build_contexts, ckd_stage_from, map_profile, normalize_screener_answers,
+    age_from_dob, build_contexts, ckd_stage_from, map_profile,
 )
 
 NOW = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)  # 08:00 Toronto (EDT)
@@ -64,7 +64,6 @@ def test_row_mapping_and_ids(db):
         BpReading(user_id=u.id, session="morning", systolic=140, diastolic=90, pulse=70, measured_at=t, valid=False),
         DeviceRhythmResult(user_id=u.id, source="omron_connect", label="possible_af", raw_label="心房細動の可能性", recorded_at=t),
         Observation(user_id=u.id, kind="symptom", label="palpitations", severity="mild", created_at=t),
-        ScreenerResponse(user_id=u.id, screener="pd", answers={"tremor_rest": True, "pd_constipation": True}, score=2, created_at=t),
         AssessmentTask(user_id=u.id, task_type="sustained_vowel", valid=True, created_at=t,
                        model_scores={"pd_vowel": {"probability": 0.3, "threshold": 0.6, "version": "v1"}}),
         AssessmentTask(user_id=u.id, task_type="story_recall", score=6.5, created_at=t),
@@ -78,8 +77,6 @@ def test_row_mapping_and_ids(db):
     assert bp.measured_at.utcoffset() == timedelta(hours=-4)
     assert c.rhythm_results[0].label == "possible_af" and c.rhythm_results[0].id == rows[1].id
     assert c.observations[0].label == "palpitations" and c.observations[0].severity is None
-    s = c.screeners[0]
-    assert s.answers == {"tremor_rest": True, "constipation": True} and s.id == rows[3].id
     types = {t.task_type: t for t in c.task_sessions}
     assert types["sustained_vowel"].model_scores["pd_vowel"]["version"] == "v1"
     assert types["story_recall"].score == 6.5
@@ -131,11 +128,6 @@ def test_series_derivation(db):
     assert s["tap_count"].points[0][1] == 35.0  # per-hand average
     assert s["tap_interval_mean"].points[0][1] == 250.0
     assert s["tap_interval_cv"].points[0][1] == 0.2  # only valid hand value
-
-
-def test_normalize_screener_answers():
-    assert normalize_screener_answers({"falls": 1, "pd_fall": 0, "x": True}) == {"falls": False, "x": True}
-    assert normalize_screener_answers(None) == {}
 
 
 def test_vowel_repetitions_collapse_to_one_session_per_day(db):

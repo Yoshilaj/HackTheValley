@@ -4,7 +4,7 @@
 independently and combines them:
 
 * level = max over fired, non-informational rules by
-  ``no_finding < watch < followup_recommended < emergency``;
+  ``no_finding < watch < followup_recommended``;
 * when nothing fired: ``invalid_measurement`` if a GATE rule reported invalid
   input, else ``insufficient_data`` if a gate rule reported missing input, else
   ``no_finding`` (see ``GATE_RULES``; other rules' missing inputs are listed in
@@ -31,7 +31,7 @@ from app.ml.suita import SuitaResult, suita_probability_entry, suita_score
 PERSISTENCE_WINDOW = timedelta(days=7)
 #: Gate rules (review fix 13): only their missing / invalid inputs can make the pathway
 #: ``insufficient_data`` / ``invalid_measurement``. Parkinson's has no single gate: it is
-#: insufficient only when every PD rule lacks input (no screener, mobility, tapping or voice).
+#: insufficient only when every PD rule lacks input (no mobility, tapping or voice).
 GATE_RULES: dict[str, frozenset[str]] = {
     "cardio": frozenset({"BP-00", "RHY-02"}),
     "cognitive": frozenset({"COG-01"}),
