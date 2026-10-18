@@ -1,8 +1,10 @@
 """Parkinson's rules (spec §5)."""
-from app.ml.context import DailySeries
+import pytest
+
+from app.ml.context import DailySeries, TaskSessionIn
 from app.ml.rules import RuleOutcome, Scratch
 from app.ml.screener import PD_SCREENER_ITEMS, score_pd_screener
-from tests.test_rules_helpers import ctx, daily_series, run_rule, screener, vowel, wobble
+from tests.test_rules_helpers import at, ctx, daily_series, run_rule, screener, vowel, wobble
 
 
 def C(**kw):
@@ -160,3 +162,139 @@ def test_engine_ids_match_content_bank():
     s = get_screener("pd")
     assert [i["id"] for i in s.items] == [i.id for i in PD_SCREENER_ITEMS]
     assert [i["type"] == "motor" for i in s.items] == [i.motor for i in PD_SCREENER_ITEMS]
+
+
+# PD-03B personal voice stability (spec §5.5)
+from app.ml import rules as R  # noqa: E402
+from tests.test_rules_helpers import (  # noqa: E402
+    ADVERSE_STORY, ADVERSE_VOWEL, story_baseline, voice_baseline, voice_story, voice_vowel,
+)
+
+
+def _pd03b(sessions, *fired_ids):
+    return run_rule("PD-03B", C(task_sessions=sessions), with_fired(*fired_ids))
+
+
+def test_pd03b_display_only_alone_and_fires_with_supporting_rule():
+    sessions = voice_baseline() + ADVERSE_VOWEL + story_baseline() + ADVERSE_STORY
+    alone = _pd03b(sessions)
+    assert alone.status == "not_fired" and alone.data["display_only"] is True
+    assert set(alone.data["adverse_features"]) == {"MDVP:Shimmer", "NHR", "CPPS", "speech_rate", "pause_ratio"}
+    assert alone.note.startswith("Change in voice measurements — Some measurements of your voice have changed")
+    assert "cannot determine whether you have Parkinson's disease" in alone.note
+    assert "voice stability, not disease progression" in alone.note
+    assert alone.data["message"]["ja"]["title"] == "声の測定値の変化"
+    assert [e["type"] for e in alone.evidence] == ["voice_trend_feature"] * 5
+    shimmer = next(e["value"] for e in alone.evidence if e["value"]["feature"] == "MDVP:Shimmer")
+    assert shimmer["k"] == 3.0 and shimmer["n_adverse"] == 3 and shimmer["status"] == "adverse"
+    assert shimmer["no_change_alert_rates"]["two_of_three"] < 0.05 and shimmer["k_placeholder"] is False
+    assert alone.data["k_by_feature"]["CPPS"] == 2.5 and alone.data["k_by_feature"]["speech_rate"] == 2.0
+    with_pd = _pd03b(sessions, "PD-04")
+    assert with_pd.fired and with_pd.level is None and with_pd.data["supporting_rules"] == ["PD-04"]
+    assert with_pd.summary == ("Voice measurements have shifted from your usual range alongside another finding — "
+                               "a change worth checking")
+
+
+def test_pd03b_vowel_series_alone_can_satisfy_two_features():
+    o = _pd03b(voice_baseline() + ADVERSE_VOWEL, "PD-01")
+    assert o.fired and set(o.data["adverse_features"]) == {"MDVP:Shimmer", "NHR", "CPPS"}
+    assert o.missing_inputs == ["voice_baseline_sessions"]  # story series not yet baselined (optional)
+
+
+def test_pd03b_not_fired_one_feature_or_too_few_hits():
+    one = voice_baseline() + [voice_vowel(o, 0.075) for o in (8, 4, 0)]  # shimmer only
+    o = _pd03b(one, "PD-01")
+    assert o.status == "not_fired" and o.data["adverse_features"] == ["MDVP:Shimmer"] and not o.note
+    two_hits = voice_baseline() + [voice_vowel(8), voice_vowel(4, 0.075, 0.036, 10.5), voice_vowel(0, 0.075, 0.036, 10.5)]
+    assert _pd03b(two_hits, "PD-01").status == "not_fired"
+    assert _pd03b(voice_baseline() + [voice_vowel(o) for o in (8, 4, 0)], "PD-01").status == "not_fired"
+
+
+def test_pd03b_insufficient_below_ten_baseline_sessions():
+    o = _pd03b(voice_baseline(9) + story_baseline(4), "PD-01")
+    assert o.status == "insufficient" and o.missing_inputs == ["voice_baseline_sessions"]
+    assert o.data["baseline_sessions"] == {"sustained_vowel": 9, "story_recall": 4}
+    assert "Fewer than 10 baseline recordings on this device so far (9 recorded)" in o.note
+    assert _pd03b([]).status == "insufficient"
+    assert _pd03b([voice_vowel(5, valid=False)] * 12).status == "insufficient"  # invalid sessions never count
+    no_feats = [TaskSessionIn(at(o), "sustained_vowel", None, True, {}, id=f"x{o}") for o in range(12)]
+    assert _pd03b(no_feats).status == "insufficient"
+
+
+def test_pd03b_device_change_restarts_baseline():
+    old = voice_baseline(device="Android Pixel 7")
+    new = [voice_vowel(o, 0.075, 0.036, 10.5, device="iPhone") for o in (8, 4, 0)]
+    o = _pd03b(old + new, "PD-01")
+    assert o.status == "insufficient" and o.data["device_changed"] is True and o.data["device"] == "iPhone"
+    assert "Recording device changed; the voice baseline restarts on the current device." in o.note
+    assert o.data["baseline_sessions"]["sustained_vowel"] == 3
+    # ten sessions on the new device → baseline complete there, the old device's sessions are ignored
+    fresh = voice_baseline(start_offset=52, gap=4, device="iPhone") + new
+    o2 = _pd03b(old + fresh, "PD-01")
+    assert o2.fired and o2.data["device_changed"] is True
+    # unknown device (None) is one device
+    assert _pd03b(voice_baseline(device=None) + [voice_vowel(o, 0.075, 0.036, 10.5, device=None) for o in (8, 4, 0)],
+                  "PD-01").fired
+
+
+def test_pd03b_variability_floor_prevents_tiny_mad_firing():
+    flat = [voice_vowel(60 - 5 * i, 0.0300 + 0.0001 * (i % 2), 0.0120 + 0.00001 * (i % 2), 14.0 + 0.01 * (i % 2))
+            for i in range(10)]
+    small = [voice_vowel(o, 0.036, 0.015, 13.0) for o in (8, 4, 0)]  # +20 % / +25 % / −1 dB: tiny MAD alone would trip
+    o = _pd03b(flat + small, "PD-01")
+    assert o.status == "not_fired" and o.data["adverse_features"] == []
+    shimmer = next(e["value"] for e in o.evidence if e["value"]["feature"] == "MDVP:Shimmer")
+    assert shimmer["scale_note"] == "variability_floor"
+    assert shimmer["scale"] == pytest.approx(R.voice_variability_floor()["Shimmer"] * shimmer["baseline_median"])
+    assert shimmer["threshold"] > 0.06  # ≥ ×2 the median at K=3 with the telemonitoring floor
+
+
+def test_pd03b_floor_defaults_when_file_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(R, "VOICE_FLOOR_PATH", tmp_path / "missing.json")
+    R._voice_floor_doc.cache_clear()
+    try:
+        floor = R.voice_variability_floor()
+        assert floor["_source"] == "defaults" and floor["Shimmer"] == R.VOICE_FLOOR_DEFAULTS["Shimmer"]
+        assert R.voice_alert_rates("Shimmer", 3.0) is None
+        o = _pd03b(voice_baseline() + ADVERSE_VOWEL, "PD-01")
+        assert o.fired and o.data["floor_source"] == "defaults"
+    finally:
+        R._voice_floor_doc.cache_clear()
+
+
+def test_pd03b_noise_floor_exclusion():
+    noisy = [voice_vowel(o, 0.075, 0.036, 10.5, noise_floor=-40.0) for o in (8, 4, 0)]  # 20 dB noisier
+    o = _pd03b(voice_baseline() + noisy, "PD-01")
+    assert o.status == "not_fired" and o.data["adverse_features"] == []
+    assert o.data["excluded_noise"] == {"sustained_vowel": ["vv_8", "vv_4", "vv_0"]}
+    assert "3 recording(s) excluded: background noise more than 10 dB above your baseline recordings." in o.note
+    # a session without a noise floor is kept
+    assert _pd03b(voice_baseline() + [voice_vowel(o, 0.075, 0.036, 10.5, noise_floor=None) for o in (8, 4, 0)], "PD-01").fired
+
+
+def test_pd03b_story_values_from_temporal_and_japanese_rate():
+    ja = TaskSessionIn(at(1), "story_recall", 6.0, True, {}, features={"temporal": {
+        "immediate_1": {"timing_source": "word_timestamps", "speech_span_s": 30, "speech_rate_wpm": None,
+                        "speech_rate_cpm": 300.0, "pause_ratio": 0.3},
+        "delayed": {"timing_source": "none", "speech_span_s": 0.0, "speech_rate_cpm": 1.0, "pause_ratio": 0.9},
+        "session": {"delay_s": 180}}})
+    assert R.voice_feature_values(ja) == {"speech_rate": 300.0, "pause_ratio": 0.3}
+    assert R.voice_feature_values(voice_story(1, 120, 0.25)) == {"speech_rate": 120.0, "pause_ratio": 0.25}
+    flat = TaskSessionIn(at(1), "story_recall", 6.0, True, {}, features={"speech_rate": 100, "pause_ratio": 0.4})
+    assert R.voice_feature_values(flat) == {"speech_rate": 100.0, "pause_ratio": 0.4}
+    assert R.voice_feature_values(TaskSessionIn(at(1), "finger_tap", None, True, {}, features={"tap_count": 5})) == {}
+    assert R.session_noise_floor(voice_story(1).recording_quality) == -58.0
+    assert R.session_noise_floor({"noise_floor_dbfs": -50}) == -50.0 and R.session_noise_floor({}) is None
+
+
+def test_pd03b_story_only_fires_with_two_speech_features():
+    o = _pd03b(story_baseline() + ADVERSE_STORY, "PD-02")
+    assert o.fired and set(o.data["adverse_features"]) == {"speech_rate", "pause_ratio"}
+
+
+def test_pd03b_registered_after_supporting_rules_with_sources():
+    ids = [r.id for r in R.rules_for("parkinsons")]
+    assert ids.index("PD-03B") > max(ids.index(x) for x in ("PD-01", "PD-02", "PD-04"))
+    rule = R.RULES_BY_ID["PD-03B"]
+    assert rule.level == "watch" and not rule.informational
+    assert rule.sources == ["src_skodda2013", "src_wright2025", "src_bottalico2018", "src_barsties2025"]

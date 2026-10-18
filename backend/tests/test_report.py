@@ -247,3 +247,100 @@ def test_suita_entry_still_labelled_for_japan(db):
     db.commit()
     md = rs.generate_report(db, user, a, FakeLlm(), "en").markdown
     assert rs.SUITA_LABEL["en"] in md and "Framingham" not in md.split("## References")[0]
+
+
+# ---------------------------------------------------------------- PD-03B voice stability (spec §5.5)
+
+def _voice_feature(feature, task, direction, med, scale, k, recent, n_adverse, status="adverse", rates=None, placeholder=False):
+    thr = med + k * scale if direction == "up" else med - k * scale
+    return {"type": "voice_trend_feature", "ref": "vv_0",
+            "summary": f"{feature}: {n_adverse} of last 5 sessions shifted",
+            "value": {"feature": feature, "label": feature, "direction": direction, "task_type": task, "n_baseline": 10,
+                      "status": status, "baseline_median": med, "baseline_mad": scale, "scale": scale, "scale_note": None,
+                      "k": k, "k_placeholder": placeholder, "no_change_alert_rates": rates, "threshold": thr,
+                      "recent": [{"id": f"vv_{i}", "date": f"2026-10-{10 + i}", "value": v} for i, v in enumerate(recent)],
+                      "n_adverse": n_adverse, "n_recent": 5}}
+
+
+VOICE_EVIDENCE = [
+    _voice_feature("MDVP:Shimmer", "sustained_vowel", "up", 0.03, 0.0101, 3.0, [0.03, 0.028, 0.08, 0.07, 0.075], 3,
+                   rates={"k_table": 3.0, "single": 0.06, "two_of_three": 0.024}),
+    _voice_feature("NHR", "sustained_vowel", "up", 0.012, 0.0069, 3.0, [0.012, 0.011, 0.012, 0.013, 0.012], 0, "stable",
+                   rates={"k_table": 3.0, "single": 0.085, "two_of_three": 0.031}),
+    _voice_feature("speech_rate", "story_recall", "down", 130.0, 13.0, 2.0, [131, 129, 95, 96, 94], 3, placeholder=True),
+]
+
+
+def make_pd_assessment(db, user: User, fired: bool) -> RiskAssessment:
+    rule = {"id": "PD-03B", "version": "1", "level": "watch",
+            "summary_text": "Voice measurements have shifted from your usual range alongside another finding — a change worth checking",
+            "evidence": VOICE_EVIDENCE, "sources": ["src_skodda2013", "src_wright2025", "src_bottalico2018", "src_barsties2025"]}
+    pd04 = {"id": "PD-04", "version": "1", "level": "watch", "summary_text": "Finger-tapping results have shifted",
+            "evidence": [{"type": "daily_series", "ref": "tap_count", "summary": "tap count: 7 of last 7 days below"}],
+            "sources": ["src_hearo"]}
+    message = {"en": {"title": "Change in voice measurements", "body": "Some measurements of your voice have changed."},
+               "ja": {"title": "声の測定値の変化", "body": "声のいくつかの測定値が変化しています。"}}
+    a = RiskAssessment(
+        user_id=user.id, pathway="parkinsons", level="watch" if fired else "no_finding", priority_score=35 if fired else 0,
+        fired_rules=[pd04, rule] if fired else [], missing_inputs=[],
+        data_quality={"voice_baseline_sessions": {"sustained_vowel": 10, "story_recall": 10}, "voice_baseline_needed": 10,
+                      "voice_device": "iPhone", "voice_sessions_excluded_noise": 1, "headline": {"en": "x"},
+                      "informational": [{"rule_id": "PD-03B", "kind": "note", "summary": "Change in voice measurements — …",
+                                         "evidence": VOICE_EVIDENCE, "message": message}]},
+        model_versions={"rules": {"PD-03B": "1"}, "models": {"pd_vowel": "v1"}, "engine": "phase-a"},
+        evidence=[], probabilities=[{"name": "experimental voice-model score", "kind": "experimental_model_score",
+                                     "detail_only": True, "value": 0.2, "threshold": 0.6}],
+        preventive_measures=[], explanation="x", created_at=datetime.now(timezone.utc))
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return a
+
+
+def test_pd03b_report_table_citations_and_limitation(db):
+    user = make_user(db)
+    a = make_pd_assessment(db, user, fired=True)
+    data = rs.build_report_data(db, user, a, "en")
+    v = data.voice_stability
+    assert v["fired"] and v["device"] == "iPhone" and v["sessions_excluded_noise"] == 1
+    assert [f["feature"] for f in v["features"]] == ["MDVP:Shimmer", "NHR", "speech_rate"]
+    assert v["features"][0]["no_change_alert_rate"] == 0.024 and v["features"][2]["k_placeholder"] is True
+    assert v["features"][2]["recent_values"] == [131, 129, 95, 96, 94]
+    ref_ids = [r["id"] for r in data.references]
+    assert {"src_skodda2013", "src_wright2025", "src_bottalico2018", "src_barsties2025", "src_uci_telemonitoring"} <= set(ref_ids)
+    assert v["refs"] == [n for n, rid in enumerate(ref_ids, start=1) if rid in v["sources"]]
+    report = rs.generate_report(db, user, a, FakeLlm(), "en")
+    md = report.markdown
+    assert "### Voice measures vs personal baseline (experimental, PD-03B) [" in md
+    assert "**Voice measurements have shifted from your usual range alongside another finding" in md
+    assert "| MDVP:Shimmer | sustained_vowel | higher | 0.03 (0.0101) | 0.0603 (K=3) | 0.03, 0.028, 0.08, 0.07, 0.075 | 3/5 | shifted (expected alert rate with no true change 2%) |" in md
+    assert "| NHR | sustained_vowel | higher |" in md and "| 0/5 | within range (expected alert rate with no true change 3%) |" in md
+    assert "(K=2*)" in md and "K not yet calibrated" in md
+    assert "Device: iPhone · baseline sessions: sustained_vowel 10/10, story_recall 10/10" in md
+    assert "**Change in voice measurements** — Some measurements of your voice have changed." in md
+    assert rs.LABELS["en"]["voice"] in report.html and "0.0603 (K=3)" in report.html and "flagrow" in report.html
+    for doc in (md, report.html):
+        assert "voice stability, not progression" in doc and "Progression of voice and speech impairment" in doc
+        assert "PD-04" in doc and "you have" not in doc.lower().replace("whether you have parkinson", "")
+    # §5.4: the v1 model score stays in the experimental-model section with its caveat
+    assert "Sustained-vowel voice model (experimental)" in md and "not validated for diagnosis" in md
+
+
+def test_pd03b_report_display_only_and_japanese(db):
+    user = make_user(db, language="ja")
+    a = make_pd_assessment(db, user, fired=False)
+    report = rs.generate_report(db, user, a, FakeLlm())
+    md = report.markdown
+    assert "### 声の指標と個人ベースラインの比較（実験的、PD-03B）" in md
+    assert "**声の測定値の変化** — 声のいくつかの測定値が変化しています。" in md
+    assert "| MDVP:Shimmer | sustained_vowel | 上昇 |" in md and "変化あり (真の変化がない場合の予想警告率 2%)" in md
+    assert "PD-03Bは進行ではなく「声の安定性」を示します" in md
+    assert "Voice measurements have shifted" not in md  # not fired → no fired summary line
+    assert "Skodda S" in md  # citations still listed for the display-only table
+    assert "あなたは" not in md
+
+
+def test_report_without_voice_evidence_has_no_voice_section(db, cardio):
+    user, a = cardio
+    data = rs.build_report_data(db, user, a, "en")
+    assert data.voice_stability is None and "PD-03B" not in rs.render_markdown(data)

@@ -87,6 +87,38 @@ _WR_RECALL_PROMPT = {
 }
 
 
+def device_label(user_agent: str | None, explicit: str | None = None) -> str | None:
+    """Coarse recording-device label stored with voice tasks (PD-03B, spec §5.5: a voice baseline is only
+    compared within one device). An explicit client ``device`` string wins; otherwise the platform family
+    (+ Android model) is read from the User-Agent so browser version bumps do not restart the baseline.
+    ``None`` when nothing is known."""
+    if explicit and explicit.strip():
+        return explicit.strip()[:64]
+    ua = (user_agent or "").strip()
+    if not ua:
+        return None
+    low = ua.lower()
+    if "ipad" in low:
+        return "iPad"
+    if "iphone" in low:
+        return "iPhone"
+    if "android" in low:
+        inner = ua[ua.find("(") + 1:ua.find(")")] if "(" in ua and ")" in ua else ""
+        parts = [p.strip() for p in inner.split(";")]
+        model = next((p.split(" Build")[0] for p in parts
+                      if p and not p.lower().startswith(("linux", "android", "wv", "u", "mobile"))), "")
+        return f"Android {model}".strip()[:64]
+    if "macintosh" in low or "mac os x" in low:
+        return "Mac"
+    if "windows" in low:
+        return "Windows"
+    if "cros" in low:
+        return "ChromeOS"
+    if "linux" in low:
+        return "Linux"
+    return "other"
+
+
 class TaskError(Exception):
     """Service error carrying an HTTP status code and optional extra payload."""
 
@@ -137,8 +169,10 @@ def _save_session(task: AssessmentTask, session: StorySession) -> None:
     task.raw_json = {**session.to_dict(), **extra}
 
 
-def start_story_session(db: Session, user: User, language: str | None = None) -> tuple[AssessmentTask, StorySession]:
-    """Create a battery with two stories the user has never heard (§1.1). Commits."""
+def start_story_session(db: Session, user: User, language: str | None = None,
+                        device: str | None = None) -> tuple[AssessmentTask, StorySession]:
+    """Create a battery with two stories the user has never heard (§1.1). Commits.
+    ``device`` (see :func:`device_label`) is kept in ``raw_json`` for the PD-03B voice baseline."""
     lang = user_language(user, language)
     try:
         session = new_session(lang, used_story_ids(db, user))
@@ -147,7 +181,7 @@ def start_story_session(db: Session, user: User, language: str | None = None) ->
     task = AssessmentTask(
         user_id=user.id, task_type="story_recall", protocol_version=session.protocol_version,
         language=session.language, raw_json={**session.to_dict(), "audio_urls": {},
-                                             "story_bank_version": STORY_BANK_VERSION},
+                                             "story_bank_version": STORY_BANK_VERSION, "device": device},
         features=None, model_scores={}, score=None, valid=False, invalid_reason=IN_PROGRESS,
     )
     db.add(task)
@@ -292,6 +326,8 @@ def _finalize_story(db: Session, user: User, task: AssessmentTask, session: Stor
     ]
     task.recording_quality = {r["label"]: {"audio": r.get("recording_quality"), "asr_confidence": r.get("asr_confidence")}
                               for r in d.get("recalls", [])}
+    if (task.raw_json or {}).get("device"):
+        task.recording_quality["device"] = task.raw_json["device"]
     task.model_scores = {}
     task.language = result.language
     task.protocol_version = result.protocol_version or PROTOCOL_VERSION
@@ -313,6 +349,7 @@ def submit_step(
     force_delay: bool = False,
     played_s: float | None = None,
     filename: str | None = None,
+    device: str | None = None,
 ) -> tuple[AssessmentTask, StorySession]:
     """Complete ``step`` of a battery and advance (§1.1). Commits.
 
@@ -346,6 +383,8 @@ def submit_step(
             url = storage.save(user.id, "task_audio", filename or f"{step}.webm", audio_bytes)
             raw = dict(task.raw_json or {})
             raw["audio_urls"] = {**(raw.get("audio_urls") or {}), step: url}
+            if device and not raw.get("device"):
+                raw["device"] = device
             task.raw_json = raw
             try:
                 transcript = stt.transcribe(audio_bytes, session.language, filename=filename)
@@ -400,12 +439,13 @@ def _finite_or_none(v: Any) -> float | None:
 
 
 def submit_vowel(db: Session, user: User, audio_bytes: bytes, filename: str | None, repetition_index: int,
-                 storage: Storage | None = None, model: Any = None) -> dict[str, Any]:
+                 storage: Storage | None = None, model: Any = None, device: str | None = None) -> dict[str, Any]:
     """Store + quality-gate + score one "ahh" repetition (§5.4). Commits.
 
     ``valid`` = recording-quality gate (≥3 s voiced, SNR ≥15 dB, no clipping). The model
     score is stored in ``model_scores['pd_vowel']`` only for valid recordings; PD-03 decides
-    what it means (voice alone never raises the level).
+    what it means (voice alone never raises the level). ``device`` (:func:`device_label`) is
+    stored in ``recording_quality`` for the PD-03B same-device voice baseline (§5.5).
     """
     from app.ml.features.quality import assess_quality
     from app.ml.features.vowel import extract_vowel_features
@@ -436,7 +476,7 @@ def submit_vowel(db: Session, user: User, audio_bytes: bytes, filename: str | No
     reasons = list(quality.reasons)
     task = AssessmentTask(
         user_id=user.id, task_type="sustained_vowel", protocol_version=VOWEL_PROTOCOL_VERSION, language=lang,
-        recording_quality=quality.to_dict(), raw_url=url,
+        recording_quality={**quality.to_dict(), "device": device}, raw_url=url,
         raw_json={"repetition_index": int(repetition_index), "filename": filename, "sample_rate": int(sr)},
         features=features, model_scores=model_scores, score=score, valid=bool(quality.ok),
         invalid_reason=", ".join(reasons)[:200] or None,
@@ -459,7 +499,7 @@ def submit_vowel(db: Session, user: User, audio_bytes: bytes, filename: str | No
                else "この録音は解析に使えませんでした。下のヒントを参考にもう一度録音してください。")
     return {
         "task_id": task.id, "repetition_index": int(repetition_index), "valid": bool(quality.ok),
-        "status": "ok" if quality.ok else "invalid_measurement", "recording_quality": quality.to_dict(),
+        "status": "ok" if quality.ok else "invalid_measurement", "recording_quality": dict(task.recording_quality),
         "reasons": reasons, "message": msg, "tips": [] if quality.ok else VOWEL_TIPS[lang],
         "experimental_score": exp,
     }

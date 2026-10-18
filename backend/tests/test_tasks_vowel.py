@@ -67,3 +67,22 @@ def test_vowel_invalid_with_tips(client, db, h, kind):
 def test_vowel_undecodable(client, h):
     r = client.post("/api/tasks/vowel", headers=h, files={"audio": ("x.wav", b"garbage-bytes", "audio/wav")})
     assert r.status_code == 422
+
+
+def test_vowel_stores_device_label(client, db, h):
+    """PD-03B (spec §5.5): the recording device is stored with every repetition (User-Agent or explicit field)."""
+    from app.services.task_service import device_label
+
+    ua = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"}
+    r = client.post("/api/tasks/vowel", headers=h | ua, data={"repetition": "1"},
+                    files={"audio": ("ahh.wav", _wav(synth_vowel()), "audio/wav")})
+    assert r.status_code == 201, r.text
+    assert r.json()["recording_quality"]["device"] == "iPhone"
+    r2 = client.post("/api/tasks/vowel", headers=h | ua, data={"repetition": "2", "device": "my kitchen phone"},
+                     files={"audio": ("ahh.wav", _wav(synth_vowel()), "audio/wav")})
+    db.expire_all()
+    assert db.get(AssessmentTask, r2.json()["task_id"]).recording_quality["device"] == "my kitchen phone"
+    assert device_label("Mozilla/5.0 (Linux; Android 14; Pixel 7 Build/UQ1A.240105) AppleWebKit") == "Android Pixel 7"
+    assert device_label("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)") == "Mac"
+    assert device_label("Mozilla/5.0 (Windows NT 10.0; Win64; x64)") == "Windows"
+    assert device_label("curl/8.0") == "other" and device_label(None) is None and device_label("", "  ") is None

@@ -63,6 +63,7 @@ MISSING_INPUT_TEXT = {
     "story_recall_followup_sessions": "more story-recall task sessions after the baseline",
     "pd_screener": "the movement questionnaire",
     "sustained_vowel_sessions": "voice ('aah') recordings",
+    "voice_baseline_sessions": "voice recordings on the same device (10 for a personal voice baseline)",
 }
 
 

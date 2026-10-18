@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
-from statistics import fmean
+from statistics import fmean, median
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -195,36 +195,69 @@ def map_screener(s: ScreenerResponse, tz: ZoneInfo) -> ScreenerIn:
                       answers=normalize_screener_answers(s.answers), score=s.score, id=s.id)
 
 
+def task_device(t: AssessmentTask) -> str | None:
+    """Coarse recording-device label stored at upload time (``recording_quality.device``, else
+    ``raw_json.device``; see ``task_service.device_label``). ``None`` = unknown."""
+    for blob in (t.recording_quality, t.raw_json):
+        if isinstance(blob, dict) and isinstance(blob.get("device"), str) and blob["device"].strip():
+            return blob["device"].strip()
+    return None
+
+
 def map_task(t: AssessmentTask, tz: ZoneInfo) -> TaskSessionIn:
     return TaskSessionIn(created_at=to_local(t.created_at, tz), task_type=t.task_type, score=t.score,
-                         valid=bool(t.valid), model_scores=dict(t.model_scores or {}), id=t.id)
+                         valid=bool(t.valid), model_scores=dict(t.model_scores or {}), id=t.id,
+                         features=dict(t.features or {}), device=task_device(t),
+                         recording_quality=dict(t.recording_quality or {}))
+
+
+def _median_features(rows: list[TaskSessionIn]) -> dict[str, Any]:
+    """Per-key median of the numeric feature values over a day's repetitions (non-numeric keys: last row)."""
+    keys = list(dict.fromkeys(k for r in rows for k in r.features))
+    out: dict[str, Any] = {}
+    for k in keys:
+        vals = [float(r.features[k]) for r in rows if isinstance(r.features.get(k), (int, float))
+                and not isinstance(r.features.get(k), bool)]
+        out[k] = median(vals) if vals else rows[-1].features.get(k)
+    return out
 
 
 def aggregate_vowel_sessions(tasks: list[TaskSessionIn]) -> list[TaskSessionIn]:
-    """Collapse valid, model-scored ``sustained_vowel`` rows to one session per local calendar day
-    (spec §5.4: a session is ~3 repetitions; probability = median via ``aggregate_sessions``), so
-    PD-03's "≥2 sessions ≥7 days apart" counts days, not repetitions. The day's session keeps the
-    latest row's id/time and model metadata, plus ``repetitions`` and ``task_ids``. Every other
-    row is returned unchanged; output is ordered by ``created_at``."""
+    """Collapse valid ``sustained_vowel`` rows to one session per local calendar day (spec §5.4: a
+    session is ~3 repetitions): the model probability is the median via ``aggregate_sessions`` so
+    PD-03's "≥2 sessions ≥7 days apart" counts days, not repetitions, and the acoustic ``features``
+    are the per-key median over the repetitions (PD-03B, §5.5). The day's session keeps the latest
+    row's id/time, device and model metadata, plus ``repetitions`` and ``task_ids`` on the model
+    score. Rows with neither a model score nor features, and invalid rows, are returned unchanged;
+    output is ordered by ``created_at``."""
     from app.ml.pd_vowel_model import aggregate_sessions
 
     by_day: dict[date, list[TaskSessionIn]] = defaultdict(list)
     out: list[TaskSessionIn] = []
     for t in tasks:
         m = t.model_scores.get(PD_VOWEL_KEY) if t.task_type == "sustained_vowel" and t.valid else None
-        if isinstance(m, dict) and m.get("probability") is not None:
+        scored = isinstance(m, dict) and m.get("probability") is not None
+        if t.task_type == "sustained_vowel" and t.valid and (scored or t.features):
             by_day[t.created_at.date()].append(t)
         else:
             out.append(t)
     for day_rows in by_day.values():
         day_rows.sort(key=lambda r: r.created_at)
         last = day_rows[-1]
-        merged = dict(last.model_scores[PD_VOWEL_KEY])
-        merged["probability"] = aggregate_sessions(r.model_scores[PD_VOWEL_KEY]["probability"] for r in day_rows)
-        merged["repetitions"] = len(day_rows)
-        merged["task_ids"] = [r.id for r in day_rows]
-        out.append(replace(last, score=merged["probability"],
-                           model_scores={**last.model_scores, PD_VOWEL_KEY: merged}))
+        scored_rows = [r for r in day_rows if isinstance(r.model_scores.get(PD_VOWEL_KEY), dict)
+                       and r.model_scores[PD_VOWEL_KEY].get("probability") is not None]
+        model_scores = dict(last.model_scores)
+        score = last.score
+        if scored_rows:
+            merged = dict(scored_rows[-1].model_scores[PD_VOWEL_KEY])
+            merged["probability"] = aggregate_sessions(r.model_scores[PD_VOWEL_KEY]["probability"] for r in scored_rows)
+            merged["repetitions"] = len(scored_rows)
+            merged["task_ids"] = [r.id for r in scored_rows]
+            model_scores[PD_VOWEL_KEY] = merged
+            score = merged["probability"]
+        featured = [r for r in day_rows if r.features]
+        out.append(replace(last, score=score, model_scores=model_scores,
+                           features=_median_features(featured) if featured else dict(last.features)))
     return sorted(out, key=lambda r: r.created_at)
 
 

@@ -158,3 +158,40 @@ def test_vowel_repetitions_collapse_to_one_session_per_day(db):
     first = scored[0].model_scores["pd_vowel"]
     assert first["probability"] == 0.7 and first["repetitions"] == 3 and scored[0].id == rows[2].id
     assert set(first["task_ids"]) == {r.id for r in rows[:3]}
+
+
+def test_task_features_device_and_quality_mapped(db):
+    """PD-03B inputs (spec §5.5): features / device / recording_quality reach TaskSessionIn; vowel repetitions
+    on one day merge their features by per-key median; device comes from recording_quality or raw_json."""
+    from app.services.context_builder import task_device
+
+    u = make_user(db)
+    day = NOW - timedelta(days=3)
+    rows = [
+        AssessmentTask(user_id=u.id, task_type="sustained_vowel", valid=True, created_at=day + timedelta(minutes=i),
+                       features={"MDVP:Shimmer": v, "NHR": 0.01 + i / 1000, "CPPS": 14.0, "note": "x"},
+                       recording_quality={"snr_db": 25, "noise_floor_dbfs": -60.0 - i, "device": "iPhone"})
+        for i, v in enumerate((0.03, 0.05, 0.04))
+    ]
+    rows.append(AssessmentTask(user_id=u.id, task_type="story_recall", valid=True, score=6.0, created_at=NOW - timedelta(days=1),
+                               raw_json={"device": "Mac", "story_ids": []},
+                               features={"temporal": {"immediate_1": {"speech_rate_wpm": 120.0, "pause_ratio": 0.2,
+                                                                      "timing_source": "word_timestamps", "speech_span_s": 30}}},
+                               recording_quality={"immediate_1": {"audio": {"noise_floor_dbfs": -55.0}}}))
+    rows.append(AssessmentTask(user_id=u.id, task_type="sustained_vowel", valid=True, created_at=NOW - timedelta(days=2)))
+    db.add_all(rows)
+    db.commit()
+    tasks = build_contexts(db, u, as_of=NOW)["parkinsons"].task_sessions
+    vowels = [t for t in tasks if t.task_type == "sustained_vowel"]
+    assert len(vowels) == 2  # three repetitions collapsed (no model score needed), bare row kept
+    merged = next(t for t in vowels if t.features)
+    assert merged.id == rows[2].id and merged.features["MDVP:Shimmer"] == 0.04 and merged.features["NHR"] == 0.011
+    assert merged.features["note"] == "x" and merged.device == "iPhone" and merged.recording_quality["noise_floor_dbfs"] == -62.0
+    assert merged.model_scores == {} and merged.score is None
+    story = next(t for t in tasks if t.task_type == "story_recall")
+    assert story.device == "Mac" and story.features["temporal"]["immediate_1"]["speech_rate_wpm"] == 120.0
+    assert story.recording_quality["immediate_1"]["audio"]["noise_floor_dbfs"] == -55.0
+    bare = next(t for t in vowels if not t.features)
+    assert bare.device is None and bare.recording_quality == {}
+    assert task_device(AssessmentTask(recording_quality={"device": " "}, raw_json={"device": "iPad"})) == "iPad"
+    assert task_device(AssessmentTask()) is None

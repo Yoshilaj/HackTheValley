@@ -18,8 +18,13 @@ Thresholds are module constants with the spec section in a comment.
 """
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import lru_cache
+from pathlib import Path
+from statistics import median
 from typing import Any, Callable, Literal
 
 from app.ml import baseline as bl
@@ -77,6 +82,34 @@ PD_BASELINE = dict(baseline_days=30, recent_days=7, min_baseline_days=14, k=1.5,
 PD03_MIN_SESSIONS, PD03_MIN_SPAN = 2, timedelta(days=7)  # ≥2 sessions ≥7 days apart
 PD03_LOOKBACK = timedelta(days=90)                # decision
 PD_VOWEL_MODEL_KEY = "pd_vowel"
+# §5.5 PD-03B personal voice stability (experimental, session-based like COG-01/02)
+VOICE_BASELINE_SESSIONS = 10                      # first 10 valid sessions on the current device
+VOICE_RECENT_N, VOICE_MIN_HITS = 5, 3               # ≥3 of last 5 sessions adverse
+#: Per-feature K (multiples of the floored scaled MAD), calibrated on UCI Telemonitoring within-person
+#: variability (ml_training/telemonitoring_variability.md): shimmer / NHR wobble by ~35-57 % day to day in
+#: the same person, so K=3 keeps the no-change "2-of-3 features" alert rate at ~2-3 % per evaluation.
+#: CPPS, speech rate and pause ratio have no telemonitoring data — PLACEHOLDER values until calibrated.
+VOICE_K_BY_FEATURE: dict[str, float] = {"MDVP:Shimmer": 3.0, "NHR": 3.0, "CPPS": 2.5,
+                                        "speech_rate": 2.0, "pause_ratio": 2.0}
+VOICE_K = 2.0                                     # fallback K for a feature missing from the table
+VOICE_MIN_ADVERSE_FEATURES = 2                    # ≥2 of the 5 trend features adverse
+VOICE_FEATURE_MIN_BASELINE = 7                    # decision: a feature needs ≥7 baseline values to be judged
+VOICE_NOISE_FLOOR_MAX_ABOVE_DB = 10.0             # exclude sessions >10 dB noisier than the baseline median
+#: (feature key in ``TaskSessionIn.features``, PD direction, floor-file key). Shimmer: ``MDVP:Shimmer``
+#: (Praat local shimmer, the UCI Telemonitoring ``Shimmer`` column) — chosen over APQ11 because it needs
+#: fewer periods and is the column every floor source carries.
+VOICE_VOWEL_TREND = (("MDVP:Shimmer", "up", "Shimmer"), ("NHR", "up", "NHR"), ("CPPS", "down", "CPPS"))
+#: story-recall session values derived from ``features.temporal[label]`` (speech rate ↓, pause ratio ↑)
+VOICE_STORY_TREND = (("speech_rate", "down", "speech_rate"), ("pause_ratio", "up", "pause_ratio"))
+VOICE_TREND_LABELS = {"MDVP:Shimmer": "shimmer", "NHR": "noise-to-harmonics ratio", "CPPS": "CPPS (dB)",
+                      "speech_rate": "speech rate", "pause_ratio": "pause ratio"}
+#: PLACEHOLDER within-person relative MAD (MAD / median) per feature, used only when
+#: ``app/ml/data/voice_variability_floor.json`` (UCI Telemonitoring, written by the feature owner) is
+#: absent. Values are round guesses, not measured — replace with the file.
+VOICE_FLOOR_DEFAULTS: dict[str, float] = {"Shimmer": 0.25, "NHR": 0.35, "CPPS": 0.08,
+                                          "speech_rate": 0.10, "pause_ratio": 0.25}
+VOICE_FLOOR_PATH = Path(__file__).resolve().parent / "data" / "voice_variability_floor.json"
+VOICE_SUPPORTING_RULES = ("PD-01", "PD-02", "PD-04")
 # §6 General
 GEN01_METRICS = (("sleep_duration", "down"), ("fatigue", "up"))
 GEN_BASELINE = dict(baseline_days=30, recent_days=7, min_baseline_days=14, k=1.5, min_recent_hits=5)
@@ -610,6 +643,242 @@ def pd03(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
                        summary="Experimental voice-model score was above threshold on two sessions, alongside another finding")
 
 
+# ------------------------------------------- PD-03B personal voice stability (§5.5)
+@lru_cache(maxsize=1)
+def _voice_floor_doc() -> dict[str, Any]:
+    try:
+        doc = json.loads(VOICE_FLOOR_PATH.read_text(encoding="utf-8"))
+        feats = doc.get("features") if isinstance(doc, dict) else None
+        return {k: v for k, v in (feats or {}).items() if isinstance(v, dict)}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def voice_variability_floor() -> dict[str, Any]:
+    """``{feature: rel_mad_median}`` from ``VOICE_FLOOR_PATH`` (UCI Telemonitoring within-person relative
+    MAD), falling back per feature to ``VOICE_FLOOR_DEFAULTS``. ``_source`` says which was used."""
+    out: dict[str, Any] = dict(VOICE_FLOOR_DEFAULTS)
+    out["_source"] = "defaults"
+    loaded = {}
+    for k, v in _voice_floor_doc().items():
+        r = v.get("rel_mad_median")
+        if isinstance(r, (int, float)) and not isinstance(r, bool) and math.isfinite(float(r)) and float(r) > 0:
+            loaded[k] = float(r)
+    if loaded:
+        out.update(loaded)
+        out["_source"] = "file"
+    return out
+
+
+def voice_alert_rates(floor_key: str, k: float) -> dict[str, Any] | None:
+    """Expected NO-CHANGE alert rates for ``floor_key`` at the nearest tabulated K ≤ ``k`` (UCI
+    Telemonitoring, 42 PD subjects, 6 months, no intervention): ``{"k_table", "single", "two_of_three"}``.
+    ``None`` when the floor file has no entry (CPPS, speech rate, pause ratio)."""
+    rates = (_voice_floor_doc().get(floor_key) or {}).get("alert_rates")
+    if not isinstance(rates, dict) or not rates:
+        return None
+    table = {}
+    for label, r in rates.items():
+        try:
+            table[float(label.lstrip("k"))] = r
+        except ValueError:
+            continue
+    usable = [kk for kk in table if kk <= k + 1e-9] or [min(table)]
+    kk = max(usable)
+    return {"k_table": kk, "single": table[kk].get("single"), "two_of_three": table[kk].get("two_of_three")}
+
+
+def _num(v: Any) -> float | None:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v) if math.isfinite(float(v)) else None
+
+
+def _story_speech_values(features: dict[str, Any]) -> dict[str, float]:
+    """Session-level ``speech_rate`` / ``pause_ratio`` from a story-recall ``features`` dict: the median over
+    recalls of ``temporal[label].speech_rate_wpm`` (EN) or ``speech_rate_cpm`` (JA) and ``pause_ratio``;
+    flat keys of the same names are accepted (seeds / future flattening)."""
+    out: dict[str, float] = {}
+    for key in ("speech_rate", "pause_ratio"):
+        if (v := _num(features.get(key))) is not None:
+            out[key] = v
+    temporal = features.get("temporal")
+    if not isinstance(temporal, dict):
+        return out
+    rates, pauses = [], []
+    for d in temporal.values():
+        if not isinstance(d, dict) or d.get("timing_source") == "none" or not _num(d.get("speech_span_s")):
+            continue
+        rate = _num(d.get("speech_rate_wpm"))
+        if rate is None:
+            rate = _num(d.get("speech_rate_cpm"))
+        if rate is not None:
+            rates.append(rate)
+        if (p := _num(d.get("pause_ratio"))) is not None:
+            pauses.append(p)
+    if rates and "speech_rate" not in out:
+        out["speech_rate"] = median(rates)
+    if pauses and "pause_ratio" not in out:
+        out["pause_ratio"] = median(pauses)
+    return out
+
+
+def voice_feature_values(s: TaskSessionIn) -> dict[str, float]:
+    """Trend-feature values of one session (``{}`` when the session carries none)."""
+    if s.task_type == "sustained_vowel":
+        return {k: v for k, _, _ in VOICE_VOWEL_TREND if (v := _num(s.features.get(k))) is not None}
+    if s.task_type == "story_recall":
+        return _story_speech_values(s.features)
+    return {}
+
+
+def session_noise_floor(rq: dict[str, Any]) -> float | None:
+    """``noise_floor_dbfs`` from a recording-quality dict: flat (vowel) or the median over the per-recall
+    ``{label: {"audio": {...}}}`` entries (story)."""
+    if (v := _num(rq.get("noise_floor_dbfs"))) is not None:
+        return v
+    vals = []
+    for entry in rq.values():
+        if isinstance(entry, dict):
+            audio = entry.get("audio") if isinstance(entry.get("audio"), dict) else entry
+            if (v := _num(audio.get("noise_floor_dbfs"))) is not None:
+                vals.append(v)
+    return median(vals) if vals else None
+
+
+def _voice_series(ctx: PathwayContext, sc: Scratch, task_type: str, trend) -> dict[str, Any]:
+    """Baseline/recent session split for one task type (spec §5.5).
+
+    * valid sessions with ≥1 trend feature, ordered by time, up to ``as_of``;
+    * device: only sessions on the device of the latest session count (an earlier device's sessions are
+      dropped → ``device_changed``; the baseline restarts on the current device);
+    * noise floor: reference = median ``noise_floor_dbfs`` of the first ``VOICE_BASELINE_SESSIONS``
+      candidates; sessions more than ``VOICE_NOISE_FLOOR_MAX_ABOVE_DB`` above it are excluded;
+    * baseline = first ``VOICE_BASELINE_SESSIONS`` remaining sessions; recent = last ``VOICE_RECENT_N``
+      (they may overlap the baseline tail while fewer than 15 sessions exist — robust stats tolerate it);
+    * per feature: median / scaled MAD over the baseline (``bl.robust_center_scale``), floored at
+      ``rel_mad × |median|`` (``voice_variability_floor``); adverse = ≥``VOICE_K`` × scale in the PD
+      direction on ≥``VOICE_MIN_HITS`` of the recent sessions.
+    """
+    def run() -> dict[str, Any]:
+        all_sessions = sorted((s for s in ctx.task_sessions if s.task_type == task_type and s.valid
+                               and s.created_at <= ctx.as_of and voice_feature_values(s)), key=lambda s: s.created_at)
+        out: dict[str, Any] = {"task_type": task_type, "n_valid": len(all_sessions), "device": None,
+                               "device_changed": False, "excluded_noise": [], "baseline": [], "recent": [],
+                               "features": {}, "noise_floor_ref": None}
+        if not all_sessions:
+            return out
+        device = all_sessions[-1].device
+        out["device"] = device
+        same = [s for s in all_sessions if s.device == device]
+        out["device_changed"] = len(same) < len(all_sessions)
+        floors = [(s, session_noise_floor(s.recording_quality)) for s in same]
+        ref_vals = [nf for _, nf in floors[:VOICE_BASELINE_SESSIONS] if nf is not None]
+        kept = same
+        if ref_vals:
+            ref = median(ref_vals)
+            out["noise_floor_ref"] = ref
+            kept = [s for s, nf in floors if nf is None or nf <= ref + VOICE_NOISE_FLOOR_MAX_ABOVE_DB]
+            out["excluded_noise"] = [s.id for s, nf in floors if nf is not None and nf > ref + VOICE_NOISE_FLOOR_MAX_ABOVE_DB]
+        base = kept[:VOICE_BASELINE_SESSIONS]
+        out["baseline"] = base
+        if len(base) < VOICE_BASELINE_SESSIONS:
+            return out
+        recent = kept[-VOICE_RECENT_N:]
+        out["recent"] = recent
+        floor = voice_variability_floor()
+        for key, direction, floor_key in trend:
+            bvals = [v for s in base if (v := voice_feature_values(s).get(key)) is not None]
+            info: dict[str, Any] = {"feature": key, "label": VOICE_TREND_LABELS.get(key, key), "direction": direction,
+                                    "n_baseline": len(bvals), "task_type": task_type}
+            if len(bvals) < VOICE_FEATURE_MIN_BASELINE:
+                info.update(status="insufficient")
+                out["features"][key] = info
+                continue
+            k = VOICE_K_BY_FEATURE.get(key, VOICE_K)
+            med, mad, scale, note = bl.robust_center_scale(bvals, k=k)
+            floor_scale = float(floor.get(floor_key, 0.0)) * abs(med)
+            if floor_scale > scale:
+                scale, note = floor_scale, "variability_floor"
+            rvals = [(s, voice_feature_values(s).get(key)) for s in recent]
+            hits = [s for s, v in rvals if v is not None and bl.is_adverse(v, med, scale, k, direction)]
+            info.update(status="adverse" if len(hits) >= VOICE_MIN_HITS else "stable", baseline_median=med,
+                        baseline_mad=mad, scale=scale, scale_note=note, k=k,
+                        k_placeholder=floor_key not in _voice_floor_doc(),
+                        no_change_alert_rates=voice_alert_rates(floor_key, k),
+                        threshold=(med + k * scale) if direction == "up" else (med - k * scale),
+                        recent=[{"id": s.id, "date": str(s.created_at.date()), "value": v} for s, v in rvals],
+                        n_adverse=len(hits), n_recent=len(rvals), hit_ids=[s.id for s in hits])
+            out["features"][key] = info
+        return out
+    return sc.memo(f"voice_series_{task_type}", run)
+
+
+def _voice_text() -> dict[str, Any]:
+    from app.content.loader import get_voice_stability_text  # content bank; cached
+
+    return get_voice_stability_text()
+
+
+def _voice_feature_ev(info: dict[str, Any]) -> dict[str, Any]:
+    rel = "above" if info["direction"] == "up" else "below"
+    summary = (f"{info['label']}: {info['n_adverse']} of last {info['n_recent']} sessions {rel} your usual range "
+               f"(baseline median {info['baseline_median']:.3g}, threshold {info['threshold']:.3g})")
+    ref = info["recent"][-1]["id"] if info["recent"] else None
+    return ev("voice_trend_feature", ref, summary, {k: v for k, v in info.items() if k != "hit_ids"})
+
+
+def pd03b(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
+    """PD-03B personal voice stability (spec §5.5, experimental).
+
+    Fires (``watch``) only when ≥``VOICE_MIN_ADVERSE_FEATURES`` trend features are adverse on ≥3 of the last
+    5 sessions of their own task series **and** PD-01/02/04 fired in this evaluation; alone it is a
+    display-only note (``not_fired`` + evidence + i18n ``data['message']``). Fewer than
+    ``VOICE_BASELINE_SESSIONS`` baseline sessions on the current device in both series → ``insufficient``
+    with ``missing_inputs=['voice_baseline_sessions']`` (optional input, never a gate on its own)."""
+    text = _voice_text()
+    vowel = _voice_series(ctx, sc, "sustained_vowel", VOICE_VOWEL_TREND)
+    story = _voice_series(ctx, sc, "story_recall", VOICE_STORY_TREND)
+    series = {"sustained_vowel": vowel, "story_recall": story}
+    device_changed = vowel["device_changed"] or story["device_changed"]
+    excluded = {t: s["excluded_noise"] for t, s in series.items() if s["excluded_noise"]}
+    data: dict[str, Any] = {"baseline_sessions": {t: len(s["baseline"]) for t, s in series.items()},
+                            "needed": VOICE_BASELINE_SESSIONS, "device": vowel["device"] or story["device"],
+                            "device_changed": device_changed, "excluded_noise": excluded,
+                            "floor_source": voice_variability_floor()["_source"]}
+    notes: list[str] = []
+    if device_changed:
+        notes.append(text["device_change_note"]["en"])
+    if excluded:
+        n = sum(len(v) for v in excluded.values())
+        notes.append(f"{n} recording(s) excluded: background noise more than {VOICE_NOISE_FLOOR_MAX_ABOVE_DB:.0f} dB "
+                     "above your baseline recordings.")
+    ready = [t for t, s in series.items() if s["features"]]
+    missing = ["voice_baseline_sessions"] if len(ready) < len(series) else []
+    if not ready:
+        n = max(len(s["baseline"]) for s in series.values())
+        notes.insert(0, text["baseline_note"]["en"].format(needed=VOICE_BASELINE_SESSIONS, n=n))
+        return RuleOutcome("insufficient", missing_inputs=["voice_baseline_sessions"], data=data,
+                           note=" ".join(notes), summary=f"{n} of {VOICE_BASELINE_SESSIONS} voice baseline sessions recorded")
+    infos = [info for t in ready for info in series[t]["features"].values() if info["status"] != "insufficient"]
+    evidence = [_voice_feature_ev(info) for info in infos]
+    adverse = [info for info in infos if info["status"] == "adverse"]
+    data.update(features_evaluated=[i["feature"] for i in infos], adverse_features=[i["feature"] for i in adverse],
+                k_by_feature={i["feature"]: i["k"] for i in infos},
+                no_change_alert_rates={i["feature"]: i["no_change_alert_rates"] for i in infos})
+    if len(adverse) < VOICE_MIN_ADVERSE_FEATURES:
+        return RuleOutcome("not_fired", evidence, missing_inputs=missing, data=data, note=" ".join(notes) or None)
+    data["message"] = text["message"]
+    others = [rid for rid in VOICE_SUPPORTING_RULES if sc.outcomes.get(rid) and sc.outcomes[rid].fired]
+    body = f"{text['message']['en']['title']} — {text['message']['en']['body']}"
+    if not others:
+        data["display_only"] = True
+        return RuleOutcome("not_fired", evidence, missing_inputs=missing, data=data, note=" ".join([body, *notes]))
+    data["supporting_rules"] = others
+    return RuleOutcome("fired", evidence, missing_inputs=missing, data=data, summary=text["fired_summary"]["en"],
+                       note=" ".join([body, *notes]))
+
+
 # ------------------------------------------------------------------ general
 def gen01(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
     return _baseline_rule(ctx, GEN01_METRICS, GEN_BASELINE,
@@ -628,6 +897,10 @@ def emg01(ctx: PathwayContext, sc: Scratch) -> RuleOutcome:
 #: Hypertension Canada 2020 is the primary BP source (HBPM series mean ≥135/85, ≥180/110 severe);
 #: JSH 2019 stays as the secondary source for the 145/90, morning-hypertension and ME-difference rules.
 _HTN = ["src_hypertension_canada_2020", "src_jsh2019"]
+#: PD-03B literature: Skodda 2013 (PMC3872441) longitudinal PD voice; Wright & Aharonson 2025 (PMC11939921)
+#: smartphone voice monitoring; Bottalico 2018 (PMC6529301) recording-condition effects; Barsties 2025
+#: (PMID 41037430) CPPS reliability. Titles live in ``report_service.REFERENCE_CATALOG``.
+_VOICE_SOURCES = ["src_skodda2013", "src_wright2025", "src_bottalico2018", "src_barsties2025"]
 
 RULES: list[Rule] = [
     # cognitive (§1.3)
@@ -685,6 +958,12 @@ RULES: list[Rule] = [
     Rule("PD-03", "parkinsons", "1", ["task_sessions.sustained_vowel"], "watch",
          "Voice-model score ≥ threshold on ≥2 sessions ≥7 days apart and PD-01/02/04 fired; voice alone never raises the level.",
          ["src_little2008"], "draft", pd03),
+    Rule("PD-03B", "parkinsons", "1", ["task_sessions.sustained_vowel.features", "task_sessions.story_recall.features"],
+         "watch",
+         "Personal voice stability (experimental): ≥2 of 5 within-person trend features (shimmer ↑, NHR ↑, CPPS ↓; "
+         "speech rate ↓, pause ratio ↑) ≥1.5 scaled MAD from the first-10-session same-device baseline on ≥3 of the "
+         "last 5 sessions, and PD-01/02/04 fired; alone it is display-only.",
+         _VOICE_SOURCES, "draft", pd03b),
     # general (§6, §7)
     Rule("GEN-01", "general", "1", [m for m, _ in GEN01_METRICS], "watch",
          "Sleep duration or fatigue ≥1.5 MAD from baseline on ≥5 of last 7 days.", ["src_hearo"], "draft", gen01),

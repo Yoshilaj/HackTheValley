@@ -94,3 +94,45 @@ def ctx(pathway: str = "cardio", **kw) -> PathwayContext:
 
 def run_rule(rule_id: str, c: PathwayContext, scratch: Scratch | None = None) -> RuleOutcome:
     return RULES_BY_ID[rule_id].condition(c, scratch or Scratch())
+
+
+# ---------------------------------------------------------------- PD-03B voice sessions (spec §5.5)
+VOICE_WOBBLE = (-1, 0, 1, -0.5, 0.5, 0.25, -0.25, 0.75, -0.75, 0.1)
+
+
+def voice_vowel(offset: int, shimmer: float = 0.030, nhr: float = 0.012, cpps: float = 14.0, *, device: str | None = "iPhone",
+                noise_floor: float | None = -60.0, valid: bool = True, extra: dict | None = None) -> TaskSessionIn:
+    features = {"MDVP:Shimmer": shimmer, "NHR": nhr, "CPPS": cpps, "MDVP:Jitter(%)": 0.004, "HNR": 22.0}
+    if extra:
+        features.update(extra)
+    rq = {"noise_floor_dbfs": noise_floor} if noise_floor is not None else {}
+    return TaskSessionIn(at(offset, 10), "sustained_vowel", None, valid, {}, id=f"vv_{offset}", features=features,
+                         device=device, recording_quality=rq)
+
+
+def voice_story(offset: int, rate: float = 130.0, pause: float = 0.20, *, device: str | None = "iPhone",
+                noise_floor: float | None = -58.0, language: str = "en") -> TaskSessionIn:
+    rate_key = "speech_rate_wpm" if language == "en" else "speech_rate_cpm"
+    temporal = {label: {"timing_source": "word_timestamps", "speech_span_s": 30.0, rate_key: rate, "pause_ratio": pause}
+                for label in ("immediate_1", "immediate_2", "delayed")}
+    temporal["session"] = {"delay_s": 180.0}
+    rq = {label: {"audio": {"noise_floor_dbfs": noise_floor}, "asr_confidence": 0.9} for label in ("immediate_1", "delayed")}
+    return TaskSessionIn(at(offset, 11), "story_recall", 6.0, True, {}, id=f"vs_{offset}",
+                         features={"semantic_recall_mean": 6.0, "temporal": temporal}, device=device,
+                         recording_quality=rq if noise_floor is not None else {})
+
+
+def voice_baseline(n: int = 10, start_offset: int = 60, gap: int = 5, **kw) -> list[TaskSessionIn]:
+    """``n`` stable vowel sessions (shimmer/NHR/CPPS wobble ±10 %), oldest first."""
+    return [voice_vowel(start_offset - i * gap, 0.030 * (1 + 0.1 * VOICE_WOBBLE[i % 10]),
+                        0.012 * (1 + 0.1 * VOICE_WOBBLE[i % 10]), 14.0 + 0.3 * VOICE_WOBBLE[i % 10], **kw) for i in range(n)]
+
+
+def story_baseline(n: int = 10, start_offset: int = 60, gap: int = 5, **kw) -> list[TaskSessionIn]:
+    return [voice_story(start_offset - i * gap, 130 + 3 * VOICE_WOBBLE[i % 10], 0.20 + 0.01 * VOICE_WOBBLE[i % 10], **kw)
+            for i in range(n)]
+
+
+#: three adverse sessions after a 10-session baseline (offsets 8, 4, 0): shimmer ×2.5, NHR ×3, CPPS −3.5 dB
+ADVERSE_VOWEL = [voice_vowel(o, 0.075, 0.036, 10.5) for o in (8, 4, 0)]
+ADVERSE_STORY = [voice_story(o, 95.0, 0.36) for o in (8, 4, 0)]

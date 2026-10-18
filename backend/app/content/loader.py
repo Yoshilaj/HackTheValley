@@ -38,6 +38,7 @@ __all__ = [
     "get_word_set",
     "get_word_set_by_id",
     "get_screener",
+    "get_voice_stability_text",
     "count_en_words",
     "count_ja_chars",
     "count_sentences",
@@ -275,3 +276,23 @@ def get_screener(name: str = "pd") -> Screener:
     if [i["id"] for i in items if i["type"] == "motor"] != list(SCREENER_PD_IDS[:4]):
         raise ContentError("§5.1: motor items must be the first four")
     return Screener(id="pd", version=doc.get("version", ""), period=doc.get("period", {}), items=tuple(items))
+
+
+VOICE_STABILITY_KEYS = ("message", "fired_summary", "report_limitation", "baseline_note", "device_change_note")
+
+
+@lru_cache(maxsize=1)
+def get_voice_stability_text() -> dict[str, Any]:
+    """PD-03B user-facing text (spec §5.5), EN + JA: ``message{lang:{title, body}}``,
+    ``fired_summary{lang}``, ``report_limitation{lang}``, ``baseline_note{lang}`` (``{needed}``/``{n}``
+    placeholders), ``device_change_note{lang}``. Validated so a missing translation never reaches a user."""
+    doc = _read(CONTENT_DIR / "voice_stability.json")
+    for key in VOICE_STABILITY_KEYS:
+        block = doc.get(key)
+        if not isinstance(block, dict) or not all(block.get(lang) for lang in LANGUAGES):
+            raise ContentError(f"voice_stability.{key} must carry {LANGUAGES}")
+    for lang in LANGUAGES:
+        m = doc["message"][lang]
+        if not (isinstance(m, dict) and m.get("title") and m.get("body")):
+            raise ContentError(f"voice_stability.message.{lang} needs title and body")
+    return doc

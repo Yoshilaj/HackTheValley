@@ -118,7 +118,23 @@ REFERENCE_CATALOG: dict[str, dict[str, Any]] = {
                                 "year": 2024, "kind": "press_release"},
     "src_little2008": {"title": "Suitability of dysphonia measurements for telemonitoring of Parkinson's disease",
                        "authors": "Little MA, et al.", "kind": "study"},
+    # PD-03B personal voice stability (spec §5.5)
+    "src_skodda2013": {"title": "Progression of voice and speech impairment in the course of Parkinson's disease: "
+                                "a longitudinal study", "authors": "Skodda S, Grönheit W, Mancinelli N, Schlegel U.",
+                       "year": 2013, "doi": "10.1155/2013/389195", "kind": "study", "pmcid": "PMC3872441"},
+    "src_wright2025": {"title": "Smartphone-based longitudinal monitoring of voice in Parkinson's disease",
+                       "authors": "Wright D, Aharonson V.", "year": 2025, "kind": "study", "pmcid": "PMC11939921"},
+    "src_bottalico2018": {"title": "Effects of the recording environment and device on acoustic voice measures",
+                          "authors": "Bottalico P, et al.", "year": 2018, "kind": "study", "pmcid": "PMC6529301"},
+    "src_barsties2025": {"title": "Reliability of smoothed cepstral peak prominence (CPPS) across recording "
+                                  "conditions", "authors": "Barsties v. Latoszek B, et al.", "year": 2025,
+                         "kind": "study", "pmid": "41037430"},
+    "src_uci_telemonitoring": {"title": "Parkinsons Telemonitoring dataset (UCI Machine Learning Repository)",
+                               "authors": "Tsanas A, Little MA.", "year": 2009, "doi": "10.24432/C5ZS3N",
+                               "kind": "dataset"},
 }
+VOICE_RULE_ID = "PD-03B"
+VOICE_SOURCES = ["src_skodda2013", "src_wright2025", "src_bottalico2018", "src_barsties2025", "src_uci_telemonitoring"]
 
 LABELS: dict[str, dict[str, str]] = {
     "en": {
@@ -142,6 +158,11 @@ LABELS: dict[str, dict[str, str]] = {
         "preventive": "Preventive measures to discuss", "references": "References",
         "disclaimer": "Disclaimer", "invalid": "excluded (invalid)", "irregular": "irregular pulse flag",
         "population_estimate": "population estimate",
+        "voice": "Voice measures vs personal baseline (experimental, PD-03B)", "measure": "Measure",
+        "direction": "Adverse direction", "baseline_mad": "Baseline median (scaled MAD)", "threshold": "Threshold (K)",
+        "recent5": "Last 5 sessions", "adverse_n": "Adverse", "status": "Status", "device": "Device",
+        "voice_sessions": "baseline sessions", "no_change_rate": "expected alert rate with no true change",
+        "up": "higher", "down": "lower", "adverse": "shifted", "stable": "within range",
     },
     "ja": {
         "title": "在宅モニタリングに基づく紹介サマリー", "patient": "患者", "age": "年齢", "sex": "性別",
@@ -164,6 +185,11 @@ LABELS: dict[str, dict[str, str]] = {
         "preventive": "医師と相談したい予防策", "references": "参考文献",
         "disclaimer": "注意事項", "invalid": "除外（無効）", "irregular": "脈の乱れフラグ",
         "population_estimate": "集団ベースの推定値",
+        "voice": "声の指標と個人ベースラインの比較（実験的、PD-03B）", "measure": "指標",
+        "direction": "悪化方向", "baseline_mad": "ベースライン中央値（スケール済みMAD）", "threshold": "閾値（K）",
+        "recent5": "直近5回", "adverse_n": "悪化方向", "status": "状態", "device": "端末",
+        "voice_sessions": "ベースライン回数", "no_change_rate": "真の変化がない場合の予想警告率",
+        "up": "上昇", "down": "低下", "adverse": "変化あり", "stable": "範囲内",
     },
 }
 
@@ -217,6 +243,8 @@ class ReportData:
     summary: str = ""
     summary_source: str = "template"  # llm | template
     extra: dict[str, Any] = field(default_factory=dict)
+    #: PD-03B voice-stability evidence (spec §5.5): feature table vs personal baseline + fixed limitation
+    voice_stability: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return json.loads(json.dumps(asdict(self), default=str, ensure_ascii=False))
@@ -396,10 +424,55 @@ def _data_provenance(db: Session, user_id: str, as_of: datetime, bp: dict | None
     return out
 
 
-def _references(db: Session, assessment: RiskAssessment, probabilities: list[dict]) -> list[dict[str, Any]]:
+def _voice_section(assessment: RiskAssessment, lang: str) -> dict[str, Any] | None:
+    """PD-03B feature table from the stored evidence (fired rule, else the display-only informational note)."""
+    from app.content.loader import get_voice_stability_text
+
+    fired = next((r for r in assessment.fired_rules or [] if r.get("id") == VOICE_RULE_ID), None)
+    note = next((i for i in (assessment.data_quality or {}).get("informational") or []
+                 if i.get("rule_id") == VOICE_RULE_ID and i.get("evidence")), None)
+    src = fired or note
+    if src is None:
+        return None
+    feats = [e["value"] for e in src.get("evidence") or []
+             if isinstance(e, dict) and e.get("type") == "voice_trend_feature" and isinstance(e.get("value"), dict)]
+    if not feats:
+        return None
+    text = get_voice_stability_text()
+    message = (note or {}).get("message") or text["message"]
+    rows = []
+    for f in feats:
+        rates = f.get("no_change_alert_rates") or {}
+        rows.append({
+            "feature": f.get("feature"), "label": f.get("label") or f.get("feature"), "task_type": f.get("task_type"),
+            "direction": f.get("direction"), "baseline_median": f.get("baseline_median"), "baseline_mad": f.get("baseline_mad"),
+            "scale": f.get("scale"), "scale_note": f.get("scale_note"), "k": f.get("k"),
+            "k_placeholder": bool(f.get("k_placeholder")), "threshold": f.get("threshold"),
+            "recent_values": [r.get("value") for r in f.get("recent") or []],
+            "recent_dates": [r.get("date") for r in f.get("recent") or []],
+            "n_adverse": f.get("n_adverse"), "n_recent": f.get("n_recent"), "n_baseline": f.get("n_baseline"),
+            "status": f.get("status"), "no_change_alert_rate": rates.get("two_of_three"),
+            "no_change_alert_k": rates.get("k_table"),
+        })
+    dq = assessment.data_quality or {}
+    return {
+        "fired": fired is not None, "rule_id": VOICE_RULE_ID,
+        "summary": text["fired_summary"].get(lang) if fired else None,
+        "message": message.get(lang) or message.get("en"),
+        "limitation": text["report_limitation"][lang],
+        "features": rows, "device": dq.get("voice_device"),
+        "baseline_sessions": dq.get("voice_baseline_sessions"), "baseline_needed": dq.get("voice_baseline_needed"),
+        "sessions_excluded_noise": dq.get("voice_sessions_excluded_noise"),
+        "sources": list(VOICE_SOURCES), "refs": [],
+    }
+
+
+def _references(db: Session, assessment: RiskAssessment, probabilities: list[dict],
+                extra_ids: list[str] = ()) -> list[dict[str, Any]]:
     ids: list[str] = []
     for rule in assessment.fired_rules or []:
         ids.extend(rule.get("sources") or [])
+    ids.extend(extra_ids)
     ids.extend(m.get("source_id") for m in assessment.preventive_measures or [] if m.get("source_id"))
     ids.extend(p.get("source_id") for p in probabilities if p.get("source_id"))
     ordered = list(dict.fromkeys(i for i in ids if i))
@@ -525,12 +598,16 @@ def build_report_data(db: Session, user: User, assessment: RiskAssessment, langu
         preventive_measures=list(assessment.preventive_measures or []),
         references=[],
         disclaimer=REPORT_DISCLAIMER[lang],
+        voice_stability=_voice_section(assessment, lang) if assessment.pathway == "parkinsons" else None,
     )
-    data.references = _references(db, assessment, probabilities)
+    data.references = _references(db, assessment, probabilities,
+                                  extra_ids=data.voice_stability["sources"] if data.voice_stability else [])
     ref_n = {r["id"]: r["n"] for r in data.references}
     for m in data.preventive_measures:
         if m.get("source_id") in ref_n:
             m["ref"] = ref_n[m["source_id"]]
+    if data.voice_stability:
+        data.voice_stability["refs"] = [ref_n[sid] for sid in data.voice_stability["sources"] if sid in ref_n]
     return data
 
 
@@ -664,7 +741,9 @@ def render_markdown(data: ReportData) -> str:
             out.append(f"| {t['task']} | {t['latest_score']} | {t['latest_at']} | {_md_escape(t['baseline_median'])} | "
                        f"{t['baseline_n']} |")
         out.append("")
-    if not (data.bp or data.rhythm or data.tasks):
+    if data.voice_stability:
+        out += _voice_markdown(data.voice_stability, L)
+    if not (data.bp or data.rhythm or data.tasks or data.voice_stability):
         out += [L["none_recorded"], ""]
 
     out += [f"## {L['context']}", ""]
@@ -729,6 +808,49 @@ def render_markdown(data: ReportData) -> str:
         out.append(L["none_recorded"])
     out += ["", "---", "", f"*{L['disclaimer']}:* {data.disclaimer}", ""]
     return "\n".join(out)
+
+
+def _fmt_num(v: Any) -> str:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return "—"
+    return f"{v:.3g}"
+
+
+def _voice_markdown(v: dict[str, Any], L: dict[str, str]) -> list[str]:
+    """PD-03B table + message + fixed limitation sentence (spec §5.5)."""
+    refs = "".join(f"[{n}]" for n in v.get("refs") or [])
+    out = [f"### {L['voice']} {refs}".rstrip(), ""]
+    if v.get("summary"):
+        out.append(f"**{v['summary']}**")
+        out.append("")
+    meta = []
+    if v.get("device"):
+        meta.append(f"{L['device']}: {v['device']}")
+    if v.get("baseline_sessions"):
+        meta.append(f"{L['voice_sessions']}: " + ", ".join(f"{k} {n}/{v.get('baseline_needed') or '—'}"
+                                                            for k, n in v["baseline_sessions"].items()))
+    if meta:
+        out += ["- " + " · ".join(meta), ""]
+    out += [f"| {L['measure']} | {L['task']} | {L['direction']} | {L['baseline_mad']} | {L['threshold']} | "
+            f"{L['recent5']} | {L['adverse_n']} | {L['status']} |", "|---|---|---|---|---|---|---|---|"]
+    for f in v["features"]:
+        rate = f.get("no_change_alert_rate")
+        k = f"{_fmt_num(f.get('threshold'))} (K={_fmt_num(f.get('k'))}{'*' if f.get('k_placeholder') else ''})"
+        status = L.get(f.get("status") or "", f.get("status"))
+        if isinstance(rate, (int, float)):
+            status += f" ({L['no_change_rate']} {rate:.0%})"
+        recent = ", ".join(_fmt_num(x) for x in f.get("recent_values") or [])
+        out.append(f"| {_md_escape(f['label'])} | {f.get('task_type') or '—'} | {L.get(f.get('direction') or '', '—')} | "
+                   f"{_fmt_num(f.get('baseline_median'))} ({_fmt_num(f.get('scale'))}) | {k} | {recent} | "
+                   f"{f.get('n_adverse', '—')}/{f.get('n_recent', '—')} | {status} |")
+    out.append("")
+    if any(f.get("k_placeholder") for f in v["features"]):
+        out.append(r"\* K not yet calibrated for this measure (placeholder).")
+    msg = v.get("message") or {}
+    if isinstance(msg, dict) and msg.get("body"):
+        out += ["", f"**{msg.get('title', '')}** — {msg['body']}"]
+    out += ["", f"*{v['limitation']}*", ""]
+    return out
 
 
 def _env() -> Environment:

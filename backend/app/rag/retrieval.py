@@ -1,6 +1,7 @@
 """Hybrid research retrieval (GymSync design, sync SQLAlchemy).
 
-    query ─┬─ embed (input_type="query") → vector_search  top 20 ─┐
+    query → lay-term expansion (app.rag.lexicon: "blood thinners" → + "anticoagulants")
+          ─┬─ embed (input_type="query") → vector_search  top 20 ─┐
            └─ lexical_search (FTS / BM25)                 top 20 ─┴→ RRF (k=60) top 20
       → rerank (cross-encoder | identity) all 20 → relevance floor (cross-encoder only)
       → parent expansion (dedupe by parent, best child score)
@@ -32,6 +33,7 @@ from app.providers.embeddings import EmbeddingProvider, embed_query, get_embeddi
 from app.rag import store
 from app.rag.expand import expand_to_parents
 from app.rag.fusion import RRF_K, reciprocal_rank_fusion
+from app.rag.lexicon import expand_query
 from app.rag.packing import MAX_PER_SOURCE, TOKEN_BUDGET, pack
 from app.rag.rerank import Reranker, get_reranker
 from app.rag.store import Hit
@@ -129,14 +131,15 @@ def hybrid_retrieve(db: Session, query: str, k: int = 6, pathway: str | None = N
             last_trace = trace
             return [replace(h, meta=dict(h.meta), source=dict(h.source)) for h in cached]
 
+    search_q = expand_query(query)  # lay words → + clinical terms (app.rag.lexicon)
     t = time.perf_counter()
-    qvec = embed_query(provider, query)
+    qvec = embed_query(provider, search_q)
     trace.timings_ms["embed"] = round((time.perf_counter() - t) * 1000, 1)
 
-    reranked = _ranked(db, query, qvec, pathway, reranker, min_score, trace, rrf_k)
+    reranked = _ranked(db, search_q, qvec, pathway, reranker, min_score, trace, rrf_k)
     if pathway and not reranked:
         trace.pathway_fallback = True
-        reranked = _ranked(db, query, qvec, None, reranker, min_score, trace, rrf_k)
+        reranked = _ranked(db, search_q, qvec, None, reranker, min_score, trace, rrf_k)
 
     t = time.perf_counter()
     parents = expand_to_parents(db, reranked)

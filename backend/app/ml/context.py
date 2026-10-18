@@ -90,6 +90,12 @@ class TaskSessionIn:
     ``valid``: recording quality gate passed.
     ``model_scores``: e.g. ``{"pd_vowel": {"probability": 0.7, "threshold": 0.6,
     "version": "v1"}}``.
+    ``features``: the ``AssessmentTask.features`` JSON (sustained_vowel: UCI keys +
+    ``CPPS``; story_recall: ``temporal[label]`` speech-rate / pause-ratio dicts) — read by
+    PD-03B (spec §5.5).
+    ``device``: coarse recording-device label (same device required for a voice baseline);
+    ``None`` = unknown.
+    ``recording_quality``: the ``AssessmentTask.recording_quality`` JSON (``noise_floor_dbfs`` …).
     """
 
     created_at: datetime
@@ -98,6 +104,9 @@ class TaskSessionIn:
     valid: bool = True
     model_scores: dict[str, Any] = field(default_factory=dict)
     id: str | None = None
+    features: dict[str, Any] = field(default_factory=dict)
+    device: str | None = None
+    recording_quality: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

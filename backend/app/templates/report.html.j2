@@ -26,6 +26,7 @@
   .label { display:block; color: var(--warn); font-weight: 600; font-size: 13px; }
   .pill { display:inline-block; padding: 1px 8px; border-radius: 10px; background: var(--soft); border:1px solid var(--line); font-size: 12px; }
   .flag { color: var(--warn); }
+  .flagrow td { color: var(--warn); }
   .muted { color: var(--muted); }
   .exp { color: var(--warn); font-size: 12px; }
   ol.refs li { margin-bottom: 4px; }
@@ -103,7 +104,29 @@
     {% for t in d.tasks %}<tr><td>{{ t.task }}</td><td>{{ t.latest_score }}</td><td>{{ t.latest_at }}</td><td>{{ t.baseline_median if t.baseline_median is not none else "—" }}</td><td>{{ t.baseline_n }}</td></tr>{% endfor %}
   </table></div>
   {% endif %}
-  {% if not (d.bp or d.rhythm or d.tasks) %}<p class="muted">{{ L.none_recorded }}</p>{% endif %}
+  {% if d.voice_stability %}
+  {% set v = d.voice_stability %}
+  <h3>{{ L.voice }}{% for n in v.refs %} [{{ n }}]{% endfor %}</h3>
+  {% if v.summary %}<p><strong>{{ v.summary }}</strong></p>{% endif %}
+  <p class="muted">{% if v.device %}{{ L.device }}: {{ v.device }}{% endif %}
+     {% if v.baseline_sessions %}· {{ L.voice_sessions }}: {% for k, n in v.baseline_sessions | dictsort %}{{ k }} {{ n }}/{{ v.baseline_needed or "—" }}{{ ", " if not loop.last }}{% endfor %}{% endif %}</p>
+  <div class="tablewrap"><table>
+    <tr><th>{{ L.measure }}</th><th>{{ L.task }}</th><th>{{ L.direction }}</th><th>{{ L.baseline_mad }}</th><th>{{ L.threshold }}</th><th>{{ L.recent5 }}</th><th>{{ L.adverse_n }}</th><th>{{ L.status }}</th></tr>
+    {% for f in v.features %}
+    <tr{% if f.status == "adverse" %} class="flagrow"{% endif %}>
+      <td>{{ f.label }}</td><td>{{ f.task_type or "—" }}</td><td>{{ L[f.direction] if f.direction in L else "—" }}</td>
+      <td>{{ "%.3g" | format(f.baseline_median) if f.baseline_median is not none else "—" }} ({{ "%.3g" | format(f.scale) if f.scale is not none else "—" }})</td>
+      <td>{{ "%.3g" | format(f.threshold) if f.threshold is not none else "—" }} (K={{ "%g" | format(f.k) if f.k is not none else "—" }}{% if f.k_placeholder %}*{% endif %})</td>
+      <td>{% for x in f.recent_values %}{{ "%.3g" | format(x) if x is not none else "—" }}{{ ", " if not loop.last }}{% endfor %}</td>
+      <td>{{ f.n_adverse }}/{{ f.n_recent }}</td>
+      <td>{{ L[f.status] if f.status in L else f.status }}{% if f.no_change_alert_rate is not none %} <span class="muted">({{ L.no_change_rate }} {{ "%.0f" | format(f.no_change_alert_rate * 100) }}%)</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% if v.message and v.message.body %}<p><strong>{{ v.message.title }}</strong> — {{ v.message.body }}</p>{% endif %}
+  <p class="muted"><em>{{ v.limitation }}</em></p>
+  {% endif %}
+  {% if not (d.bp or d.rhythm or d.tasks or d.voice_stability) %}<p class="muted">{{ L.none_recorded }}</p>{% endif %}
 
   <h2>{{ L.context }}</h2>
   {% if d.patient_context %}

@@ -24,7 +24,7 @@ from typing import Any, Iterable
 
 from app.ml import bp as bpm
 from app.ml.context import PathwayContext, PriorAssessment
-from app.ml.rules import LEVEL_ORDER, RULES_BY_ID, Rule, RuleOutcome, Scratch, rules_for
+from app.ml.rules import LEVEL_ORDER, RULES_BY_ID, VOICE_BASELINE_SESSIONS, Rule, RuleOutcome, Scratch, rules_for
 from app.ml.framingham import FraminghamResult, framingham_probability_entry, framingham_score
 from app.ml.suita import SuitaResult, suita_probability_entry, suita_score
 
@@ -118,6 +118,14 @@ def _data_quality(ctx: PathwayContext, sc: Scratch, outcomes: dict[str, RuleOutc
         if b:
             dq.update(valid_story_sessions=b["n_valid"], baseline_sessions=len(b["baseline"]),
                       baseline_n_days=len(b["baseline"]))
+    if ctx.pathway == "parkinsons":  # PD-03B voice baseline (spec §5.5), like the cognitive counts
+        voice = {t: sc.cache.get(f"voice_series_{t}") for t in ("sustained_vowel", "story_recall")}
+        if any(voice.values()):
+            dq.update(voice_baseline_sessions={t: len(v["baseline"]) for t, v in voice.items() if v},
+                      voice_valid_sessions={t: v["n_valid"] for t, v in voice.items() if v},
+                      voice_baseline_needed=VOICE_BASELINE_SESSIONS,
+                      voice_device=next((v["device"] for v in voice.values() if v and v["device"]), None),
+                      voice_sessions_excluded_noise=sum(len(v["excluded_noise"]) for v in voice.values() if v))
     baseline_days = {}
     for o in outcomes.values():
         for name, info in (o.data.get("baseline") or {}).items():
@@ -190,7 +198,10 @@ def evaluate_pathway(ctx: PathwayContext, rules: list[Rule] | None = None) -> Pa
                                       "note": o.note, "evidence": o.evidence})
             continue
         if o.note:
-            informational.append({"rule_id": rid, "kind": "note", "summary": o.note, "evidence": o.evidence})
+            entry = {"rule_id": rid, "kind": "note", "summary": o.note, "evidence": o.evidence}
+            if o.data.get("message"):  # i18n user-facing text (PD-03B: {"en": {title, body}, "ja": {...}})
+                entry["message"] = o.data["message"]
+            informational.append(entry)
         if o.fired:
             fired.append(FiredRule(rid, rule.version, o.level or rule.level, o.evidence,
                                    o.summary or rule.rationale, list(rule.sources), rule.rationale))

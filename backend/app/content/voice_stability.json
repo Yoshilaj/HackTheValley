@@ -1,0 +1,30 @@
+{
+  "version": "2026.10.1",
+  "note": "PD-03B 'Personal voice stability (experimental)' user-facing text (spec phase-a §5.5). The message is informational: it never names a disease as a finding and always carries the limitation sentence.",
+  "message": {
+    "en": {
+      "title": "Change in voice measurements",
+      "body": "Some measurements of your voice have changed compared with your previous recordings. These changes can occur for many reasons (temporary illness, speaking conditions, vocal health). This experimental feature cannot determine whether you have Parkinson's disease. If you have persistent voice changes or other new symptoms, consider discussing them with a healthcare professional. In a six-month home-monitoring study, within-person changes in these voice measures did not track clinical severity, so this feature reports voice stability, not disease progression."
+    },
+    "ja": {
+      "title": "声の測定値の変化",
+      "body": "これまでの録音と比べて、声のいくつかの測定値が変化しています。こうした変化は、一時的な体調不良、話す環境、のどの状態など、さまざまな理由で起こります。この実験的な機能では、パーキンソン病かどうかを判定することはできません。声の変化が続く場合や、ほかに新しい症状がある場合は、医療専門職への相談をご検討ください。6か月間の在宅モニタリング研究では、これらの声の指標の個人内の変化は臨床的な重症度と連動しなかったため、この機能は病気の進行ではなく「声の安定性」を示すものです。"
+    }
+  },
+  "fired_summary": {
+    "en": "Voice measurements have shifted from your usual range alongside another finding — a change worth checking",
+    "ja": "ほかの所見とあわせて、声の測定値がいつもの範囲から変化しています。確認する価値のある変化です"
+  },
+  "report_limitation": {
+    "en": "Voice-stability comparison (experimental): within-person change in acoustic measures against the patient's own baseline recordings. It is not a diagnostic test and has no validated threshold for any disease; voice measures vary with illness, recording conditions and vocal health. In UCI Telemonitoring (42 people with PD, 6 months at home), within-person trends in these measures did not track UPDRS (Spearman ≈ 0 for every feature), so PD-03B reports voice stability, not progression; with no true change, the 2-of-5-features rule is expected to alert in about ≤3% of evaluations.",
+    "ja": "声の安定性の比較（実験的）：患者さん自身のベースライン録音に対する音響指標の個人内変化です。診断検査ではなく、いかなる疾患についても検証された閾値はありません。声の指標は体調、録音環境、のどの状態によって変動します。UCI Telemonitoring（パーキンソン病42名、在宅6か月）では、これらの指標の個人内の推移はUPDRSと連動しなかったため（全指標でSpearman≈0）、PD-03Bは進行ではなく「声の安定性」を示します。真の変化がない場合でも、評価ごとに約3%以下の割合で警告が出ることが見込まれます。"
+  },
+  "baseline_note": {
+    "en": "Fewer than {needed} baseline recordings on this device so far ({n} recorded) — keep recording to build your personal voice baseline.",
+    "ja": "この端末でのベースライン録音がまだ{needed}回に達していません（{n}回記録済み）。個人の声のベースラインを作るために録音を続けてください。"
+  },
+  "device_change_note": {
+    "en": "Recording device changed; the voice baseline restarts on the current device.",
+    "ja": "録音する端末が変わったため、現在の端末で声のベースラインを作り直します。"
+  }
+}
