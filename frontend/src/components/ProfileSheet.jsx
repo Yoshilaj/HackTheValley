@@ -169,8 +169,12 @@ export default function ProfileSheet({ open, onClose }) {
       await updateProfile(next);
       setSaved(true);
       stopEdit();
-    } catch {
-      setSaveError("Couldn't save your changes. Check your connection and try again.");
+    } catch (e) {
+      setSaveError(
+        e?.status === 422
+          ? "Some details weren't accepted. Check the phone number (like +1 416-555-0187) and the date of birth."
+          : "Couldn't save your changes. Check your connection and try again."
+      );
     } finally {
       setSaving(false);
     }
@@ -209,7 +213,11 @@ export default function ProfileSheet({ open, onClose }) {
                   {draft ? "Edit profile" : profile.fullName}
                 </h2>
                 <p className="book-sub">
-                  {draft ? "Changes apply once you save." : `Age ${ageFrom(profile.dateOfBirth)}${born ? ` · Born ${born}` : ""}`}
+                  {draft
+                    ? "Changes apply once you save."
+                    : born
+                      ? `Age ${ageFrom(profile.dateOfBirth)} · Born ${born}`
+                      : "Add your date of birth with Edit."}
                 </p>
               </div>
             </div>

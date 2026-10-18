@@ -1,14 +1,28 @@
 import { useEffect, useRef, useState } from "react";
+import { DEMO_ACCOUNT, USE_BACKEND } from "../api/client.js";
 import { useSession } from "../context/SessionContext.jsx";
 import HeartDropLogo from "./HeartDropLogo.jsx";
 
 // Sign-in pop-up over the landing page, opened by its "Log in" or "Sign up"
-// buttons: email, Google or Apple for your own account, or continue as a
+// buttons: email and password for your own account (plus Google and Apple
+// while the backend is off, as it has no sign-in for them), or continue as a
 // guest (nothing tailored). In dev builds a "Demo login" signs straight in as
 // the demo patient. Esc, the close button or a click outside returns to the
 // landing page. Native <dialog> like DetailSheet.
-const DEMO_EMAIL = "micky.larson@example.com";
+const DEMO_EMAIL = USE_BACKEND ? DEMO_ACCOUNT.email : "micky.larson@example.com";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8; // the backend's minimum for new accounts
+
+// What went wrong, in words, from the backend's status code.
+function signInError(err, mode) {
+  if (err?.status === 401) return "That email and password don't match.";
+  if (err?.status === 409) return "That email already has an account. Log in instead.";
+  if (err?.status === 422) return "Check your email address and password.";
+  if (err?.status === 429) return "Too many attempts. Wait a minute and try again.";
+  return mode === "signup"
+    ? "Couldn't create your account. Check your connection and try again."
+    : "Couldn't sign you in. Check your connection and try again.";
+}
 
 const COPY = {
   login: {
@@ -33,7 +47,10 @@ export default function LoginDialog() {
   const { session, signIn, continueAsGuest, authPrompt, openAuth, closeAuth } = useSession();
   const ref = useRef(null);
   const inputRef = useRef(null);
+  const passwordRef = useRef(null);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fieldError, setFieldError] = useState(null); // { field: "email" | "password", text }
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null); // null | "email" | "google" | "apple" | "demo"
   const open = !session && authPrompt !== null;
@@ -44,6 +61,8 @@ export default function LoginDialog() {
     const dialog = ref.current;
     if (open && !dialog.open) {
       setError("");
+      setFieldError(null);
+      setPassword("");
       setBusy(null);
       dialog.showModal();
       inputRef.current?.focus();
@@ -52,29 +71,40 @@ export default function LoginDialog() {
   }, [open]);
 
   const go = async (method) => {
-    if (method === "email" && !EMAIL.test(email.trim())) {
-      setError(email.trim() ? "Enter a full email address, like name@example.com." : "Enter your email address.");
-      inputRef.current?.focus();
-      return;
+    if (method === "email") {
+      if (!EMAIL.test(email.trim())) {
+        setFieldError({
+          field: "email",
+          text: email.trim() ? "Enter a full email address, like name@example.com." : "Enter your email address.",
+        });
+        inputRef.current?.focus();
+        return;
+      }
+      if (!password || (mode === "signup" && password.length < MIN_PASSWORD)) {
+        setFieldError({
+          field: "password",
+          text: !password ? "Enter your password." : `Use at least ${MIN_PASSWORD} characters.`,
+        });
+        passwordRef.current?.focus();
+        return;
+      }
     }
+    setFieldError(null);
     setError("");
     setBusy(method);
     try {
-      await signIn(method, method === "email" ? email.trim() : method === "demo" ? DEMO_EMAIL : undefined, {
+      await signIn(method, method === "email" ? email.trim() : method === "demo" ? DEMO_EMAIL : undefined, password, {
         newAccount: mode === "signup",
       });
-    } catch {
-      setError(
-        mode === "signup"
-          ? "Couldn't create your account. Check your connection and try again."
-          : "Couldn't sign you in. Check your connection and try again."
-      );
+    } catch (err) {
+      setError(signInError(err, mode));
       setBusy(null);
     }
   };
 
   const switchMode = () => {
     setError("");
+    setFieldError(null);
     openAuth(mode === "signup" ? "login" : "signup");
     inputRef.current?.focus();
   };
@@ -133,25 +163,60 @@ export default function LoginDialog() {
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
+              setFieldError(null);
               setError("");
             }}
-            aria-invalid={Boolean(error) || undefined}
-            aria-describedby={error ? "login-error" : undefined}
+            aria-invalid={fieldError?.field === "email" || undefined}
+            aria-describedby={fieldError?.field === "email" ? "login-email-error" : undefined}
           />
-          {error && (
-            <p id="login-error" className="field-error" role="alert">
-              {error}
+          {fieldError?.field === "email" && (
+            <p id="login-email-error" className="field-error" role="alert">
+              {fieldError.text}
             </p>
           )}
         </div>
+
+        <div className="form-field">
+          <label htmlFor="login-password">Password</label>
+          <input
+            ref={passwordRef}
+            id="login-password"
+            className="text-input login-input"
+            type="password"
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            placeholder={mode === "signup" ? `At least ${MIN_PASSWORD} characters` : ""}
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setFieldError(null);
+              setError("");
+            }}
+            aria-invalid={fieldError?.field === "password" || undefined}
+            aria-describedby={fieldError?.field === "password" ? "login-password-error" : undefined}
+          />
+          {fieldError?.field === "password" && (
+            <p id="login-password-error" className="field-error" role="alert">
+              {fieldError.text}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="field-error" role="alert">
+            {error}
+          </p>
+        )}
 
         <button type="submit" className="btn-primary login-continue" disabled={busy !== null}>
           {busy === "email" ? working : copy.submit}
         </button>
 
-        <p className="login-or" aria-hidden="true">
-          <span>or</span>
-        </p>
+        {/* The backend has no Google or Apple sign-in, so these show only without it */}
+        {!USE_BACKEND && (
+          <>
+            <p className="login-or" aria-hidden="true">
+              <span>or</span>
+            </p>
 
         <button type="button" className="login-provider" onClick={() => go("google")} disabled={busy !== null}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -171,6 +236,8 @@ export default function LoginDialog() {
           </svg>
           {busy === "apple" ? working : `${copy.provider} Apple`}
         </button>
+          </>
+        )}
 
         <p className="login-switch">
           {copy.switchText}{" "}
@@ -190,7 +257,7 @@ export default function LoginDialog() {
         {import.meta.env.DEV && (
           <button type="button" className="login-dev" onClick={() => go("demo")} disabled={busy !== null}>
             <span className="login-dev-tag">Dev</span>
-            {busy === "demo" ? "Signing in…" : "Demo login · Micky Larson"}
+            {busy === "demo" ? "Signing in…" : `Demo login · ${USE_BACKEND ? DEMO_EMAIL : "Micky Larson"}`}
           </button>
         )}
       </form>

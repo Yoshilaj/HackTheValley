@@ -65,7 +65,9 @@ export default function ConditionRisks({ items, age, updatedAt, basis }) {
       <ul className="condition-risks">
         {items.map((c) => {
           const level = conditionLevel(c);
-          const freq = naturalFrequency(c.risk);
+          // Backend pathways without a % (cognitive, Parkinson's) show their finding instead.
+          const hasPct = c.risk != null;
+          const freq = hasPct ? naturalFrequency(c.risk) : null;
           const typical = c.typical != null ? ` Typical for your age: ${formatPct(c.typical)}.` : "";
           return (
             <li key={c.id}>
@@ -74,17 +76,29 @@ export default function ConditionRisks({ items, age, updatedAt, basis }) {
                 className={`card tappable condition-risk risk-tone ${level.toLowerCase()}`}
                 onClick={() => setOpenId(c.id)}
                 aria-haspopup="dialog"
-                aria-label={`${c.name}: ${formatPct(c.risk)} chance in ${c.horizon} years, ${level.toLowerCase()} risk.${typical} Show why`}
+                aria-label={
+                  hasPct
+                    ? `${c.name}: ${formatPct(c.risk)} chance in ${c.horizon} years, ${level.toLowerCase()} risk.${typical} Show why`
+                    : `${c.name}: ${c.finding}. ${c.headline ?? ""} Show why`
+                }
               >
                 <span className="condition-head">
                   <span className="condition-name">{c.name}</span>
-                  <span className="condition-score">{formatPct(c.risk)}</span>
+                  <span className={`condition-score ${hasPct ? "" : "condition-finding"}`}>
+                    {hasPct ? formatPct(c.risk) : c.finding}
+                  </span>
                 </span>
-                <RiskBar c={c} />
+                {hasPct && <RiskBar c={c} />}
                 <span className="condition-foot">
-                  <span className="condition-level">{level} risk</span>
-                  {` · about ${freq.count} in ${freq.of.toLocaleString()} people like you within ${c.horizon} years`}
-                  {c.typical != null && ` · typical for your age ${formatPct(c.typical)}`}
+                  {hasPct ? (
+                    <>
+                      <span className="condition-level">{level} risk</span>
+                      {` · about ${freq.count} in ${freq.of.toLocaleString()} people like you within ${c.horizon} years`}
+                      {c.typical != null && ` · typical for your age ${formatPct(c.typical)}`}
+                    </>
+                  ) : (
+                    c.headline
+                  )}
                 </span>
               </button>
             </li>

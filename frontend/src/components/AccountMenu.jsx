@@ -127,9 +127,16 @@ export default function AccountMenu() {
           <div className="account-head" role="presentation">
             <strong>{patient.fullName}</strong>
             <small>{session?.email ?? `Signed in with ${session?.method === "apple" ? "Apple" : "Google"}`}</small>
-            <small>
-              Age {ageFrom(patient.dateOfBirth)} · Health card ending {patient.healthCardLast4}
-            </small>
+            {(ageFrom(patient.dateOfBirth) != null || patient.healthCardLast4) && (
+              <small>
+                {[
+                  ageFrom(patient.dateOfBirth) != null && `Age ${ageFrom(patient.dateOfBirth)}`,
+                  patient.healthCardLast4 && `Health card ending ${patient.healthCardLast4}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </small>
+            )}
           </div>
           <button type="button" role="menuitem" autoFocus onClick={() => choose("profile")}>
             <Icon>

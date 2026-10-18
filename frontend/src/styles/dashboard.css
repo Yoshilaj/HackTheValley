@@ -205,6 +205,8 @@ h2 sup { color: var(--muted); }
 .condition-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .condition-name { font-size: 15px; font-weight: 600; }
 .condition-score { font-size: 20px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+/* A finding in place of a % (e.g. "No findings") */
+.condition-score.condition-finding { font-size: 15px; font-weight: 600; color: var(--bar); }
 .condition-score small { margin-left: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
 /* Banded risk bar: track tinted low / moderate / high (--m, --h set from the
    estimate's bands), fill = your risk, tick = typical healthy person your age */

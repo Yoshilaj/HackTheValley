@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { notifications as seed } from "../data/placeholder.js";
+import useNotifications from "../hooks/useNotifications.js";
+import { timeAgo } from "../utils/dates.js";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
 import { slotLabel } from "../utils/slots.js";
@@ -22,16 +23,9 @@ const ICONS = {
   alert: <path d="M3 12h4l2-5 4 10 2-5h6" />,
 };
 
-function timeAgo(ts) {
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  return hours < 24 ? `${hours}h ago` : "Yesterday";
-}
-
 export default function NotificationsMenu() {
-  const [seedItems, setItems] = useState(seed);
+  // Placeholder list, or the account's notifications from the backend (useNotifications).
+  const { items: feed, markRead, markAllRead: markFeedRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const btnRef = useRef(null);
@@ -52,7 +46,7 @@ export default function NotificationsMenu() {
     unread: !alert.read,
   };
   // Notifications are personal, so guests have none.
-  const items = isGuest ? [] : alertItem ? [alertItem, ...seedItems] : seedItems;
+  const items = isGuest ? [] : alertItem ? [alertItem, ...feed] : feed;
   const unread = items.filter((n) => n.unread).length;
 
   useEffect(() => setOpen(false), [pathname]);
@@ -76,9 +70,8 @@ export default function NotificationsMenu() {
     };
   }, [open]);
 
-  const markRead = (id) => setItems((ns) => ns.map((n) => (n.id === id ? { ...n, unread: false } : n)));
   const markAllRead = () => {
-    setItems((ns) => ns.map((n) => ({ ...n, unread: false })));
+    markFeedRead();
     markAlertRead();
   };
 
@@ -90,8 +83,8 @@ export default function NotificationsMenu() {
 
   const itemBody = (n) => (
     <>
-      <span className={`notif-icon ${n.kind}`} aria-hidden="true">
-        <svg viewBox="0 0 24 24">{ICONS[n.kind]}</svg>
+      <span className={`notif-icon ${n.icon ?? n.kind}`} aria-hidden="true">
+        <svg viewBox="0 0 24 24">{ICONS[n.icon ?? n.kind]}</svg>
       </span>
       <span className="notif-text">
         <strong>{n.title}</strong>

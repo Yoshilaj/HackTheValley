@@ -49,8 +49,10 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
   const c = condition;
   const d = c?.details ?? {};
   const level = c && conditionLevel(c);
-  const freq = c && naturalFrequency(c.risk);
-  const change = c && changeSince(c.risk, c.previous, formatPct);
+  // Backend pathways without a % show their finding and evidence only.
+  const hasPct = c?.risk != null;
+  const freq = hasPct ? naturalFrequency(c.risk) : null;
+  const change = hasPct && changeSince(c.risk, c.previous, formatPct);
   const peer = age ? `healthy ${age}-year-old` : "healthy person your age";
 
   return (
@@ -65,7 +67,7 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
         <div className={`sheet-body risk-tone ${level.toLowerCase()}`}>
           <header className="sheet-head">
             <div>
-              <p className="label">{c.horizon}-year risk</p>
+              <p className="label">{hasPct ? `${c.horizon}-year risk` : "Follow-up check"}</p>
               <h2 id="condition-title" className="book-title">
                 {c.name}
               </h2>
@@ -78,6 +80,8 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
           </header>
 
           <div className="condition-summary">
+            {hasPct ? (
+              <>
             <div className="condition-head">
               <p className="condition-big">
                 {formatPct(c.risk)} <small>chance in the next {c.horizon} years</small>
@@ -103,6 +107,12 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
               the next {c.horizon} years.
             </p>
             {freq.of === 100 && <IconArray count={freq.count} />}
+              </>
+            ) : (
+              <div className="condition-head">
+                <p className="condition-big">{c.finding}</p>
+              </div>
+            )}
             {d.summary && <p>{d.summary}</p>}
           </div>
 
@@ -132,6 +142,21 @@ export default function ConditionSheet({ condition, age, updatedAt, basis, onClo
           </dl>
 
           <h3 className="sheet-sub">Why CareSync thinks this</h3>
+
+          {d.findings && (
+            <Section
+              title="What your data shows"
+              count={d.findings.length}
+              empty="Nothing in your recent readings points to this."
+              icon={<path d="M3 12h4l2-5 4 10 2-5h6" />}
+            >
+              {d.findings.map((f) => (
+                <li key={f}>
+                  <p>{f}</p>
+                </li>
+              ))}
+            </Section>
+          )}
 
           <Section
             title="From your chats"

@@ -1,143 +1,227 @@
 // All backend calls go through here so the API surface is in one place.
-// Paths start with /api — Vite proxies them to the Python backend in dev.
+// Paths start with /api: Vite proxies them to the Python backend in dev
+// (vite.config.js) and Vercel rewrites them to the deployed API (vercel.json).
+
+// One switch for the whole app. Off: everything runs on placeholder data kept
+// in this browser. On: sign-in, profile, risk, chat, notifications,
+// appointments, medications (with refills and dose tick-offs) and blood
+// pressure / resting heart rate use the backend. Set VITE_USE_BACKEND=true in
+// frontend/.env.local (and in Vercel's settings).
+export const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === "true";
+
+// The demo patient created by the backend's `python -m scripts.seed_demo`.
+export const DEMO_ACCOUNT = { email: "demo@example.com", password: "demo1234" };
+
+// Sign-in token from /api/auth/login or /signup, sent as a Bearer token.
+const TOKEN_KEY = "caresync-token";
+
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable: the session lasts until reload */
+  }
+}
+
+// Fired when the backend rejects the stored token (expired or revoked), so
+// SessionContext can send the user back to the landing page.
+export const SIGNED_OUT_EVENT = "caresync:signed-out";
+
+// Errors carry the HTTP status and the backend's `detail` message, if any.
+export class ApiError extends Error {
+  constructor(message, status, detail) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+}
 
 async function request(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const token = getToken();
+  const headers = { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(path, { ...options, headers: { ...headers, ...options.headers } });
   if (!res.ok) {
-    throw new Error(`${options.method || "GET"} ${path} failed: ${res.status}`);
+    const body = await res.json().catch(() => null);
+    if (res.status === 401 && token) {
+      setToken(null);
+      window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+    }
+    throw new ApiError(`${options.method || "GET"} ${path} failed: ${res.status}`, res.status, body?.detail);
   }
-  return res.json();
+  return res.status === 204 ? null : res.json();
 }
 
-// Planned endpoint: email sign-in or sign-up (newAccount). The backend sends a
-// one-time sign-in link or code and returns { user: { email, name? } } once
-// verified. Google and Apple go through the backend's OAuth redirects
-// (/api/auth/google, /api/auth/apple, with ?signup=1 for a new account).
-export function signInWithEmail(email, newAccount = false) {
-  return request("/api/auth/email", { method: "POST", body: JSON.stringify({ email, newAccount }) });
+const post = (path, body) => request(path, { method: "POST", body: body == null ? undefined : JSON.stringify(body) });
+
+// ---- Auth: email + password. Returns { access_token, user_id }.
+export function login(email, password) {
+  return post("/api/auth/login", { email, password });
 }
 
-// Planned endpoint: save the user's edited health profile (see ProfileContext
-// for the shape). Returns the saved profile.
-export function saveProfile(profile) {
-  return request("/api/profile", { method: "PUT", body: JSON.stringify(profile) });
+export function signup(email, password, displayName) {
+  return post("/api/auth/signup", { email, password, display_name: displayName || undefined });
 }
 
 export function getHealth() {
   return request("/api/health");
 }
 
-// Planned endpoint: the backend scores risk from the user's chat history and
-// doctors' diagnoses, checked against reliable medical sources.
-// Expected response:
-// { score: 0-100 overall index (higher = more risk), previous?: { score }  - last month, for the trend
-//   updatedAt?: ISO time, basis?: { chats, diagnoses }, note?: string,
-//   suspected?: { condition, specialty, why, bring },   - drives the follow-up flag at 85+
-//   conditions?: [{ id, name, outcome,      - per-disease estimates on the dashboard
-//     risk: % chance within `horizon` years, horizon: years, typical: % for a healthy person the same age,
-//     previous?: last month's %, bands: [moderate from %, high from %], method: e.g. "QRISK3-based estimate",
-//     details? }] }
-// where details explains the score (every list optional):
-//   { summary, chats: [{ quote, date, why?, chatId? }],
-//     diagnoses: [{ finding, doctor, specialty?, date }],
-//     sources: [{ name, title, excerpt, url? }]  (retrieved medical sources, RAG),
-//     tips: [string] }
-export function getRiskAssessment() {
-  return request("/api/risk-assessment");
+// ---- Profile: GET returns the backend's profile (first_name, last_name,
+// date_of_birth, emergency_contact, ...); PUT changes only the fields sent.
+export function getProfile() {
+  return request("/api/profile");
 }
 
-// Planned endpoint: specialists/doctors/clinics near the user, recommended
-// from their chat history. lat/lng are optional (only sent if the user shares location).
+export function saveProfile(fields) {
+  return request("/api/profile", { method: "PUT", body: JSON.stringify(fields) });
+}
+
+// ---- Risk: one card per pathway (cardio, cognitive, parkinsons, general),
+// each { level, priority_score 0-100, headline, drivers, probabilities, trend,
+// preventive_measures, next_action }. useRiskAssessment maps them for the UI.
+export function getRiskCards() {
+  return request("/api/risk/latest");
+}
+
+// ---- Chat, stored per user as separate conversations.
+// sendChat -> { answer, sources: [{ n, title, url, ... }], red_flags, conversation_id }.
+// Pass the conversation's server id to continue it, or newConversation to start
+// one (the reply carries its new id). The backend takes text only; attachments
+// stay on this device.
+export function sendChat(message, { conversationId, newConversation = false } = {}) {
+  return post("/api/chat", { message, conversation_id: conversationId ?? undefined, new_conversation: newConversation });
+}
+
+// The signed-in user's conversations, newest first: [{ id, title, created_at, updated_at, message_count }].
+export function getConversations() {
+  return request("/api/chat/conversations");
+}
+
+// One conversation's messages, oldest first: [{ id, role, content, sources, created_at }].
+export function getConversationMessages(id) {
+  return request(`/api/chat/conversations/${encodeURIComponent(id)}/messages`);
+}
+
+export function deleteConversation(id) {
+  return request(`/api/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// ---- Notifications: [{ id, kind, title, body, payload, read_at, created_at }].
+export function getNotifications() {
+  return request("/api/notifications");
+}
+
+export function markNotificationRead(id) {
+  return post(`/api/notifications/${encodeURIComponent(id)}/read`);
+}
+
+export function markAllNotificationsRead() {
+  return post("/api/notifications/read-all");
+}
+
+// ---- Appointments the backend's booking agent arranges after a follow-up
+// finding: [{ id, status, clinic, proposed_slots, chosen_slot, ... }]. The user
+// approves, declines or cancels them.
+export function getAppointments() {
+  return request("/api/appointments");
+}
+
+export function approveAppointment(id) {
+  return post(`/api/appointments/${encodeURIComponent(id)}/approve`);
+}
+
+export function cancelAppointment(id) {
+  return post(`/api/appointments/${encodeURIComponent(id)}/cancel`);
+}
+
+// ---- Measurements: home blood pressure ({ readings, summary }) and daily
+// metrics such as resting heart rate ({ metrics: { resting_hr: { daily, last_value } } }).
+export function getBloodPressure() {
+  return request("/api/metrics/bp");
+}
+
+export function logBloodPressure({ systolic, diastolic, pulse, measuredAt }) {
+  return post("/api/metrics/bp", { readings: [{ systolic, diastolic, pulse, measured_at: measuredAt }] });
+}
+
+export function getMetricsSummary() {
+  return request("/api/metrics/summary");
+}
+
+export function logMetric(type, value, recordedAt) {
+  return post("/api/metrics", { source: "manual", samples: [{ type, value, recorded_at: recordedAt }] });
+}
+
+// ---- Medications (the profile's list, also used by the risk assessment and chat):
+// [{ id, name, dose, frequency, purpose, prescriber, refills, times, days_left,
+//    take_with, side_effects, interactions, glyph }].
+export function getMedications() {
+  return request("/api/medications");
+}
+
+// Open refill requests: [{ id, medication_id, pharmacy_id, method, note, status, created_at }].
+export function getRefills() {
+  return request("/api/refills");
+}
+
+// Ask for refills: { medicationIds: [id], pharmacyId, method: "pickup" | "delivery", note? }.
+export function requestRefill({ medicationIds, pharmacyId, method, note }) {
+  return post("/api/refills", { medication_ids: medicationIds, pharmacy_id: pharmacyId, method, note: note || undefined });
+}
+
+// Withdraw the open refill request for one medication.
+export function cancelRefill(medicationId) {
+  return request(`/api/refills/${encodeURIComponent(medicationId)}`, { method: "DELETE" });
+}
+
+// Doses ticked off on a day ("YYYY-MM-DD"): { day, taken: ["<medication id>-<time>"] }.
+export function getDoses(day) {
+  return request(`/api/doses/${day}`);
+}
+
+// Replace the day's ticked-off doses.
+export function saveDoses(day, taken) {
+  return request(`/api/doses/${day}`, { method: "PUT", body: JSON.stringify({ taken }) });
+}
+
+// ---------------------------------------------------------------------------
+// Planned endpoints the backend doesn't have yet. These features keep their
+// data in this browser until the endpoints exist (each has its own switch).
+
+// Specialists/doctors/clinics near the user, recommended from their chat history.
 // Expected response: [{ id, name, specialty, clinic, distance, distanceKm, nextSlot, reason, slots: [local ISO time] }]
 export function getRecommendations({ lat, lng } = {}) {
   const query = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
   return request(`/api/recommendations${query}`);
 }
 
-// Planned endpoint: save a reading the user logged on the Vitals page.
-// Body: { vitalId, values: { value } or { sys, dia } for blood pressure, at: ISO time, note? }
-export function logReading(body) {
-  return request("/api/readings", { method: "POST", body: JSON.stringify(body) });
-}
-
-// Planned endpoints: correct or remove a reading the user logged. Body as logReading.
-export function updateReading(id, body) {
-  return request(`/api/readings/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
-}
-
-export function deleteReading(id) {
-  return request(`/api/readings/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-// Planned endpoint: send a refill request to the pharmacy and prescriber.
-// Body: { medicationIds: [id], pharmacyId, method: "pickup" | "delivery", note? }
-export function requestRefill(body) {
-  return request("/api/refills", { method: "POST", body: JSON.stringify(body) });
-}
-
-// Planned endpoint: withdraw the open refill request for one medication.
-export function cancelRefill(medicationId) {
-  return request(`/api/refills/${encodeURIComponent(medicationId)}`, { method: "DELETE" });
-}
-
-// Planned endpoint: pick the best appointment for a free-text description.
-// The backend calls Gemini (GEMINI_API_KEY lives on the server only) with the
-// description, the user's preferences and the provider database, and returns
-// one of the candidates. Request:
-//   { description, prefs: { days, times, maxKm }, location?: { lat, lng },
-//     candidates: [{ providerId, slot }] }   - openings that already fit the preferences
-// Expected response: { providerId, slot, reason }
-export function matchVisit(body) {
-  return request("/api/visit-match", { method: "POST", body: JSON.stringify(body) });
-}
-
-// Planned endpoint: cancel a booked appointment (id from the appointment shape below).
-export function cancelAppointment(appointmentId) {
-  return request(`/api/bookings/${encodeURIComponent(appointmentId)}`, { method: "DELETE" });
-}
-
-// Planned endpoint: doctors, clinics and hospitals the user can book with.
-// lat/lng are optional. Expected response (every field but id/name optional):
-// [{ id, type: "doctor" | "clinic" | "hospital" | "lab", name, specialty, clinic, address,
-//    phone, website, hours, distance, distanceKm, acceptingNew: bool, languages: [string],
-//    glyph, slots: [local ISO time] }]
+// Doctors, clinics and hospitals the user can book with. Expected response
+// (every field but id/name optional): [{ id, type, name, specialty, clinic,
+// address, phone, website, hours, distance, distanceKm, acceptingNew, languages, glyph, slots }]
 export function getProviders({ lat, lng } = {}) {
   const query = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
   return request(`/api/providers${query}`);
 }
 
-// Planned endpoint: the user's appointments.
-// Expected response: { upcoming: [appointment], past: [appointment] } where an appointment is
-// { id, providerId, name, specialty, place, address, date, time, length, status, glyph, note, slot }.
-export function getAppointments() {
-  return request("/api/appointments");
-}
-
-// Planned endpoint: CareSync books a visit with a recommended or directory provider.
-// slot is an optional local ISO time ("2025-07-10T11:00"); without it the backend
-// takes the next available opening. May return { appointment } in the shape above.
+// Book a visit with a chosen provider and time (slot: local ISO time, optional).
 export function bookAppointment(providerId, slot) {
-  return request("/api/bookings", {
-    method: "POST",
-    body: JSON.stringify(slot ? { providerId, slot } : { providerId }),
-  });
+  return post("/api/bookings", slot ? { providerId, slot } : { providerId });
 }
 
-// With attachments this sends multipart/form-data: a "message" field plus one
-// "files" field per file. Without, it stays JSON { message }.
-export function sendChat(message, files = []) {
-  if (files.length === 0) {
-    return request("/api/chat", {
-      method: "POST",
-      body: JSON.stringify({ message }),
-    });
-  }
-  const form = new FormData();
-  form.append("message", message);
-  files.forEach((f) => form.append("files", f));
-  // Empty headers so the browser sets the multipart boundary itself.
-  return request("/api/chat", { method: "POST", headers: {}, body: form });
+// Pick the best appointment for a free-text description. The backend calls
+// Gemini (GEMINI_API_KEY lives on the server only). Request:
+//   { description, prefs: { days, times, maxKm }, location?: { lat, lng }, candidates: [{ providerId, slot }] }
+// Expected response: { providerId, slot, reason }
+export function matchVisit(body) {
+  return post("/api/visit-match", body);
 }

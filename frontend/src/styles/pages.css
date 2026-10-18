@@ -35,6 +35,8 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .appt-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; font-size: 14px; font-weight: 600; }
 .appt-meta { font-size: 14px; color: var(--muted); }
 .appt-note { font-size: 14px; margin-top: 4px; }
+/* Approve button on a visit the booking agent is waiting on */
+.appt-approve { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 10px; }
 .appt-when { text-align: right; font-size: 14px; }
 .appt-when b { display: block; font-weight: 600; }
 .appt-when span { color: var(--muted); }

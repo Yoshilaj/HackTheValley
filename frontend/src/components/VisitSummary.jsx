@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { medicationList } from "../data/placeholder.js";
+import useMedications from "../hooks/useMedications.js";
 import { useProfile } from "../context/ProfileContext.jsx";
 import useVitals from "../hooks/useVitals.js";
 import { ageFrom } from "../utils/dates.js";
@@ -9,12 +9,12 @@ import { ageFrom } from "../utils/dates.js";
 // Rendered into <body> only while printing; print CSS hides the app around it.
 export default function VisitSummary({ appointment: a }) {
   const { vitals } = useVitals();
+  const { medications: medicationList } = useMedications();
   const { profile: patient } = useProfile();
-  const born = new Date(`${patient.dateOfBirth}T00:00`).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const born =
+    ageFrom(patient.dateOfBirth) == null
+      ? ""
+      : new Date(`${patient.dateOfBirth}T00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   return createPortal(
@@ -31,7 +31,7 @@ export default function VisitSummary({ appointment: a }) {
           <dd>{patient.fullName}</dd>
           <dt>Date of birth</dt>
           <dd>
-            {born} (age {ageFrom(patient.dateOfBirth)})
+            {born ? `${born} (age ${ageFrom(patient.dateOfBirth)})` : "Not recorded"}
           </dd>
           <dt>Health card</dt>
           <dd>Ending {patient.healthCardLast4}</dd>

@@ -6,7 +6,9 @@
 
 export const formatPct = (n) => `${Number.isInteger(n) ? n : n.toFixed(1)}%`;
 
-export function conditionLevel({ risk, bands }) {
+export function conditionLevel({ risk, bands, tone }) {
+  // A finding without a percentage (e.g. "No findings") brings its own level.
+  if (risk == null) return tone ?? "Low";
   if (!bands) return "Low";
   if (risk >= bands[1]) return "High";
   if (risk >= bands[0]) return "Moderate";

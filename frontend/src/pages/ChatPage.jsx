@@ -4,7 +4,7 @@ import { useChatHistory } from "../context/ChatHistoryContext.jsx";
 import Composer, { ASSISTANT_HINTS, FileIcon, formatSize } from "../components/Composer.jsx";
 import { useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
-import { medicationList } from "../data/placeholder.js";
+import useMedications from "../hooks/useMedications.js";
 import { useProfile } from "../context/ProfileContext.jsx";
 import useVitals from "../hooks/useVitals.js";
 import { slotLabel } from "../utils/slots.js";
@@ -21,7 +21,7 @@ const GENERAL_SUGGESTIONS = [
 // Signed-in starters come from the user's own record: their highest condition
 // risk, a medication that's out of refills, and their latest blood pressure.
 // Falls back to the general ones for anything missing.
-function personalSuggestions(conditions, vitals) {
+function personalSuggestions(conditions, vitals, medicationList) {
   const out = [];
   const raised = (conditions ?? [])
     .map((c) => ({ c, level: conditionLevel(c) }))
@@ -38,12 +38,13 @@ function personalSuggestions(conditions, vitals) {
 export default function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { chats, pending, errors, sendMessage, retry } = useChatHistory();
+  const { chats, ready, pending, errors, sendMessage, retry, loadMessages } = useChatHistory();
   const { alert, openPrompt, risk } = useCareAlert();
-  const { signedIn } = useSession();
+  const { signedIn, requestSignIn } = useSession();
   const { profile: patient } = useProfile();
   const { vitals } = useVitals();
-  const suggestions = signedIn ? personalSuggestions(risk?.conditions, vitals) : GENERAL_SUGGESTIONS;
+  const { medications } = useMedications();
+  const suggestions = signedIn ? personalSuggestions(risk?.conditions, vitals, medications) : GENERAL_SUGGESTIONS;
   const [dragging, setDragging] = useState(false);
   const logRef = useRef(null);
   const composerRef = useRef(null);
@@ -51,6 +52,7 @@ export default function ChatPage() {
   const chat = id ? chats.find((c) => c.id === id) : null;
   const loading = Boolean(id && pending[id]);
   const failed = Boolean(id && errors[id]);
+  const needsSignIn = Boolean(id && errors[id]?.signIn);
   const messageCount = chat ? chat.messages.length : 0;
 
   useEffect(() => {
@@ -58,7 +60,27 @@ export default function ChatPage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [id, messageCount, loading, failed]);
 
-  if (id && !chat) return <Navigate to="/chat" replace />;
+  // A conversation saved on the server loads its messages the first time it's opened.
+  useEffect(() => {
+    if (id) loadMessages(id);
+  }, [id, chat?.remoteId, loadMessages]);
+
+  // Wait for the account's conversations to arrive before calling a link unknown.
+  if (id && !chat) {
+    if (!ready) {
+      return (
+        <main className="page chat-page">
+          <h1 className="sr-only" tabIndex={-1}>
+            Care assistant
+          </h1>
+          <p className="chat-loading" role="status">
+            Loading your conversation…
+          </p>
+        </main>
+      );
+    }
+    return <Navigate to="/chat" replace />;
+  }
 
   const send = (text, files = []) => {
     if ((!text.trim() && files.length === 0) || loading) return;
@@ -172,14 +194,28 @@ export default function ChatPage() {
             </div>
           )}
 
-          {failed && (
-            <div className="msg assistant error">
-              <p>I can't reach the care assistant right now. Please try again in a moment.</p>
-              <button className="msg-retry" onClick={() => retry(id)}>
-                Try again
-              </button>
-            </div>
+          {chat && !chat.loaded && (
+            <p className="chat-loading" role="status">
+              Loading messages…
+            </p>
           )}
+
+          {failed &&
+            (needsSignIn ? (
+              <div className="msg assistant error">
+                <p>Sign in to chat with the care assistant. Your conversations are saved to your account.</p>
+                <button className="msg-retry" onClick={requestSignIn}>
+                  Sign in
+                </button>
+              </div>
+            ) : (
+              <div className="msg assistant error">
+                <p>I can't reach the care assistant right now. Please try again in a moment.</p>
+                <button className="msg-retry" onClick={() => retry(id)}>
+                  Try again
+                </button>
+              </div>
+            ))}
         </div>
 
         {/* Typed-out questions only on a new chat; mid-conversation the box stays still. */}

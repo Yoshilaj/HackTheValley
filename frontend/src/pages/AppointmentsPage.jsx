@@ -108,8 +108,37 @@ function AppointmentMenu({ a, onCancel, onPrint }) {
   );
 }
 
+// A visit the backend's booking agent is waiting on: nothing is sent to the
+// clinic until the user approves. Shows the error in place if approving fails.
+function ApproveButton({ a, onApprove }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const approve = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await onApprove(a.id);
+    } catch {
+      setError("Couldn't approve it. Try again in a moment.");
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="appt-approve">
+      <button type="button" className="btn-primary" onClick={approve} disabled={busy} aria-label={`Approve request to ${a.name}`}>
+        {busy ? "Approving…" : "Approve request"}
+      </button>
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // onCancel / onPrint are only passed for upcoming visits; past ones have no menu.
-function AppointmentCard({ a, onCancel, onPrint }) {
+function AppointmentCard({ a, onCancel, onPrint, onApprove }) {
   return (
     <li className="card appt-card">
       <span className="appt-icon" aria-hidden="true">
@@ -119,6 +148,7 @@ function AppointmentCard({ a, onCancel, onPrint }) {
         <h3>{a.name}</h3>
         <p className="appt-meta">{[a.specialty, a.place, a.address].filter(Boolean).join(" · ")}</p>
         {a.note && <p className="appt-note">{a.note}</p>}
+        {onApprove && a.backendStatus === "awaiting_approval" && <ApproveButton a={a} onApprove={onApprove} />}
       </div>
       <div className="appt-when">
         <b>{a.date}</b>
@@ -268,7 +298,7 @@ export default function AppointmentsPage() {
   const recRef = useRef(null);
   const { items, location, locate, locating, locError } = useRecommendations();
   const { providers, loading: providersLoading } = useProviders(location);
-  const { upcoming, past, isBooked } = useAppointments();
+  const { upcoming, past, isBooked, approveVisit } = useAppointments();
   const [bookOpen, setBookOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [detailTarget, setDetailTarget] = useState(null); // provider whose Book was pressed
@@ -376,7 +406,13 @@ export default function AppointmentsPage() {
             ) : (
               <ul className="appt-list">
                 {upcoming.map((a) => (
-                  <AppointmentCard key={a.id} a={a} onCancel={setCancelTarget} onPrint={(appt) => setPrinting({ ...appt })} />
+                  <AppointmentCard
+                    key={a.id}
+                    a={a}
+                    onCancel={setCancelTarget}
+                    onPrint={(appt) => setPrinting({ ...appt })}
+                    onApprove={approveVisit}
+                  />
                 ))}
               </ul>
             )}

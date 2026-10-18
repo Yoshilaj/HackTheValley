@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { medicationList } from "../data/placeholder.js";
-import useStoredState from "../hooks/useStoredState.js";
+import { useState } from "react";
+import useMedications from "../hooks/useMedications.js";
+import useDoses from "../hooks/useDoses.js";
 import useRefills from "../hooks/useRefills.js";
 import RefillSheet from "../components/RefillSheet.jsx";
 import MedicationSheet from "../components/MedicationSheet.jsx";
@@ -8,34 +8,15 @@ import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import GuestGate from "../components/GuestGate.jsx";
 import { useSession } from "../context/SessionContext.jsx";
 
-// One entry per scheduled dose, e.g. Metformin at 8:00 AM and again at 6:00 PM.
-const doses = medicationList.flatMap((m) =>
-  m.times.map((time) => ({ key: `${m.id}-${time}`, name: m.name, dose: m.dose, time }))
-);
-
-// Ticked-off doses are saved per day, so they survive a reload and start
-// fresh tomorrow. Earlier days are cleared out.
-const DOSES_PREFIX = "caresync-doses-";
-
-function useTodaysDoses() {
-  const key = `${DOSES_PREFIX}${new Date().toLocaleDateString("en-CA")}`; // YYYY-MM-DD, local
-  const [taken, setTaken] = useStoredState(key, []);
-
-  useEffect(() => {
-    try {
-      Object.keys(localStorage)
-        .filter((k) => k.startsWith(DOSES_PREFIX) && k !== key)
-        .forEach((k) => localStorage.removeItem(k));
-    } catch {
-      /* storage unavailable */
-    }
-  }, [key]);
-
-  return [taken, setTaken];
-}
-
+// Medications, today's ticked-off doses and refills come from hooks (the
+// backend when it's on, this browser otherwise).
 export default function MedicationsPage() {
-  const [taken, setTaken] = useTodaysDoses();
+  const { medications: medicationList } = useMedications();
+  // One entry per scheduled dose, e.g. Metformin at 8:00 AM and again at 6:00 PM.
+  const doses = medicationList.flatMap((m) =>
+    m.times.map((time) => ({ key: `${m.id}-${time}`, name: m.name, dose: m.dose, time }))
+  );
+  const [taken, setTaken] = useDoses();
   const { request, cancel, requestFor, isRequested } = useRefills();
   const [refill, setRefill] = useState(null); // null, or { preselect?: [ids] } while the refill form is open
   const [detailId, setDetailId] = useState(null); // medication whose card was opened
@@ -138,7 +119,7 @@ export default function MedicationsPage() {
           aria-valuemax={doses.length}
           aria-valuenow={taken.length}
         >
-          <span style={{ width: `${(taken.length / doses.length) * 100}%` }} />
+          <span style={{ width: `${doses.length ? (taken.length / doses.length) * 100 : 0}%` }} />
         </div>
         <ul className="schedule">
           {doses.map((d) => (
