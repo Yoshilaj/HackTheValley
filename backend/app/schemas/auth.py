@@ -17,6 +17,19 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    """The ID token ("credential") Google Identity Services hands the web app after sign-in."""
+
+    credential: str = Field(min_length=20, max_length=8000)
+
+
+class GoogleConfigOut(BaseModel):
+    """What the web app needs to show "Sign in with Google": the OAuth client id is public."""
+
+    enabled: bool
+    client_id: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

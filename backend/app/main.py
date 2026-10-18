@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.api.routes import (
     admin, appointments, auth, chat, dashboard, health, integrations, jobs, logs, medications, metrics,
-    notifications, observations, profile, reports, risk, screener, tasks, uploads, webhooks,
+    notifications, observations, profile, reports, risk, screener, tasks, uploads, visits, webhooks,
 )
 from app.core.config import check_production_settings, settings
 from app.core.logging import get_logger, setup_logging
@@ -71,6 +71,7 @@ for module in (
     auth, profile,                # accounts, profile, consent, export / delete
     metrics, logs, uploads, observations,   # health-data ingestion (C1)
     medications,                  # medication list, refill requests, dose tick-offs
+    visits,                       # clinic directory, recommendations, self-booked visits
     screener, tasks,              # questionnaires + assessment tasks
     chat,                         # chat, check-in, RAG ingest, sources (C2/C3)
     risk, dashboard,              # risk engine + pathway cards (C4)

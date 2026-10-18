@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     dev_mode: bool = True
 
     storage_dir: str = "./data/uploads"
+    # Where uploaded files live: "local" = storage_dir on disk; "database" = the stored_files table,
+    # for hosts whose disk is wiped on redeploy (Render free). Big streamed imports stay on disk.
+    storage_backend: Literal["local", "database"] = "local"
     log_level: str = "INFO"
     log_json: bool = False
 

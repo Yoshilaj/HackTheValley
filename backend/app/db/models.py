@@ -12,7 +12,7 @@ Conventions:
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Float, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Float, ForeignKey, Index, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAtMixin, IdMixin, utcnow
@@ -508,10 +508,51 @@ class DoseLog(IdMixin, CreatedAtMixin, Base):
     dose_key: Mapped[str] = mapped_column(String(120))
 
 
+# ================================================================ Visits the user books themselves
+
+BOOKING_STATUSES = ("requested", "cancelled")
+
+
+class VisitBooking(IdMixin, CreatedAtMixin, Base):
+    """A visit the user booked by picking a provider and a time in the web app (the booking agent's
+    own appointments are ``Appointment``). ``provider`` is a snapshot of the clinic as shown then, so
+    the booking still reads right if the directory changes. ``slot`` is a local ISO time
+    ("2026-10-21T10:00") or NULL for "next available". The clinic is not contacted."""
+
+    __tablename__ = "visit_bookings"
+    __table_args__ = (Index("ix_visit_bookings_user_status", "user_id", "status"),)
+
+    user_id: Mapped[str] = user_fk(index=False)
+    provider_id: Mapped[str] = mapped_column(String(64))
+    provider: Mapped[JsonDict] = mapped_column(JSON)  # {name, specialty, clinic, address, phone, glyph}
+    slot: Mapped[str | None] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="requested")  # requested | cancelled
+    cancelled_at: Mapped[datetime | None] = mapped_column()
+
+
+# ================================================================ Uploaded file contents
+
+class StoredFile(IdMixin, CreatedAtMixin, Base):
+    """File bytes kept in the database when STORAGE_BACKEND=database (see providers/storage.py), so
+    uploads survive redeploys on hosts whose disk is temporary (Render free plan). Not in
+    USER_OWNED_MODELS: the JSON export skips raw bytes, and DELETE /api/me removes them through
+    ``Storage.delete_user_files`` (and the user FK cascade)."""
+
+    __tablename__ = "stored_files"
+    __table_args__ = (Index("ix_stored_files_user", "user_id"),)
+
+    user_id: Mapped[str] = user_fk(index=False)
+    kind: Mapped[str] = mapped_column(String(64))
+    filename: Mapped[str] = mapped_column(String(120))
+    size: Mapped[int] = mapped_column(default=0)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+
+
 # Order matters for deletes (children before parents).
 USER_OWNED_MODELS: tuple[type[Base], ...] = (
     AppointmentMessage, Report, Appointment, RiskAssessment, Notification, OAuthCredential, ChatMessage,
-    ChatConversation, RefillRequest, DoseLog,
+    ChatConversation, RefillRequest, DoseLog, VisitBooking,
     UploadedDocument, AssessmentTask, ScreenerResponse, Observation, DailyLog,
     DeviceRhythmResult, BpReading, MetricSample, DeviceToken, Consent, Profile, AuditLog,
 )

@@ -1,7 +1,8 @@
 """File storage for uploads (BACKEND_PLAN C1, Security: private storage).
 
 `LocalStorage` writes to `<settings.storage_dir>/<user_id>/<kind>/<uuid>_<safe_name>` and
-returns that path as the `file_url`. `SupabaseStorage` is a stub for the cloud bucket.
+returns that path as the `file_url`. `DatabaseStorage` (STORAGE_BACKEND=database) keeps the bytes in
+the `stored_files` table instead, for hosts with a temporary disk. `SupabaseStorage` is a stub.
 """
 
 from __future__ import annotations
@@ -87,6 +88,82 @@ class LocalStorage:
         return n
 
 
+class DatabaseStorage:
+    """Files in the database (``stored_files``), for hosts whose disk is wiped on every redeploy
+    (Render's free plan). ``file_url`` is ``db://<id>``. Kinds in ``LOCAL_KINDS`` (multi-GB Apple
+    Health exports, parsed straight after upload and not kept) still go to local disk, and paths
+    from before the switch keep working, so ``open`` / ``local_path`` accept both."""
+
+    PREFIX = "db://"
+    LOCAL_KINDS = frozenset({"apple_health"})
+
+    def __init__(self, local: LocalStorage | None = None):
+        self.local = local or LocalStorage(settings.storage_dir)
+
+    @staticmethod
+    def _session():
+        from app.db.session import SessionLocal  # late import: storage is imported by db-less code
+
+        return SessionLocal()
+
+    def save(self, user_id: str, kind: str, filename: str, data: bytes) -> str:
+        if kind in self.LOCAL_KINDS:
+            return self.local.save(user_id, kind, filename, data)
+        for seg in (user_id, kind):
+            if not _SAFE_SEGMENT.match(seg):
+                raise ValueError(f"unsafe storage path segment: {seg!r}")
+        from app.db.models import StoredFile
+
+        with self._session() as db:
+            row = StoredFile(user_id=user_id, kind=kind, filename=safe_name(filename), size=len(data), content=data)
+            db.add(row)
+            db.commit()
+            return f"{self.PREFIX}{row.id}"
+
+    def save_stream(self, user_id: str, kind: str, filename: str, fileobj: BinaryIO) -> str:
+        if kind in self.LOCAL_KINDS:
+            return self.local.save_stream(user_id, kind, filename, fileobj)
+        # Everything else is small (documents are capped at 20 MB by the upload route).
+        return self.save(user_id, kind, filename, fileobj.read())
+
+    def _row(self, file_url: str):
+        from app.db.models import StoredFile
+
+        with self._session() as db:
+            row = db.get(StoredFile, file_url[len(self.PREFIX):])
+            if row is None:
+                raise FileNotFoundError(file_url)
+            db.expunge(row)
+            return row
+
+    def open(self, file_url: str) -> bytes:
+        if not file_url.startswith(self.PREFIX):
+            return self.local.open(file_url)
+        return self._row(file_url).content
+
+    def local_path(self, file_url: str) -> Path:
+        """A real file for code that needs a path: database files are copied to a cache on disk."""
+        if not file_url.startswith(self.PREFIX):
+            return self.local.local_path(file_url)
+        row = self._row(file_url)
+        cache = self.local.root / "_db_cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        path = cache / f"{row.id}_{row.filename}"
+        if not path.exists():
+            path.write_bytes(row.content)
+        return path
+
+    def delete_user_files(self, user_id: str) -> int:
+        from sqlalchemy import delete
+
+        from app.db.models import StoredFile
+
+        with self._session() as db:
+            n = db.execute(delete(StoredFile).where(StoredFile.user_id == user_id)).rowcount or 0
+            db.commit()
+        return n + self.local.delete_user_files(user_id)
+
+
 class SupabaseStorage:
     """TODO(deploy): Supabase Storage private bucket + signed URLs (BACKEND_PLAN Security)."""
 
@@ -95,4 +172,6 @@ class SupabaseStorage:
 
 
 def get_storage() -> Storage:
+    if settings.storage_backend == "database":
+        return DatabaseStorage(LocalStorage(settings.storage_dir))
     return LocalStorage(settings.storage_dir)
