@@ -43,3 +43,7 @@ backend/data/uploads/
 backend/data/*.db-wal
 backend/data/*.db-shm
 backend/data/*.db-journal
+
+# iOS companion app build output
+ios/build/
+ios/**/xcuserdata/

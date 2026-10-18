@@ -774,7 +774,16 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .watch-step-body code { padding: 1px 6px; border-radius: 6px; background: rgba(120, 120, 128, 0.14); font-size: 13px; color: var(--text); }
 .watch-step-body .btn-primary, .watch-step-body .btn-secondary { align-self: flex-start; min-height: 40px; padding: 0 16px; font-size: 14px; }
 .watch-note { font-size: 12px; line-height: 1.4; }
+.watch-steps.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .watch-token { display: flex; flex-direction: column; gap: 6px; }
+.watch-pair { display: flex; align-items: flex-start; gap: 14px; }
+.watch-qr { width: 156px; height: 156px; flex: none; padding: 6px; border-radius: var(--radius-sm); background: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.watch-qr svg { display: block; width: 100%; height: 100%; }
+.watch-pair-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.watch-paired { color: var(--text); }
+.watch-alt { font-size: 14px; color: var(--muted); }
+.watch-alt summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.watch-alt > .watch-step-body { margin-top: 10px; padding: 16px; border-radius: var(--radius); background: var(--surface-soft); }
 .copy-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .copy-field code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); font-size: 13px; }
 .copy-field .btn-secondary { flex: none; min-height: 36px; padding: 0 14px; font-size: 14px; }
@@ -793,10 +802,14 @@ h3 { margin: 0; font-size: 17px; font-weight: 600; }
 @media (max-width: 900px) {
   .task-grid, .data-grid, .heart-grid, .checkin-grid { grid-template-columns: 1fr; }
   .data-grid .span-2 { grid-column: auto; }
-  .watch-steps { grid-template-columns: 1fr; }
+  .watch-steps, .watch-steps.two { grid-template-columns: 1fr; }
   .rhythm-fields { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
+  .watch-pair { flex-direction: column; }
+  .watch-head { flex-wrap: wrap; }
+  .watch-head-text { flex-basis: calc(100% - 58px); }
+  .watch-head .badge { order: 3; margin: 0 0 0 58px; }
   .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stat-strip > :last-child { grid-column: span 2; }
   .task-progress-segments { grid-template-columns: repeat(4, 1fr); width: 100%; }
