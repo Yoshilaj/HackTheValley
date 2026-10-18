@@ -59,6 +59,21 @@ async function send(path, options = {}) {
   return res;
 }
 
+// No answer at all, or a gateway error without the backend's own message: the
+// free-tier server was busy, waking up or dropped the connection. Worth one more try.
+const GATEWAY = new Set([502, 503, 504]);
+export const isTransient = (err) => !(err instanceof ApiError) || (GATEWAY.has(err.status) && !err.detail);
+
+async function retryOnce(fn, delayMs = 3000) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isTransient(err)) throw err;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return fn();
+  }
+}
+
 async function request(path, options = {}) {
   const res = await send(path, options);
   return res.status === 204 ? null : res.json();
@@ -382,7 +397,7 @@ export function submitVowel(blob, repetition, ext = "webm") {
   const form = new FormData();
   form.append("audio", blob, `vowel-${repetition}.${ext}`);
   form.append("repetition", String(repetition));
-  return request("/api/tasks/vowel", { method: "POST", body: form });
+  return retryOnce(() => request("/api/tasks/vowel", { method: "POST", body: form }));
 }
 
 // ---- Story recall battery (spec §1): start -> status with the current step;
@@ -410,7 +425,8 @@ export function submitStoryStep(taskId, { step, blob, ext = "webm", playedS, for
   if (blob) form.append("audio", blob, `${step}.${ext}`);
   if (playedS != null) form.append("played_s", String(playedS));
   if (forceDelay) form.append("force_delay", "true");
-  return request(`/api/tasks/story/${encodeURIComponent(taskId)}/step`, { method: "POST", body: form });
+  // A retry after a step that did save gets a 409 (step already done), which the task resolves by re-reading.
+  return retryOnce(() => request(`/api/tasks/story/${encodeURIComponent(taskId)}/step`, { method: "POST", body: form }));
 }
 
 // ---- Apple Health export (export.zip or export.xml): parsed in the background

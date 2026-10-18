@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import get_current_user
 from app.core.ratelimit import rate_limit
@@ -30,6 +31,9 @@ from app.services import task_service as svc
 router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(rate_limit("tasks"))])
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024  # Whisper API limit
+# The audio endpoints are async only to read the upload; decoding, speech-to-text and the voice
+# features run in a worker thread so one recording doesn't stall every other request on the
+# single uvicorn worker (a vowel takes ~30 s on the free instance).
 
 
 def get_stt() -> SttProvider:
@@ -117,8 +121,8 @@ async def story_step(
 ) -> Any:
     data = await _read_audio(audio)
     try:
-        task, session = svc.submit_step(
-            db, user, task_id, step, data, transcript, stt, embeddings=embeddings, storage=storage,
+        task, session = await run_in_threadpool(
+            svc.submit_step, db, user, task_id, step, data, transcript, stt, embeddings=embeddings, storage=storage,
             force_delay=force_delay, played_s=played_s, filename=audio.filename if audio else None,
             device=svc.device_label(request.headers.get("user-agent")),
         )
@@ -143,8 +147,8 @@ async def vowel(
     if not data:
         raise HTTPException(422, "empty audio file")
     try:
-        return svc.submit_vowel(db, user, data, audio.filename, repetition, storage,
-                                device=svc.device_label(request.headers.get("user-agent"), device))
+        return await run_in_threadpool(svc.submit_vowel, db, user, data, audio.filename, repetition, storage,
+                                       device=svc.device_label(request.headers.get("user-agent"), device))
     except svc.TaskError as e:
         return _raise(e)
 

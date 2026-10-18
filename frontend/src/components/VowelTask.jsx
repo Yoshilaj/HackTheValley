@@ -109,7 +109,9 @@ export default function VowelTask({ onSubmitted, embedded = false }) {
             ? "That recording was too large to send."
             : err?.detail
               ? String(err.detail)
-              : "Couldn't send the recording. Check your connection and try again."
+              : err?.status
+                ? `The server couldn't process the recording (error ${err.status}). It may still be starting up; try this repetition again in a minute.`
+                : "Couldn't reach the server. Check your connection and try again."
         );
         setStep("ready");
       });

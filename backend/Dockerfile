@@ -51,4 +51,6 @@ EXPOSE 8000
 # --proxy-headers / --forwarded-allow-ips: Render's proxy is the only way in, so trust its
 # X-Forwarded-For; without it every request looks like one client and the per-IP rate limits on
 # /api/auth would lock everyone out together.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]
+# --timeout-keep-alive 75: longer than the proxy's idle timeout, so the proxy never reuses a
+# connection uvicorn has just closed (that race shows up as an instant 502).
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --timeout-keep-alive 75 --proxy-headers --forwarded-allow-ips='*'"]

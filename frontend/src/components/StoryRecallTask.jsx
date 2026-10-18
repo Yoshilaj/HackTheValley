@@ -47,7 +47,9 @@ const remember = (id) => {
 function errorText(err) {
   if (err?.status === 503) return `${err.detail ?? "The speech service isn't available."} Voice tasks need the speech service configured on the server.`;
   if (err?.status === 413) return "That recording was too large to send.";
-  return err?.detail ? String(err.detail) : "Couldn't reach CareSync. Check your connection and try again.";
+  if (err?.detail) return String(err.detail);
+  if (err?.status) return `The server couldn't process this step (error ${err.status}). It may still be starting up; try again in a minute.`;
+  return "Couldn't reach CareSync. Check your connection and try again.";
 }
 
 export default function StoryRecallTask({ onSubmitted, embedded = false }) {
@@ -248,7 +250,11 @@ export default function StoryRecallTask({ onSubmitted, embedded = false }) {
                 ref={audioRef}
                 src={audioUrl ?? undefined}
                 preload="auto"
-                onTimeUpdate={(e) => setPlayed((p) => Math.max(p, e.currentTarget.currentTime))}
+                onTimeUpdate={(e) => {
+                  // Read now: React clears currentTarget before the updater runs.
+                  const t = e.currentTarget.currentTime;
+                  setPlayed((p) => Math.max(p, t));
+                }}
                 onEnded={() => setEnded(true)}
                 onError={() => setAudioError(true)}
               />
