@@ -627,3 +627,29 @@ def test_audio_tags_stripped_from_stored_transcript(db, requested, env):
     assert "Assistant: Hello, this is an AI assistant. The postal code is M 5 S." in msg.body
     assert "Assistant: Thank you!" in msg.body and "[happy]" not in msg.body and "[slow]" not in msg.body
     assert "Clinic: Okay [inaudible] thanks." in msg.body   # the clinic's words are not rewritten
+
+
+def test_demo_trigger_call_and_email(client, db, env, monkeypatch):
+    """Dev panel buttons: POST /api/admin/demo/{phone|email} contacts the latest appointment's clinic now."""
+    fake_voice, email, cal = env
+    monkeypatch.setattr(settings, "sandbox_clinic_email", "sandbox@example.com")
+    user = toronto_user(db)
+    appt = ba.run_booking_agent(db, user, make_assessment(db, user), FakeLlm(), cal, None, email, "en",
+                                channels=phone_first())
+    assert appt.status == "awaiting_approval"
+    headers = {"X-User-Id": user.id}
+    r = client.post("/api/admin/demo/phone", headers=headers)
+    assert r.status_code == 200 and r.json()["status"] == "requested", r.text
+    assert fake_voice.calls[-1]["to_number"] == SANDBOX_E164
+    # a clinic without an e-mail address still gets the demo e-mail (sandbox address)
+    clinic = dict(appt.clinic)
+    clinic["email"] = None
+    clinic["extra"] = {k: v for k, v in (clinic.get("extra") or {}).items() if k != "detected_email"}
+    appt.clinic = clinic
+    db.commit()
+    r = client.post("/api/admin/demo/email", headers=headers)
+    assert r.status_code == 200 and r.json()["status"] == "requested", r.text
+    assert any(m.to == ["sandbox@example.com"] for m in email.outbox)
+    db.refresh(appt)
+    assert appt.status == "requested"
+    assert client.post("/api/admin/demo/phone").status_code == 401

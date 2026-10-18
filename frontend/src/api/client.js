@@ -261,6 +261,12 @@ export function getAppointments() {
   return request("/api/appointments");
 }
 
+// Dev only: send the booking e-mail ("email") or place the AI call ("phone")
+// for the latest appointment right now, for live demos. Sandbox targets in sandbox mode.
+export function triggerDemo(channel) {
+  return post(`/api/admin/demo/${channel}`);
+}
+
 export function getAppointment(id) {
   return request(`/api/appointments/${encodeURIComponent(id)}`);
 }

@@ -286,6 +286,9 @@ h2 sup { color: var(--muted); }
 .dev-risk-presets button[aria-pressed="true"] { background: var(--primary); color: #fff; }
 .dev-risk-foot button { color: var(--primary); }
 .dev-risk-panel p { color: var(--muted); }
+/* Presentation triggers (real call / e-mail), shown in both views */
+.dev-demo { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--separator); }
+.dev-demo button:disabled { opacity: 0.5; }
 /* User view / Dev view switch at the top of the panel */
 .dev-view-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: var(--radius-sm); background: rgba(120, 120, 128, 0.12); }
 .dev-view-toggle button { min-height: 32px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }

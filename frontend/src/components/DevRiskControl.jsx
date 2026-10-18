@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { triggerDemo } from "../api/client.js";
+import { useAppointments } from "../context/AppointmentsContext.jsx";
 import { AUTO_BOOK_THRESHOLD, useCareAlert } from "../context/CareAlertContext.jsx";
 import { useSession } from "../context/SessionContext.jsx";
 import useStoredState from "../hooks/useStoredState.js";
@@ -9,12 +11,15 @@ import useStoredState from "../hooks/useStoredState.js";
 //               you can set up a scenario in dev view and present it here.
 //   Dev view  - the risk override (slider, presets, reset) and what the app is
 //               running on.
+// Both views have the presentation triggers: a real AI call / booking e-mail
+// for the latest appointment (to the sandbox phone / inbox in sandbox mode).
 // The slider commits on release so dragging past the threshold doesn't fire
 // the pop-up mid-drag. The chosen view is remembered in this browser.
 // The button can be dragged anywhere, even mostly off screen (a strip stays
 // visible to drag it back); a click without dragging opens the panel. Where it
 // sits is remembered too.
 const PRESETS = [14, 50, 88];
+const DEMO_LABELS = { phone: "Trigger demo call", email: "Trigger demo email" };
 const KEEP_VISIBLE = 16; // px of the button that stay on screen
 const DRAG_START = 4; // px of movement before a press counts as a drag
 
@@ -37,6 +42,9 @@ function measure(el, offset) {
 export default function DevRiskControl() {
   const { risk, devScore, setDevScore, resetAlert } = useCareAlert();
   const { session } = useSession();
+  const { refresh: refreshAppointments } = useAppointments();
+  const [demoBusy, setDemoBusy] = useState(null); // "phone" | "email" | null
+  const [demoNote, setDemoNote] = useState("");
   const [open, setOpen] = useState(false);
   const [view, setView] = useStoredState("caresync-dev-view", "dev"); // "user" | "dev"
   const [draft, setDraft] = useState(null);
@@ -53,6 +61,38 @@ export default function DevRiskControl() {
     setDevScore(draft);
     setDraft(null);
   };
+
+  const runDemo = async (channel) => {
+    setDemoBusy(channel);
+    setDemoNote("");
+    try {
+      const out = await triggerDemo(channel);
+      const sent = out.status === "requested" || out.status === "confirmed";
+      setDemoNote(
+        sent
+          ? `${channel === "phone" ? "Calling" : "E-mail sent"} for ${out.clinic}.`
+          : `Not sent: ${out.reason || out.status}`,
+      );
+      refreshAppointments?.();
+    } catch (err) {
+      setDemoNote(err.status === 401 ? "Sign in first." : `Failed: ${err.detail || err.message}`);
+    } finally {
+      setDemoBusy(null);
+    }
+  };
+
+  const demoControls = (
+    <div className="dev-demo" role="group" aria-label="Presentation triggers">
+      <div className="dev-risk-foot">
+        {Object.entries(DEMO_LABELS).map(([channel, label]) => (
+          <button key={channel} type="button" disabled={demoBusy != null} onClick={() => runDemo(channel)}>
+            {demoBusy === channel ? "Sending…" : label}
+          </button>
+        ))}
+      </div>
+      {demoNote && <p role="status">{demoNote}</p>}
+    </div>
+  );
 
   // A smaller window can't strand the button off screen.
   const refit = useCallback(() => {
@@ -177,6 +217,7 @@ export default function DevRiskControl() {
               </dl>
             </>
           )}
+          {demoControls}
         </div>
       )}
       <button
