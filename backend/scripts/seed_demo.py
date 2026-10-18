@@ -23,7 +23,8 @@ Extends ``scripts.seed.seed_demo_user`` with 35 days of data:
 Idempotent: the demo profile (incl. the onboarding identity fields the booking agent may share:
 legal name, DOB, sex, address, phone, family doctor, has_referral) is always refreshed in place on an
 existing demo user; the planted trend is skipped when the user's ``seed.planted_trend`` marker
-(AuditLog) exists.
+(AuditLog) exists, except that a user seeded before the tapping / voice series existed (marker, no
+tapping task) gets just that Parkinson's-pathway part.
 After seeding, ``assess_user`` yields cardio → followup_recommended [BP-02, RHY-01], score 70 and
 parkinsons → watch [PD-04, PD-03B].
 """
@@ -181,11 +182,20 @@ def tap_features_for(i: int) -> dict[str, Any]:
 
 
 def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> dict[str, Any]:
-    """Insert the planted demo trend for ``user`` (idempotent). Commits. Returns counts."""
-    if planted_marker(db, user.id) is not None:
-        return {"skipped": True}
-    tz = user_zone(user.profile)
+    """Insert the planted demo trend for ``user`` (idempotent). Commits. Returns counts.
+
+    A user seeded before the tapping / voice series existed (marker present, no tapping task) gets
+    just the Parkinson's-pathway part, dated from ``now`` → ``{"skipped": False, "upgraded": "pd_trend", ...}``."""
     now = now or datetime.now(timezone.utc)
+    if planted_marker(db, user.id) is not None:
+        if _has_tapping(db, user.id):
+            return {"skipped": True}
+        counts = _add_pd_trend(db, user, now)
+        db.add(AuditLog(user_id=user.id, actor="system", action=f"{MARKER_ACTION}.pd", resource=f"user:{user.id}",
+                        detail=counts))
+        db.commit()
+        return {"skipped": False, "upgraded": "pd_trend", **counts}
+    tz = user_zone(user.profile)
     today: date = now.astimezone(tz).date()
 
     def at(offset: int, hh: int, mm: int = 0) -> datetime:
@@ -220,7 +230,40 @@ def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> 
                               label="possible_af", recorded_at=at(3, 7, 10), meta={"device": "HCR-7800T"}))
     db.add(Observation(user_id=user.id, kind="symptom", label="palpitations", severity="mild", onset="3 days ago",
                        free_text="Sometimes I feel my heart fluttering", source="chat", created_at=at(2, 12)))
-    # ---- simulated Parkinson's-pathway trend (PD-04 tapping + PD-03B voice; spec §5.3, §5.5)
+    counts.update(_add_pd_trend(db, user, now))
+    base_bp = {"systolic": 136.0, "diastolic": 84.0}
+    for off in (14, 7):
+        db.add(RiskAssessment(
+            user_id=user.id, pathway="cardio", level="watch", priority_score=25 + (10 if off == 7 else 0),
+            fired_rules=[{"id": "BP-01", "version": "1", "level": "watch",
+                          "summary_text": "7-day home blood pressure averaged 136/84 (at or above 135/85)",
+                          "evidence": [{"type": "bp_window", "ref": f"bpw_seed_{off}", "summary": "seeded",
+                                        "value": base_bp}],
+                          "sources": ["src_hypertension_canada_2020", "src_jsh2019"]}],
+            missing_inputs=[], data_quality={"valid_bp_days": 7, "headline": {
+                "en": "A change worth keeping an eye on — keep tracking", "ja": "経過を見ていきたい変化があります。記録を続けましょう"}},
+            model_versions={"rules": {"BP-01": "1"}}, evidence=[], probabilities=[], preventive_measures=[],
+            explanation="Seeded prior assessment (demo).", created_at=now - timedelta(days=off)))
+    db.add(AuditLog(user_id=user.id, actor="system", action=MARKER_ACTION, resource=f"user:{user.id}",
+                    detail=counts))
+    db.commit()
+    return {"skipped": False, **counts}
+
+
+def _has_tapping(db: Session, user_id: str) -> bool:
+    return db.scalar(select(AssessmentTask.id).where(AssessmentTask.user_id == user_id,
+                                                     AssessmentTask.task_type == "finger_tap").limit(1)) is not None
+
+
+def _add_pd_trend(db: Session, user: User, now: datetime) -> dict[str, int]:
+    """Simulated Parkinson's-pathway trend (PD-04 tapping + PD-03B voice; spec §5.3, §5.5). Adds, no commit."""
+    tz = user_zone(user.profile)
+    today: date = now.astimezone(tz).date()
+
+    def at(offset: int, hh: int, mm: int = 0) -> datetime:
+        return datetime.combine(today - timedelta(days=offset), time(hh, mm), tzinfo=tz).astimezone(timezone.utc)
+
+    counts: dict[str, int] = {}
     # today's sessions are clamped to ``now`` (not skipped) so the planted trend is the same at any time of day
     for i in range(DAYS):
         t = min(at(i, 19), now)
@@ -259,23 +302,7 @@ def seed_planted_trend(db: Session, user: User, now: datetime | None = None) -> 
                                                  "clipping_ratio": 0.0, "device": VOICE_DEVICE},
                               created_at=min(at(off, 10, 30), now)))
         counts["voice_sessions"] = counts.get("voice_sessions", 0) + 2
-    base_bp = {"systolic": 136.0, "diastolic": 84.0}
-    for off in (14, 7):
-        db.add(RiskAssessment(
-            user_id=user.id, pathway="cardio", level="watch", priority_score=25 + (10 if off == 7 else 0),
-            fired_rules=[{"id": "BP-01", "version": "1", "level": "watch",
-                          "summary_text": "7-day home blood pressure averaged 136/84 (at or above 135/85)",
-                          "evidence": [{"type": "bp_window", "ref": f"bpw_seed_{off}", "summary": "seeded",
-                                        "value": base_bp}],
-                          "sources": ["src_hypertension_canada_2020", "src_jsh2019"]}],
-            missing_inputs=[], data_quality={"valid_bp_days": 7, "headline": {
-                "en": "A change worth keeping an eye on — keep tracking", "ja": "経過を見ていきたい変化があります。記録を続けましょう"}},
-            model_versions={"rules": {"BP-01": "1"}}, evidence=[], probabilities=[], preventive_measures=[],
-            explanation="Seeded prior assessment (demo).", created_at=now - timedelta(days=off)))
-    db.add(AuditLog(user_id=user.id, actor="system", action=MARKER_ACTION, resource=f"user:{user.id}",
-                    detail=counts))
-    db.commit()
-    return {"skipped": False, **counts}
+    return counts
 
 
 def main(argv: list[str] | None = None) -> None:

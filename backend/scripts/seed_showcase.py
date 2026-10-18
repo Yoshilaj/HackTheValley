@@ -12,6 +12,7 @@ Creates showcase@example.com / showcase1234 (Margaret Kowalski, 71, Toronto) wit
 * a confirmed cardiology appointment three days out, linked to the cardio assessment.
 
 Idempotent: reruns refresh the profile and skip the data, medications and appointment already there.
+Production: ``POST /api/admin/seed-showcase`` (X-Admin-Secret) runs the same ``seed_showcase``.
 """
 from __future__ import annotations
 
@@ -100,33 +101,44 @@ def seed_appointment(db: Session, user: User, cardio_assessment_id: str, now: da
     return appt
 
 
-def main() -> None:
-    from app.db.session import SessionLocal, init_db
+def seed_showcase(db: Session, now: datetime | None = None) -> dict:
+    """Seed (or top up) the showcase account → ``{user_id, email, seed, assessments, appointment}``. Commits."""
+    from unittest import mock
+
     from app.services import medication_service
     from app.services import notify as notify_svc
     from app.services.risk_service import assess_user, latest_assessments
 
-    # No e-mails from the seeded assessment (follow-up hooks are not registered either).
-    notify_svc._send = lambda *a, **k: {"accepted": False, "reason": "seed_showcase"}
-    init_db()
-    now = datetime.now(timezone.utc)
-    with SessionLocal() as db:
-        user = seed_user(db)
-        planted = seed_planted_trend(db, user, now=now)
-        if not planted.get("skipped"):
-            widen_bp_gap(db, user, now)
-        if not medication_service.list_medications(db, user):
-            for med in MEDICATIONS:
-                medication_service.add_medication(db, user, med)
-        rows = latest_assessments(db, user.id)
-        if not planted.get("skipped") or "cardio" not in rows:
+    now = now or datetime.now(timezone.utc)
+    user = seed_user(db)
+    planted = seed_planted_trend(db, user, now=now)
+    if not planted.get("skipped") and not planted.get("upgraded"):
+        widen_bp_gap(db, user, now)
+    if not medication_service.list_medications(db, user):
+        for med in MEDICATIONS:
+            medication_service.add_medication(db, user, med)
+    rows = latest_assessments(db, user.id)
+    if not planted.get("skipped") or "cardio" not in rows:
+        # No e-mails from the seeded assessment (follow-up hooks are not registered either).
+        with mock.patch.object(notify_svc, "_send", lambda *a, **k: {"accepted": False, "reason": "seed_showcase"}):
             rows = {r.pathway: r for r in assess_user(db, user, trigger="manual")}
-        appt = seed_appointment(db, user, rows["cardio"].id, now)
-        print(f"{EMAIL} / {PASSWORD}  id={user.id}")
-        for p, r in rows.items():
-            print(f"  {p:<11} {r.level:<22} score={r.priority_score} fired={[f['id'] for f in r.fired_rules or []]}")
-        print(f"  appointment: {appt.status} at {CLINIC['name']} {appt.chosen_slot['start']}")
+    appt = seed_appointment(db, user, rows["cardio"].id, now)
+    return {"user_id": user.id, "email": EMAIL, "seed": planted,
+            "assessments": [{"pathway": p, "level": r.level, "priority_score": r.priority_score,
+                             "fired": [f["id"] for f in r.fired_rules or []]} for p, r in rows.items()],
+            "appointment": {"status": appt.status, "clinic": CLINIC["name"], "start": appt.chosen_slot["start"]}}
 
+
+def main() -> None:
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        out = seed_showcase(db)
+    print(f"{EMAIL} / {PASSWORD}  id={out['user_id']}")
+    for a in out["assessments"]:
+        print(f"  {a['pathway']:<11} {a['level']:<22} score={a['priority_score']} fired={a['fired']}")
+    print(f"  appointment: {out['appointment']}")
 
 if __name__ == "__main__":
     main()

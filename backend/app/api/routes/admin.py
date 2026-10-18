@@ -1,8 +1,10 @@
-"""Admin / dev helpers: POST /api/admin/seed-demo (dev mode or X-Admin-Secret).
+"""Admin / dev helpers: POST /api/admin/seed-demo, POST /api/admin/seed-showcase (dev mode or X-Admin-Secret).
 
 Seeds the demo user (``scripts.seed``: demo@example.com / demo1234, all consents) and the planted
 35-day trend (``scripts.seed_demo``) so a live demo or ``scripts/demo_smoke.py`` can start from a
 fresh database without shell access. Idempotent: a second call reports ``skipped: true``.
+``seed-showcase`` builds the showcase account (``scripts.seed_showcase``: showcase@example.com /
+showcase1234, overall risk red, a confirmed appointment).
 """
 
 from fastapi import APIRouter, Depends
@@ -31,6 +33,16 @@ def seed_demo(run_assessment: bool = False, db: Session = Depends(get_db)) -> di
         assessments = [{"pathway": r.pathway, "level": r.level, "priority_score": r.priority_score}
                        for r in assess_user(db, user, trigger="manual")]
     return {"user_id": user.id, "email": DEMO_EMAIL, "seed": counts, "assessments": assessments}
+
+
+@router.post("/seed-showcase")
+def seed_showcase(db: Session = Depends(get_db)) -> dict:
+    """Seed the showcase account → ``{user_id, email, seed, assessments, appointment}`` (idempotent)."""
+    from scripts.seed_showcase import seed_showcase as run
+
+    out = run(db)
+    audit(db, out["user_id"], "admin.seed_showcase", f"user:{out['user_id']}", out["seed"], actor="admin", commit=True)
+    return out
 
 
 @router.get("/appointments/{appointment_id}/confirm-links")

@@ -4,7 +4,7 @@ import uuid
 
 from sqlalchemy import func, select
 
-from app.db.models import BpReading, Consent, Profile, User
+from app.db.models import AssessmentTask, AuditLog, BpReading, Consent, Profile, User
 from app.services.risk_service import assess_user
 from scripts.seed import DEMO_PROFILE, _dob_for_age
 from scripts.seed_demo import bp_for_offset, seed_planted_trend
@@ -32,6 +32,21 @@ def test_seed_is_idempotent(db):
     assert first["skipped"] is False and n > 100
     assert seed_planted_trend(db, u) == {"skipped": True}
     assert db.scalar(select(func.count(BpReading.id)).where(BpReading.user_id == u.id)) == n
+
+
+def test_old_seed_gets_pd_trend(db):
+    """Seeded before the tapping / voice series (marker, no tapping): a rerun adds just that part → watch."""
+    u = make_demo_like(db)
+    db.add(AuditLog(user_id=u.id, actor="system", action="seed.planted_trend", resource=f"user:{u.id}", detail={}))
+    db.commit()
+    out = seed_planted_trend(db, u)
+    assert out["upgraded"] == "pd_trend" and out["tapping"] > 0
+    assert db.scalar(select(func.count(BpReading.id)).where(BpReading.user_id == u.id)) == 0
+    assert db.scalar(select(func.count(AssessmentTask.id)).where(AssessmentTask.user_id == u.id,
+                                                                 AssessmentTask.task_type == "finger_tap")) == out["tapping"]
+    assert seed_planted_trend(db, u) == {"skipped": True}
+    rows = {r.pathway: r for r in assess_user(db, u)}
+    assert rows["parkinsons"].level == "watch"
 
 
 def test_demo_replay(db):

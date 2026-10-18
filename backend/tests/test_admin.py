@@ -48,3 +48,17 @@ def test_confirm_links_dev_only(client, monkeypatch):
     assert client.get("/api/admin/appointments/nope/confirm-links").status_code == 404
     monkeypatch.setattr(settings, "dev_mode", False)
     assert client.get("/api/admin/appointments/nope/confirm-links").status_code == 403
+
+
+def test_seed_showcase(client, monkeypatch):
+    """Overall red (cardio 80, under the 85 hold), three conditions on three levels, a confirmed appointment."""
+    monkeypatch.setattr(settings, "dev_mode", False)
+    headers = {"X-Admin-Secret": settings.admin_secret}
+    assert client.post("/api/admin/seed-showcase").status_code == 403
+    out = client.post("/api/admin/seed-showcase", headers=headers).json()
+    levels = {a["pathway"]: (a["level"], a["priority_score"]) for a in out["assessments"]}
+    assert levels["cardio"] == ("followup_recommended", 80)
+    assert levels["parkinsons"][0] == "watch" and levels["cognitive"][0] == "no_finding"
+    assert out["appointment"]["status"] == "confirmed"
+    again = client.post("/api/admin/seed-showcase", headers=headers).json()
+    assert again["seed"] == {"skipped": True} and again["user_id"] == out["user_id"]
