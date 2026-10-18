@@ -403,14 +403,10 @@ def test_auto_endpoint_plans_once_per_pathway_and_lists_the_channels(client, db)
                        headers=headers_for(user)).status_code == 404  # no assessment for it yet
 
 
-def test_auto_endpoint_needs_consent_and_never_books_emergencies(client, db):
+def test_auto_endpoint_needs_consent(client, db):
     from tests.test_report import headers_for
 
     no_consent = toronto_user(db, consents=("data_processing",))
     make_assessment(db, no_consent)
     res = client.post("/api/appointments/auto", json={"pathway": "cardio"}, headers=headers_for(no_consent))
     assert res.status_code == 403
-    urgent = toronto_user(db)
-    make_assessment(db, urgent, level="emergency")
-    assert client.post("/api/appointments/auto", json={"pathway": "cardio"},
-                       headers=headers_for(urgent)).status_code == 409

@@ -203,7 +203,9 @@ def test_chat_stream_sends_progress_guarded_deltas_then_saved_turn(client, db, u
     final, done = events[-2], events[-1]
     assert "probably have" not in streamed  # the guard rewrites before anything is sent
     assert final["answer"].startswith(streamed) and final["answer"] == done["answer"]
-    assert done["answer"].rstrip().endswith("For sudden or severe symptoms, call 911.")
+    from app.services.guardrails import DISCLAIMER_EN
+
+    assert done["answer"].rstrip().endswith(DISCLAIMER_EN)
     assert final["sources"] and done["sources"][0]["n"] == 1 and done["cited"] == [1]
     assert [o["label"] for o in done["observations_created"]] == ["dizziness"]
     assert done["conversation_id"] and done["message_id"]
@@ -214,11 +216,10 @@ def test_chat_stream_sends_progress_guarded_deltas_then_saved_turn(client, db, u
     assert msgs[1].id == done["message_id"] and msgs[1].conversation_id == done["conversation_id"]
 
 
-def test_chat_stream_red_flag_is_a_single_done_event(client, user, headers, fakes):
+def test_chat_stream_chest_pain_is_an_ordinary_turn(client, user, headers, fakes):
     events = _stream(client, headers, message="I have crushing chest pain")
-    assert [e["type"] for e in events] == ["done"]
-    assert events[0]["red_flags"] == ["chest_pain"] and "911" in events[0]["answer"]
-    assert fakes["llm"].calls == []
+    assert [e["type"] for e in events][-2:] == ["answer", "done"]
+    assert "red_flags" not in events[-1] and fakes["llm"].calls
 
 
 def test_chat_stream_rejects_before_streaming(client, headers, fakes):
